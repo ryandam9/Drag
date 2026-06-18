@@ -1,20 +1,43 @@
 # FileSync
 
-A cross-platform **SFTP/FTP file transfer client** built with Flutter for
-macOS, Linux & Windows desktop. This is a faithful, fully-interactive
-implementation of the FileSync mockup — a dark, dense, developer-focused UI
-with drag-and-drop transfers.
+A cross-platform **file transfer client** built with Flutter for macOS, Linux
+& Windows desktop — a dark, dense, developer-focused UI with drag-and-drop
+transfers between **local disk, Amazon S3, and SFTP** endpoints.
 
-> The networking layer is simulated (no real SSH connection is opened). The
-> focus is a polished, production-quality desktop **UI** with realistic mock
-> data and a live transfer engine.
+## Endpoints
+
+Either browser pane can point at any endpoint, so you can move files between
+any combination:
+
+- **Local ⇄ S3** — upload/download between your machine and an S3 bucket.
+- **S3 ⇄ S3 (cross-account)** — copy between two buckets in *different* AWS
+  accounts/regions. Copies are **streamed** through the client
+  (`source.openRead → dest.write`), so each side can use its own credentials —
+  no server-side copy and no shared-account requirement.
+- **Local / SFTP** — the original SFTP sessions are kept (browsing + transfers
+  are simulated).
+
+**S3 is real**, and talks to S3 through a **hand-written client** — there is no
+official AWS SDK for Dart, so FileSync ships its own AWS **Signature V4** signer
+(`lib/fs/aws/sigv4.dart`) and a minimal S3 REST client (`lib/fs/aws/s3_client.dart`)
+built on `dart:io` `HttpClient` (streamed `ListObjectsV2` / `GetObject` /
+`PutObject`). No third-party S3 SDK is used. Configure an S3 connection in the
+**Connection Manager** (Access Key, Secret, optional Session Token, Region,
+Bucket, optional custom endpoint for S3-compatible services), hit **Connect**,
+then pick it in a pane. The **Local** endpoint browses your real filesystem.
+
+> The SigV4 implementation is verified against AWS's published signing-key test
+> vector, and the full client is exercised end-to-end (upload/list/download +
+> cross-bucket copy) in `test/s3_integration_test.dart`.
+
+> Credentials are held in memory for the session and are not persisted to disk.
 
 ## Screens
 
 | Screen | Description |
 | --- | --- |
-| **Browser** | Dual-pane local ⇄ remote file browser. Drag a local file onto the remote pane to enqueue an upload. Session tabs, breadcrumbs, toolbar, live progress strip and an SFTP log console. |
-| **Connection Manager** | Saved/recent sessions sidebar with online indicators, plus a full connection form (protocol, host, port, auth method tabs, key file, paths, options). |
+| **Browser** | Dual-pane file browser; **each pane has an endpoint picker** (Local / any saved S3 or SFTP connection). Drag a file from either pane onto the other to start a transfer. Async listing with loading/error/not-connected states, breadcrumbs, toolbar, live progress strip and a log console. |
+| **Connection Manager** | Saved/recent sessions sidebar with online indicators. Form adapts to the protocol: SSH fields for SFTP, or **S3 credentials** (access key, secret, session token, region, bucket, endpoint, SSL) for S3. |
 | **Transfer Queue** | Active / queued / paused / done / error transfers with per-file progress, speed, ETA, a status filter, an aggregate stats bar and an adjustable parallel-thread count. |
 | **Preferences** | Categorised settings with theme, accent-color swatches, fonts and toggles. |
 
@@ -34,14 +57,23 @@ In-app toast notifications surface transfer events (success / error / info).
 
 ```
 lib/
-  main.dart                 App entry + AppScope wiring
-  app_shell.dart            Title bar + nav rail + screen switcher + toasts
-  theme.dart                Colors, text styles, ThemeData
-  state/app_state.dart      ChangeNotifier: navigation, panes, queue, toasts
-  models/                   FileItem, Connection, Transfer
-  data/mock_data.dart       Seed data matching the mockup
-  widgets/                  Reusable chrome (title bar, buttons, badges, nav, toasts)
-  screens/                  browser / connection_manager / transfer_queue / settings
+  main.dart                    App entry + AppScope wiring
+  app_shell.dart               Title bar + nav rail + screen switcher + toasts
+  theme.dart                   Colors, text styles, ThemeData
+  state/
+    app_state.dart             ChangeNotifier: navigation, panes, queue, toasts
+    pane_controller.dart       Per-pane endpoint/path/listing/selection state
+  fs/
+    storage_backend.dart       StorageBackend interface + LocalBackend + S3Backend
+    simulated_backend.dart     SFTP demo backend
+    transfer_service.dart      Streams source → dest with live progress (S3/local)
+    aws/
+      sigv4.dart               Hand-written AWS Signature V4 signer
+      s3_client.dart           Minimal S3 REST client (List/Get/Put) on HttpClient
+  models/                      FileItem, Connection (incl. S3 fields), Transfer
+  data/mock_data.dart          Seed connections (incl. two S3 accounts)
+  widgets/                     Reusable chrome (title bar, buttons, badges, nav, toasts)
+  screens/                     browser / connection_manager / transfer_queue / settings
 ```
 
 ## Running

@@ -1,4 +1,4 @@
-enum Protocol { sftp, ftp, ftps, scp }
+enum Protocol { sftp, ftp, ftps, scp, s3 }
 
 extension ProtocolLabel on Protocol {
   String get label => switch (this) {
@@ -6,8 +6,12 @@ extension ProtocolLabel on Protocol {
         Protocol.ftp => 'FTP',
         Protocol.ftps => 'FTPS',
         Protocol.scp => 'SCP',
+        Protocol.s3 => 'S3',
       };
 }
+
+/// How a pane talks to its storage. Drives which backend is built.
+enum EndpointKind { local, sftp, s3 }
 
 enum AuthMethod { password, privateKey, sshAgent, gssapi }
 
@@ -41,6 +45,25 @@ class Connection {
   String details; // e.g. "Ubuntu 22.04 · OpenSSH 9.3"
   String lastConnected;
 
+  // ── Amazon S3 / S3-compatible settings (used when protocol == s3) ──
+  String accessKeyId;
+  String secretAccessKey;
+  String sessionToken;
+  String region;
+  String bucket;
+
+  /// Custom endpoint host (e.g. for MinIO or another S3-compatible service).
+  /// Empty → derived from [region] as `s3.<region>.amazonaws.com`.
+  String endpoint;
+  bool useSsl;
+
+  EndpointKind get kind => protocol == Protocol.s3 ? EndpointKind.s3 : EndpointKind.sftp;
+  bool get isS3 => protocol == Protocol.s3;
+
+  /// Enough S3 settings present to attempt a real connection.
+  bool get hasS3Credentials =>
+      accessKeyId.isNotEmpty && secretAccessKey.isNotEmpty && bucket.isNotEmpty;
+
   Connection({
     required this.name,
     this.host = '',
@@ -59,5 +82,12 @@ class Connection {
     this.group = ConnGroup.saved,
     this.details = '',
     this.lastConnected = '',
+    this.accessKeyId = '',
+    this.secretAccessKey = '',
+    this.sessionToken = '',
+    this.region = 'us-east-1',
+    this.bucket = '',
+    this.endpoint = '',
+    this.useSsl = true,
   });
 }

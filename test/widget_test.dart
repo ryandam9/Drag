@@ -25,9 +25,9 @@ void main() {
 
     // Title bar shows the active SFTP session.
     expect(find.textContaining('FileSync — prod-server-01'), findsOneWidget);
-    // Both panes are present.
+    // Left pane is Local, right pane defaults to an S3 endpoint.
     expect(find.text('LOCAL'), findsOneWidget);
-    expect(find.text('REMOTE'), findsOneWidget);
+    expect(find.text('S3'), findsOneWidget);
   });
 
   testWidgets('Navigation rail switches to the transfer queue', (tester) async {
