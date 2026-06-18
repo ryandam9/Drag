@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+
+import '../models/connection.dart';
 import '../models/file_item.dart';
 import '../state/app_state.dart';
+import '../state/pane_controller.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -11,24 +14,25 @@ class BrowserScreen extends StatefulWidget {
 }
 
 class _BrowserScreenState extends State<BrowserScreen> {
-  double _split = 0.5; // local/remote split fraction
-  bool _dropHover = false;
+  double _split = 0.5;
+  bool _dropHoverLeft = false;
+  bool _dropHoverRight = false;
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     return Column(
       children: [
-        _sessionTabs(),
+        _sessionTabs(app),
         _toolbar(app),
         Expanded(
           child: LayoutBuilder(builder: (context, c) {
             final leftW = (c.maxWidth - 5) * _split;
             return Row(
               children: [
-                SizedBox(width: leftW, child: _localPane(app)),
+                SizedBox(width: leftW, child: _pane(app, app.leftPane, left: true)),
                 _divider(c.maxWidth),
-                Expanded(child: _remotePane(app)),
+                Expanded(child: _pane(app, app.rightPane, left: false)),
               ],
             );
           }),
@@ -39,24 +43,20 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  // ── Session tabs ──
-  Widget _sessionTabs() {
-    Widget tab(String name, Color dot, {bool active = false, bool muted = false}) {
+  // ── Session tabs (cosmetic) ──
+  Widget _sessionTabs(AppState app) {
+    Widget tab(String name, Color dot, {bool active = false}) {
       return Container(
         decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: active ? FsColors.accent : Colors.transparent, width: 2),
-          ),
+          border: Border(bottom: BorderSide(color: active ? FsColors.accent : Colors.transparent, width: 2)),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           StatusDot(dot, glow: dot == FsColors.green),
           const SizedBox(width: 7),
-          Text(name,
-              style: FsType.sans(
-                  size: 12, color: active ? FsColors.accentHi : (muted ? FsColors.text3 : FsColors.text2))),
+          Text(name, style: FsType.sans(size: 12, color: active ? FsColors.accentHi : FsColors.text2)),
           const SizedBox(width: 8),
-          Icon(Icons.close, size: 11, color: FsColors.text3),
+          const Icon(Icons.close, size: 11, color: FsColors.text3),
         ]),
       );
     }
@@ -68,8 +68,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(children: [
-        tab('prod-server-01', FsColors.green, active: true),
-        tab('staging-db', FsColors.amber),
+        tab('${app.leftPane.endpointLabel}  ⇄  ${app.rightPane.endpointLabel}', FsColors.green, active: true),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text('＋', style: FsType.sans(size: 13, color: FsColors.text3)),
@@ -87,9 +86,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
-        const ToolButton('← Back'),
+        ToolButton('← Back', onTap: app.leftPane.goUp),
         const ToolButton('→ Fwd'),
-        const ToolButton('↑ Up'),
+        ToolButton('↑ Up', onTap: app.rightPane.goUp),
         const ToolSep(),
         const ToolButton('⇄ Sync', active: true),
         ToolButton('↯ Queue', onTap: () => app.go(AppScreen.queue)),
@@ -106,21 +105,61 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  // ── Resizable divider ──
   Widget _divider(double totalW) {
     return MouseRegion(
       cursor: SystemMouseCursors.resizeColumn,
       child: GestureDetector(
-        onHorizontalDragUpdate: (d) {
-          setState(() => _split = (_split + d.delta.dx / totalW).clamp(0.25, 0.75));
-        },
+        onHorizontalDragUpdate: (d) => setState(() => _split = (_split + d.delta.dx / totalW).clamp(0.25, 0.75)),
         child: Container(width: 5, color: FsColors.border),
       ),
     );
   }
 
-  // ── Pane header ──
-  Widget _paneHeader({required bool local, required String path}) {
+  // ── A pane (drag source + drop target) ──
+  Widget _pane(AppState app, PaneController pane, {required bool left}) {
+    final hover = left ? _dropHoverLeft : _dropHoverRight;
+    return DragTarget<DragPayload>(
+      onWillAcceptWithDetails: (d) {
+        if (d.data.fromLeft == left) return false;
+        setState(() => left ? _dropHoverLeft = true : _dropHoverRight = true);
+        return true;
+      },
+      onLeave: (_) => setState(() => left ? _dropHoverLeft = false : _dropHoverRight = false),
+      onAcceptWithDetails: (d) {
+        setState(() => left ? _dropHoverLeft = false : _dropHoverRight = false);
+        app.dropTransfer(d.data, left);
+      },
+      builder: (context, candidate, rejected) {
+        return Container(
+          decoration: BoxDecoration(
+            color: hover ? FsColors.accent.withValues(alpha: 0.06) : null,
+            border: Border.all(color: hover ? FsColors.accent : Colors.transparent, width: 2),
+          ),
+          child: Column(children: [
+            _paneHeader(app, pane, left: left),
+            _breadcrumb(pane.breadcrumb),
+            Expanded(child: _paneBody(app, pane, left: left)),
+            _paneFooter(app, pane),
+          ]),
+        );
+      },
+    );
+  }
+
+  Widget _paneHeader(AppState app, PaneController pane, {required bool left}) {
+    final isS3 = pane.kind == EndpointKind.s3;
+    final isLocal = pane.kind == EndpointKind.local;
+    final badgeBg = isLocal
+        ? FsColors.badgeLocalBg
+        : isS3
+            ? const Color(0xFF3A2A0A)
+            : FsColors.badgeRemoteBg;
+    final badgeFg = isLocal
+        ? FsColors.accentHi
+        : isS3
+            ? FsColors.amber
+            : FsColors.badgeRemoteFg;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(
@@ -128,18 +167,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-          decoration: BoxDecoration(
-            color: local ? FsColors.badgeLocalBg : FsColors.badgeRemoteBg,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Text(local ? 'LOCAL' : 'REMOTE',
-              style: FsType.sans(
-                  size: 10,
-                  weight: FontWeight.w600,
-                  color: local ? FsColors.accentHi : FsColors.badgeRemoteFg)),
-        ),
+        _endpointPicker(app, pane, left: left, badgeBg: badgeBg, badgeFg: badgeFg),
         const SizedBox(width: 8),
         Expanded(
           child: Container(
@@ -151,39 +179,99 @@ class _BrowserScreenState extends State<BrowserScreen> {
               borderRadius: BorderRadius.circular(4),
               border: Border.all(color: FsColors.border),
             ),
-            child: Text(path,
+            child: Text(pane.displayPath,
                 overflow: TextOverflow.ellipsis, style: FsType.mono(size: 11, color: FsColors.text2)),
           ),
         ),
         const SizedBox(width: 6),
-        _paneIconBtn('⊞'),
+        _paneIconBtn('↑', onTap: pane.goUp),
         const SizedBox(width: 4),
-        _paneIconBtn('↺'),
+        _paneIconBtn('↺', onTap: pane.refresh),
       ]),
     );
   }
 
-  Widget _paneIconBtn(String glyph) => Container(
-        width: 22,
-        height: 22,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: FsColors.bgDeep,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: FsColors.border),
+  Widget _endpointPicker(AppState app, PaneController pane,
+      {required bool left, required Color badgeBg, required Color badgeFg}) {
+    final badge = pane.badge;
+    return Container(
+      decoration: BoxDecoration(
+        color: badgeBg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<Connection?>(
+          value: pane.connection,
+          isDense: true,
+          dropdownColor: FsColors.bgPanel,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          borderRadius: BorderRadius.circular(8),
+          icon: Icon(Icons.expand_more, size: 14, color: badgeFg),
+          selectedItemBuilder: (context) => [
+            _pickerLabel(badge, pane.endpointLabel, badgeFg),
+            ...app.connections.map((c) => _pickerLabel(badge, c.name, badgeFg)),
+          ],
+          items: [
+            DropdownMenuItem<Connection?>(value: null, child: _menuRow('🖥', 'Local')),
+            ...app.connections.map((c) => DropdownMenuItem<Connection?>(
+                  value: c,
+                  child: _menuRow(c.isS3 ? '🪣' : '🌐', c.name),
+                )),
+          ],
+          onChanged: (c) => app.setPaneEndpoint(left, c),
         ),
-        child: Text(glyph, style: FsType.sans(size: 11, color: FsColors.text2)),
+      ),
+    );
+  }
+
+  Widget _pickerLabel(String badge, String name, Color fg) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(badge, style: FsType.sans(size: 10, weight: FontWeight.w700, color: fg)),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 110),
+            child: Text(name, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: fg)),
+          ),
+        ]),
+      );
+
+  Widget _menuRow(String glyph, String name) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(glyph, style: const TextStyle(fontSize: 13)),
+        const SizedBox(width: 8),
+        Text(name, style: FsType.sans(size: 12, color: FsColors.text1)),
+      ]);
+
+  Widget _paneIconBtn(String glyph, {VoidCallback? onTap}) => GestureDetector(
+        onTap: onTap,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            width: 22,
+            height: 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: FsColors.bgDeep,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: FsColors.border),
+            ),
+            child: Text(glyph, style: FsType.sans(size: 11, color: FsColors.text2)),
+          ),
+        ),
       );
 
   Widget _breadcrumb(List<String> segs) {
     final children = <Widget>[];
     for (var i = 0; i < segs.length; i++) {
       final active = i == segs.length - 1;
-      children.add(Text(segs[i],
-          style: FsType.mono(
-              size: 11,
-              color: active ? FsColors.text1 : FsColors.text2,
-              weight: active ? FontWeight.w600 : FontWeight.w400)));
+      children.add(Flexible(
+        child: Text(segs[i],
+            overflow: TextOverflow.ellipsis,
+            style: FsType.mono(
+                size: 11,
+                color: active ? FsColors.text1 : FsColors.text2,
+                weight: active ? FontWeight.w600 : FontWeight.w400)),
+      ));
       if (i < segs.length - 1) {
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -201,92 +289,106 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  // ── Local pane (draggable rows) ──
-  Widget _localPane(AppState app) {
-    return Column(
-      children: [
-        _paneHeader(local: true, path: app.localPath),
-        _breadcrumb(const ['~', 'projects', 'backend']),
-        Expanded(child: _fileTable(app, app.local, local: true)),
-        _paneFooter('${app.local.length - 1} items · ${app.selectedLocalIndex != null ? "1 selected" : "0 selected"} · Free: 128.4 GB'),
-      ],
-    );
-  }
-
-  // ── Remote pane (drop target) ──
-  Widget _remotePane(AppState app) {
-    return DragTarget<FileItem>(
-      onWillAcceptWithDetails: (_) {
-        setState(() => _dropHover = true);
-        return true;
-      },
-      onLeave: (_) => setState(() => _dropHover = false),
-      onAcceptWithDetails: (d) {
-        setState(() => _dropHover = false);
-        app.uploadFile(d.data);
-      },
-      builder: (context, candidate, rejected) {
-        return Container(
-          decoration: BoxDecoration(
-            color: _dropHover ? FsColors.accent.withValues(alpha: 0.06) : null,
-            border: _dropHover
-                ? Border.all(color: FsColors.accent, width: 2)
-                : Border.all(color: Colors.transparent, width: 2),
-          ),
-          child: Column(
-            children: [
-              _paneHeader(local: false, path: app.remotePath),
-              _breadcrumb(const ['/', 'var', 'www', 'app']),
-              Expanded(child: _fileTable(app, app.remote, local: false)),
-              _paneFooter('${app.remote.length - 1} items · Drop files here to upload · Free: 44.2 GB'),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _paneFooter(String text) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-        decoration: const BoxDecoration(
-          color: FsColors.bgDeep,
-          border: Border(top: BorderSide(color: FsColors.border)),
-        ),
-        child: Text(text, style: FsType.sans(size: 10, color: FsColors.text3)),
+  // ── Pane body: placeholder / loading / error / table ──
+  Widget _paneBody(AppState app, PaneController pane, {required bool left}) {
+    if (!pane.isReady) {
+      return _placeholder(
+        icon: Icons.cloud_off_outlined,
+        title: 'Not connected',
+        message: 'Add Access Key, Secret & Bucket for\n${pane.endpointLabel} to browse this S3 endpoint.',
+        actionLabel: 'Open Connection Manager',
+        onAction: () {
+          if (pane.connection != null) app.selectConnection(pane.connection!);
+          app.go(AppScreen.connections);
+        },
       );
+    }
+    if (pane.loading) {
+      return const Center(
+        child: SizedBox(
+            width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
+      );
+    }
+    if (pane.error != null) {
+      return _placeholder(
+        icon: Icons.error_outline,
+        title: 'Couldn\'t list files',
+        message: pane.error!,
+        actionLabel: 'Retry',
+        onAction: pane.refresh,
+      );
+    }
+    return _fileTable(app, pane, left: left);
+  }
 
-  // ── File table ──
-  Widget _fileTable(AppState app, List<FileItem> files, {required bool local}) {
+  Widget _placeholder({
+    required IconData icon,
+    required String title,
+    required String message,
+    required String actionLabel,
+    required VoidCallback onAction,
+  }) {
     return Container(
       color: FsColors.bgSurface,
-      child: Column(
-        children: [
-          _tableHead(),
-          Expanded(
-            child: ListView.builder(
-              itemCount: files.length,
-              itemBuilder: (context, i) {
-                final f = files[i];
-                final selected = local && app.selectedLocalIndex == i;
-                final row = _fileRow(app, f, i, local: local, selected: selected);
-                // Local non-directory files are draggable to the remote pane.
-                if (local && !f.isDir) {
-                  return Draggable<FileItem>(
-                    data: f,
-                    dragAnchorStrategy: pointerDragAnchorStrategy,
-                    feedback: _dragGhost(f),
-                    onDragStarted: () => app.selectLocal(i),
-                    childWhenDragging: Opacity(opacity: 0.4, child: row),
-                    child: row,
-                  );
-                }
-                return row;
-              },
-            ),
-          ),
-        ],
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 34, color: FsColors.text3),
+        const SizedBox(height: 12),
+        Text(title, style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+        const SizedBox(height: 6),
+        Text(message, textAlign: TextAlign.center, style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
+        const SizedBox(height: 16),
+        FsButton(actionLabel, kind: FsButtonKind.primary, onTap: onAction),
+      ]),
+    );
+  }
+
+  Widget _paneFooter(AppState app, PaneController pane) {
+    final count = pane.items.where((f) => !f.isParent).length;
+    final isLocal = pane.kind == EndpointKind.local;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: const BoxDecoration(
+        color: FsColors.bgDeep,
+        border: Border(top: BorderSide(color: FsColors.border)),
       ),
+      child: Text(
+        pane.isReady ? '$count items · Drop files here to transfer${isLocal ? '' : ' · S3 bucket'}' : '—',
+        style: FsType.sans(size: 10, color: FsColors.text3),
+      ),
+    );
+  }
+
+  // ── File table ──
+  Widget _fileTable(AppState app, PaneController pane, {required bool left}) {
+    return Container(
+      color: FsColors.bgSurface,
+      child: Column(children: [
+        _tableHead(),
+        Expanded(
+          child: ListView.builder(
+            itemCount: pane.items.length,
+            itemBuilder: (context, i) {
+              final f = pane.items[i];
+              final selected = pane.selectedIndex == i;
+              final row = _fileRow(pane, f, i, selected: selected);
+              if (!f.isDir) {
+                return Draggable<DragPayload>(
+                  data: DragPayload(f, left),
+                  dragAnchorStrategy: pointerDragAnchorStrategy,
+                  feedback: _dragGhost(f),
+                  onDragStarted: () => pane.select(i),
+                  childWhenDragging: Opacity(opacity: 0.4, child: row),
+                  child: row,
+                );
+              }
+              return row;
+            },
+          ),
+        ),
+      ]),
     );
   }
 
@@ -297,8 +399,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
             padding: const EdgeInsets.only(right: 10),
             child: Text(t,
                 textAlign: align,
-                style: FsType.sans(
-                    size: 10, weight: FontWeight.w600, color: FsColors.text3, letterSpacing: 0.6)),
+                style: FsType.sans(size: 10, weight: FontWeight.w600, color: FsColors.text3, letterSpacing: 0.6)),
           ),
         );
     return Container(
@@ -316,7 +417,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  Widget _fileRow(AppState app, FileItem f, int index, {required bool local, required bool selected}) {
+  Widget _fileRow(PaneController pane, FileItem f, int index, {required bool selected}) {
     return Hoverable(builder: (hover) {
       Color bg = Colors.transparent;
       if (selected) {
@@ -324,11 +425,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
       } else if (hover) {
         bg = FsColors.bgHover;
       }
-      final nameColor = f.isDir ? FsColors.accentHi : (selected ? FsColors.text1 : FsColors.text1);
+      final nameColor = f.isDir ? FsColors.accentHi : FsColors.text1;
       return GestureDetector(
-        onTap: local ? () => app.selectLocal(index) : null,
+        onTap: () => pane.select(index),
+        onDoubleTap: (f.isDir || f.isParent) ? () => pane.open(f) : null,
         child: MouseRegion(
-          cursor: SystemMouseCursors.basic,
+          cursor: f.isDir ? SystemMouseCursors.click : SystemMouseCursors.grab,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
@@ -342,9 +444,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
                   Text(f.icon, style: const TextStyle(fontSize: 14)),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(f.name,
-                        overflow: TextOverflow.ellipsis,
-                        style: FsType.sans(size: 12, color: nameColor)),
+                    child: Text(f.name, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 12, color: nameColor)),
                   ),
                 ]),
               ),
@@ -352,18 +452,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
                 flex: 15,
                 child: Padding(
                   padding: const EdgeInsets.only(right: 14),
-                  child: Text(f.sizeLabel,
-                      textAlign: TextAlign.right, style: FsType.mono(size: 11, color: FsColors.text2)),
+                  child: Text(f.sizeLabel, textAlign: TextAlign.right, style: FsType.mono(size: 11, color: FsColors.text2)),
                 ),
               ),
-              Expanded(
-                flex: 25,
-                child: Text(f.modified, style: FsType.mono(size: 11, color: FsColors.text2)),
-              ),
+              Expanded(flex: 25, child: Text(f.modified, style: FsType.mono(size: 11, color: FsColors.text2))),
               Expanded(
                 flex: 20,
-                child: Text(f.perms,
-                    textAlign: TextAlign.right, style: FsType.mono(size: 10, color: FsColors.text3)),
+                child: Text(f.perms, textAlign: TextAlign.right, style: FsType.mono(size: 10, color: FsColors.text3)),
               ),
             ]),
           ),
@@ -404,7 +499,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         border: Border(top: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
-        const StatusDot(FsColors.green, glow: true),
+        StatusDot(current != null ? FsColors.green : FsColors.text3, glow: current != null),
         const SizedBox(width: 8),
         Text(current != null ? 'Transferring — ${current.name}' : 'Idle',
             style: FsType.sans(size: 11, color: FsColors.text2)),
@@ -423,26 +518,19 @@ class _BrowserScreenState extends State<BrowserScreen> {
             ),
           ),
           const SizedBox(width: 10),
-          Text('${(current.progress * 100).round()}% · ${current.speed}',
-              style: FsType.mono(size: 10, color: FsColors.accentHi)),
+          Text('${(current.progress * 100).round()}% · ${current.speed}', style: FsType.mono(size: 10, color: FsColors.accentHi)),
         ],
         const Spacer(),
         Text('${app.queuedCount} remaining', style: FsType.sans(size: 11, color: FsColors.text2)),
         const SizedBox(width: 10),
-        FsButton('Pause all',
-            fontSize: 10,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            onTap: app.pauseAll),
+        FsButton('Pause all', fontSize: 10, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), onTap: app.pauseAll),
         const SizedBox(width: 6),
-        FsButton('View queue',
-            fontSize: 10,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            onTap: () => app.go(AppScreen.queue)),
+        FsButton('View queue', fontSize: 10, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), onTap: () => app.go(AppScreen.queue)),
       ]),
     );
   }
 
-  // ── SFTP log console ──
+  // ── SFTP / activity log console ──
   Widget _logPanel() {
     Widget line(String time, String marker, Color markerColor, String msg) => Padding(
           padding: const EdgeInsets.only(bottom: 2),
@@ -464,11 +552,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
       ),
       child: SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          line('08:14:02', '»', FsColors.accent, 'Connected to prod-server-01 (OpenSSH 9.3, protocol 2.0)'),
-          line('08:14:03', '✓', FsColors.green, 'Authentication successful (publickey)'),
-          line('08:14:05', '»', FsColors.accent, 'PUT config.yaml → /var/www/app/config.yaml (4,096 bytes)'),
-          line('08:14:06', '✕', FsColors.red, 'Permission denied: /var/www/app/.env (read-only)'),
-          line('08:14:07', '»', FsColors.accent, 'PUT deploy.sh → /var/www/app/deploy.sh …'),
+          line('08:14:02', '»', FsColors.accent, 'Drag files between panes to transfer (Local ⇄ S3, S3 ⇄ S3).'),
+          line('08:14:03', '✓', FsColors.green, 'Local endpoint ready'),
+          line('08:14:05', '»', FsColors.accent, 'Select an S3 account in either pane to browse a bucket'),
+          line('08:14:06', 'ℹ', FsColors.accentHi, 'Add credentials in Connection Manager to connect S3'),
         ]),
       ),
     );

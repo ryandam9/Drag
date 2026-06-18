@@ -15,7 +15,12 @@ class ConnectionManagerScreen extends StatelessWidget {
       children: [
         SizedBox(width: 220, child: _sidebar(app)),
         const VerticalDivider(width: 1, color: FsColors.border),
-        Expanded(child: _form(context, app)),
+        Expanded(
+          child: ConnectionForm(
+            key: ObjectKey(app.selectedConnection),
+            connection: app.selectedConnection,
+          ),
+        ),
       ],
     );
   }
@@ -25,8 +30,7 @@ class ConnectionManagerScreen extends StatelessWidget {
     Widget groupLabel(String t) => Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
           child: Text(t,
-              style: FsType.sans(
-                  size: 10, weight: FontWeight.w700, color: FsColors.text3, letterSpacing: 1)),
+              style: FsType.sans(size: 10, weight: FontWeight.w700, color: FsColors.text3, letterSpacing: 1)),
         );
 
     Widget connItem(Connection c) {
@@ -42,9 +46,13 @@ class ConnectionManagerScreen extends StatelessWidget {
               child: Row(children: [
                 StatusDot(c.online ? FsColors.green : FsColors.text3, glow: c.online),
                 const SizedBox(width: 8),
-                Text(c.name,
-                    style: FsType.sans(
-                        size: 12, color: active ? FsColors.accentHi : (hover ? FsColors.text1 : FsColors.text2))),
+                Expanded(
+                  child: Text(c.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: FsType.sans(
+                          size: 12, color: active ? FsColors.accentHi : (hover ? FsColors.text1 : FsColors.text2))),
+                ),
+                if (c.isS3) Text('S3', style: FsType.sans(size: 9, weight: FontWeight.w700, color: FsColors.amber)),
               ]),
             ),
           ),
@@ -83,10 +91,47 @@ class ConnectionManagerScreen extends StatelessWidget {
       ]),
     );
   }
+}
 
-  // ── Detail / quick-connect form ──
-  Widget _form(BuildContext context, AppState app) {
-    final c = app.selectedConnection;
+/// Editable detail form. Stateful so credential text survives rebuilds (toasts,
+/// ticker) — a fresh State is created per connection via the [ObjectKey].
+class ConnectionForm extends StatefulWidget {
+  final Connection connection;
+  const ConnectionForm({super.key, required this.connection});
+
+  @override
+  State<ConnectionForm> createState() => _ConnectionFormState();
+}
+
+class _ConnectionFormState extends State<ConnectionForm> {
+  Connection get c => widget.connection;
+
+  late final _host = TextEditingController(text: c.host);
+  late final _port = TextEditingController(text: '${c.port}');
+  late final _user = TextEditingController(text: c.username);
+  late final _timeout = TextEditingController(text: '${c.timeout}');
+  late final _keyFile = TextEditingController(text: c.keyFile);
+  late final _remotePath = TextEditingController(text: c.remotePath);
+  late final _localPath = TextEditingController(text: c.localPath);
+
+  late final _region = TextEditingController(text: c.region);
+  late final _bucket = TextEditingController(text: c.bucket);
+  late final _endpoint = TextEditingController(text: c.endpoint);
+  late final _akid = TextEditingController(text: c.accessKeyId);
+  late final _secret = TextEditingController(text: c.secretAccessKey);
+  late final _token = TextEditingController(text: c.sessionToken);
+
+  @override
+  void dispose() {
+    for (final ctl in [_host, _port, _user, _timeout, _keyFile, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token]) {
+      ctl.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -98,60 +143,18 @@ class ConnectionManagerScreen extends StatelessWidget {
         ),
         const SizedBox(height: 20),
 
-        // Protocol + hostname.
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: FormField2('Protocol', _select(c.protocol.label, Protocol.values.map((p) => p.label).toList())),
-          ),
-          const SizedBox(width: 12),
-          Expanded(flex: 2, child: FormField2('Hostname / IP', FsTextField(value: c.host))),
-        ]),
+        FormField2('Protocol', _protocolSelect(app)),
         const SizedBox(height: 16),
 
-        // Port + username + timeout.
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: FormField2('Port', FsTextField(value: '${c.port}'))),
-          const SizedBox(width: 12),
-          Expanded(child: FormField2('Username', FsTextField(value: c.username))),
-          const SizedBox(width: 12),
-          Expanded(child: FormField2('Timeout (s)', FsTextField(value: '${c.timeout}'))),
-        ]),
-        const SizedBox(height: 16),
+        if (c.isS3) ..._s3Fields() else ..._sshFields(),
 
-        Text('Authentication',
-            style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.text2)),
-        const SizedBox(height: 8),
-        _authTabs(c),
-        const SizedBox(height: 16),
-
-        FormField2(
-          'Key file',
-          Row(children: [
-            Expanded(child: FsTextField(value: c.keyFile.isEmpty ? '~/.ssh/id_rsa' : c.keyFile)),
-            const SizedBox(width: 6),
-            FsButton('Browse…', fontSize: 11, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-          ]),
-        ),
-        const SizedBox(height: 12),
-        const FormField2('Passphrase', FsTextField(hint: 'Leave blank if none', obscure: true)),
-        const SizedBox(height: 12),
-        FormField2('Remote start path', FsTextField(value: c.remotePath)),
-        const SizedBox(height: 12),
-        FormField2('Local start path', FsTextField(value: c.localPath.isEmpty ? '~' : c.localPath)),
-        const SizedBox(height: 14),
-
-        _checkRow('Keep session alive (heartbeat every 30s)', c.keepAlive),
-        const SizedBox(height: 6),
-        _checkRow('Open in new tab', c.openInNewTab),
         const SizedBox(height: 18),
-
         Row(children: [
           FsButton('⚡ Connect',
               kind: FsButtonKind.primary,
               onTap: () {
-                c.online = true;
-                app.pushToast('Session connected', '${c.name} · ${c.protocol.label} · 22ms', ToastKind.info);
-                app.go(AppScreen.browser);
+                app.connect(c);
+                if (!c.isS3 || c.hasS3Credentials) app.go(AppScreen.browser);
               }),
           const SizedBox(width: 10),
           FsButton('💾 Save', onTap: () => app.pushToast('Saved', '${c.name} configuration stored', ToastKind.success)),
@@ -159,45 +162,99 @@ class ConnectionManagerScreen extends StatelessWidget {
           const FsButton('⧉ Duplicate'),
           const Spacer(),
           const FsButton('⊗ Delete',
-              kind: FsButtonKind.danger,
-              fontSize: 11,
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+              kind: FsButtonKind.danger, fontSize: 11, padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
         ]),
       ]),
     );
   }
 
-  Widget _authTabs(Connection c) {
-    final methods = AuthMethod.values;
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: FsColors.border),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final m in methods)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                color: m == c.auth ? FsColors.bgActive : Colors.transparent,
-                child: Text(m.label,
-                    style: FsType.sans(
-                        size: 11,
-                        weight: FontWeight.w600,
-                        color: m == c.auth ? FsColors.accentHi : FsColors.text2)),
-              ),
-          ],
+  // ── S3 credential fields ──
+  List<Widget> _s3Fields() {
+    return [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: FormField2('Region', _field(_region, (v) => c.region = v, hint: 'us-east-1'))),
+        const SizedBox(width: 12),
+        Expanded(flex: 2, child: FormField2('Bucket', _field(_bucket, (v) => c.bucket = v, hint: 'my-bucket'))),
+      ]),
+      const SizedBox(height: 12),
+      FormField2('Endpoint (optional — for S3-compatible / MinIO)',
+          _field(_endpoint, (v) => c.endpoint = v, hint: 's3.amazonaws.com')),
+      const SizedBox(height: 12),
+      FormField2('Access Key ID', _field(_akid, (v) => c.accessKeyId = v, hint: 'AKIA…')),
+      const SizedBox(height: 12),
+      FormField2('Secret Access Key', _field(_secret, (v) => c.secretAccessKey = v, obscure: true, hint: '••••••••')),
+      const SizedBox(height: 12),
+      FormField2('Session Token (optional)', _field(_token, (v) => c.sessionToken = v, obscure: true, hint: 'For temporary STS credentials')),
+      const SizedBox(height: 14),
+      _checkRow('Use SSL (HTTPS)', c.useSsl, (v) => setState(() => c.useSsl = v)),
+      const SizedBox(height: 6),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: FsColors.bgPanel,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: FsColors.border),
         ),
+        child: Row(children: [
+          const Text('🪣', style: TextStyle(fontSize: 14)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Cross-account copies are streamed: pick this bucket in one pane and another account\'s bucket in the other, then drag between them.',
+              style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
+            ),
+          ),
+        ]),
       ),
-    );
+    ];
   }
 
-  Widget _select(String value, List<String> options) {
+  // ── SSH / SFTP fields ──
+  List<Widget> _sshFields() {
+    return [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(flex: 2, child: FormField2('Hostname / IP', _field(_host, (v) => c.host = v))),
+      ]),
+      const SizedBox(height: 16),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: FormField2('Port', _field(_port, (v) => c.port = int.tryParse(v) ?? c.port))),
+        const SizedBox(width: 12),
+        Expanded(child: FormField2('Username', _field(_user, (v) => c.username = v))),
+        const SizedBox(width: 12),
+        Expanded(child: FormField2('Timeout (s)', _field(_timeout, (v) => c.timeout = int.tryParse(v) ?? c.timeout))),
+      ]),
+      const SizedBox(height: 16),
+      Text('Authentication', style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.text2)),
+      const SizedBox(height: 8),
+      _authTabs(),
+      const SizedBox(height: 16),
+      FormField2(
+        'Key file',
+        Row(children: [
+          Expanded(child: _field(_keyFile, (v) => c.keyFile = v, hint: '~/.ssh/id_rsa')),
+          const SizedBox(width: 6),
+          FsButton('Browse…', fontSize: 11, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      FormField2('Remote start path', _field(_remotePath, (v) => c.remotePath = v)),
+      const SizedBox(height: 12),
+      FormField2('Local start path', _field(_localPath, (v) => c.localPath = v, hint: '~')),
+      const SizedBox(height: 14),
+      _checkRow('Keep session alive (heartbeat every 30s)', c.keepAlive, (v) => setState(() => c.keepAlive = v)),
+      const SizedBox(height: 6),
+      _checkRow('Open in new tab', c.openInNewTab, (v) => setState(() => c.openInNewTab = v)),
+    ];
+  }
+
+  Widget _field(TextEditingController ctl, ValueChanged<String> onChanged, {bool obscure = false, String? hint}) {
+    return FsTextField(controller: ctl, obscure: obscure, hint: hint, onChanged: onChanged);
+  }
+
+  Widget _protocolSelect(AppState app) {
     return Container(
       height: 32,
+      width: 260,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         color: FsColors.bgDeep,
@@ -206,28 +263,62 @@ class ConnectionManagerScreen extends StatelessWidget {
       ),
       alignment: Alignment.centerLeft,
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
+        child: DropdownButton<Protocol>(
+          value: c.protocol,
           isDense: true,
           isExpanded: true,
           dropdownColor: FsColors.bgPanel,
           icon: const Icon(Icons.expand_more, size: 16, color: FsColors.text2),
           style: FsType.sans(size: 12, color: FsColors.text1),
-          items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-          onChanged: (_) {},
+          items: Protocol.values
+              .map((p) => DropdownMenuItem(
+                  value: p, child: Text(p == Protocol.s3 ? 'S3 (Amazon S3)' : p.label)))
+              .toList(),
+          onChanged: (p) {
+            if (p != null) {
+              setState(() => c.protocol = p);
+              app.selectConnection(c);
+            }
+          },
         ),
       ),
     );
   }
 
-  Widget _checkRow(String label, bool value) {
+  Widget _authTabs() {
+    final methods = AuthMethod.values;
+    return Container(
+      decoration: BoxDecoration(border: Border.all(color: FsColors.border), borderRadius: BorderRadius.circular(6)),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          for (final m in methods)
+            GestureDetector(
+              onTap: () => setState(() => c.auth = m),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  color: m == c.auth ? FsColors.bgActive : Colors.transparent,
+                  child: Text(m.label,
+                      style: FsType.sans(
+                          size: 11, weight: FontWeight.w600, color: m == c.auth ? FsColors.accentHi : FsColors.text2)),
+                ),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _checkRow(String label, bool value, ValueChanged<bool> onChanged) {
     return Row(children: [
       SizedBox(
         width: 18,
         height: 18,
         child: Checkbox(
           value: value,
-          onChanged: (_) {},
+          onChanged: (v) => onChanged(v ?? false),
           activeColor: FsColors.accent,
           side: const BorderSide(color: FsColors.border),
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

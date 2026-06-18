@@ -14,6 +14,10 @@ class Transfer {
   TransferStatus status;
   String? errorMessage;
 
+  /// Real (S3 / local) transfers are driven by [TransferService]; simulated
+  /// ones (seed data, SFTP demo) are advanced by the AppState ticker.
+  final bool live;
+
   Transfer({
     required this.name,
     required this.route,
@@ -25,5 +29,6 @@ class Transfer {
     required this.session,
     this.status = TransferStatus.queued,
     this.errorMessage,
+    this.live = false,
   });
 }

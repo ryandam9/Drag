@@ -30,6 +30,14 @@ class FileItem {
   }
 }
 
+/// Formats a timestamp the way the file tables display it: `2025-06-19  08:11`.
+String formatModified(DateTime? dt) {
+  if (dt == null) return '';
+  final l = dt.toLocal();
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${l.year}-${two(l.month)}-${two(l.day)}  ${two(l.hour)}:${two(l.minute)}';
+}
+
 String formatBytes(num bytes, {int decimals = 1}) {
   if (bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

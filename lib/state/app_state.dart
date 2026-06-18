@@ -2,10 +2,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../data/mock_data.dart';
+import '../fs/simulated_backend.dart';
+import '../fs/storage_backend.dart';
+import '../fs/transfer_service.dart';
 import '../models/connection.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
 import '../theme.dart';
+import 'pane_controller.dart';
+
+export 'pane_controller.dart' show DragPayload;
 
 enum AppScreen { browser, connections, queue, settings }
 
@@ -39,27 +45,38 @@ extension ToastKindStyle on ToastKind {
       };
 }
 
-/// Single source of truth for the demo app. Drives navigation, the file panes,
-/// the live transfer queue and toast notifications.
+/// Single source of truth for the app. Drives navigation, the two file panes
+/// (each backed by Local / S3 / simulated-SFTP), the transfer queue and toasts.
 class AppState extends ChangeNotifier {
   AppState() {
+    leftPane = PaneController(backend: _localBackend, onChanged: notifyListeners);
+    // Right pane defaults to the first S3 account to surface the new feature.
+    final firstS3 = connections.firstWhere((c) => c.isS3, orElse: () => connections.first);
+    rightPane = PaneController(
+      backend: _backendFor(firstS3),
+      connection: firstS3,
+      onChanged: notifyListeners,
+    );
     _ticker = Timer.periodic(const Duration(milliseconds: 700), (_) => _tick());
+    // Kick off initial listings.
+    leftPane.refresh();
+    rightPane.refresh();
   }
 
   late final Timer _ticker;
+  final TransferService _transfers = TransferService();
+  final LocalBackend _localBackend = LocalBackend();
+  final Map<Connection, StorageBackend> _backendCache = {};
 
   AppScreen screen = AppScreen.browser;
 
-  final List<FileItem> local = List.of(localFiles);
-  final List<FileItem> remote = List.of(remoteFiles);
   final List<Connection> connections = buildConnections();
   final List<Transfer> transfers = buildTransfers();
   final List<ToastMessage> toasts = [];
 
-  String localPath = '/Users/marco/projects/backend';
-  String remotePath = 'sftp://deploy@prod-server-01/var/www/app';
+  late final PaneController leftPane;
+  late final PaneController rightPane;
 
-  int? selectedLocalIndex = 3; // config.yaml, matching the mockup
   Connection selectedConnection = buildConnections().first;
 
   int maxThreads = 5;
@@ -78,11 +95,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void selectLocal(int index) {
-    selectedLocalIndex = index;
-    notifyListeners();
-  }
-
   void selectConnection(Connection c) {
     selectedConnection = c;
     notifyListeners();
@@ -93,31 +105,107 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Active transfers currently counted against the parallel-thread budget.
+  // ── Endpoints / backends ──────────────────────────────────────────────
+
+  /// Builds (and caches) the backend for a connection. `null` → Local.
+  StorageBackend _backendFor(Connection? c) {
+    if (c == null) return _localBackend;
+    return _backendCache.putIfAbsent(
+        c, () => c.isS3 ? S3Backend(c) : SimulatedBackend(c));
+  }
+
+  /// Point a pane at Local (`connection == null`) or a saved connection.
+  Future<void> setPaneEndpoint(bool left, Connection? c) async {
+    final pane = left ? leftPane : rightPane;
+    await pane.switchTo(_backendFor(c), c);
+  }
+
+  /// Re-create the backend for [c] (picks up freshly entered S3 credentials)
+  /// and refresh any pane currently using it.
+  Future<void> connect(Connection c) async {
+    c.online = c.isS3 ? c.hasS3Credentials : true;
+    _backendCache.remove(c);
+    final backend = _backendFor(c);
+    for (final pane in [leftPane, rightPane]) {
+      if (identical(pane.connection, c)) {
+        await pane.switchTo(backend, c);
+      }
+    }
+    if (c.isS3 && !c.hasS3Credentials) {
+      pushToast('Missing credentials', 'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
+    } else {
+      pushToast('Session connected', '${c.name} · ${c.protocol.label}', ToastKind.info);
+    }
+    notifyListeners();
+  }
+
+  // ── Transfers ─────────────────────────────────────────────────────────
+
   int get activeCount => transfers.where((t) => t.status == TransferStatus.active).length;
   int get queuedCount => transfers.where((t) => t.status == TransferStatus.queued).length;
   int get doneCount => transfers.where((t) => t.status == TransferStatus.done).length;
   int get errorCount => transfers.where((t) => t.status == TransferStatus.error).length;
   int get pausedCount => transfers.where((t) => t.status == TransferStatus.paused).length;
 
-  /// Drag a local file onto the remote pane → enqueue an upload.
-  void uploadFile(FileItem f) {
-    if (f.isDir || f.isParent) {
-      pushToast('Folder upload', '${f.name} — directory transfer queued', ToastKind.info);
+  /// Handle a drag from one pane dropped onto another → start a transfer.
+  void dropTransfer(DragPayload payload, bool ontoLeft) {
+    if (payload.fromLeft == ontoLeft) return; // dropped on its own pane
+    final src = payload.fromLeft ? leftPane : rightPane;
+    final dst = ontoLeft ? leftPane : rightPane;
+    final item = payload.item;
+
+    if (item.isDir || item.isParent) {
+      pushToast('Not supported', 'Folder transfers aren\'t supported yet — drag files', ToastKind.info);
+      return;
     }
-    transfers.insert(
-      activeCount,
-      Transfer(
-        name: f.name,
-        route: 'Local → $remotePath/',
-        direction: TransferDirection.upload,
-        sizeBytes: f.sizeBytes ?? 0,
-        session: selectedConnection.name,
-        status: TransferStatus.queued,
-      ),
+    if (!src.isReady || !dst.isReady) {
+      pushToast('Not connected', 'Connect the S3 endpoint (add credentials) first', ToastKind.error);
+      return;
+    }
+
+    final srcPath = src.backend.childPath(src.path, item.name, false);
+    final dstPath = dst.backend.childPath(dst.path, item.name, false);
+    final simulated = src.kind == EndpointKind.sftp || dst.kind == EndpointKind.sftp;
+    final direction =
+        dst.kind == EndpointKind.local ? TransferDirection.download : TransferDirection.upload;
+
+    final t = Transfer(
+      name: item.name,
+      route: '${src.endpointLabel} → ${dst.displayPath}',
+      direction: direction,
+      sizeBytes: item.sizeBytes ?? 0,
+      session: dst.endpointLabel,
+      status: TransferStatus.queued,
+      live: !simulated,
     );
-    pushToast('Queued for upload', '${f.name} → ${selectedConnection.name}', ToastKind.info);
+    transfers.insert(0, t);
     notifyListeners();
+
+    if (simulated) {
+      pushToast('Queued', '${item.name} → ${dst.endpointLabel}', ToastKind.info);
+      return;
+    }
+
+    // Real, streamed transfer (Local↔S3 or S3↔S3).
+    pushToast('Transfer started', '${item.name} → ${dst.endpointLabel}', ToastKind.info);
+    _transfers
+        .run(
+      t: t,
+      src: src.backend,
+      srcPath: srcPath,
+      dst: dst.backend,
+      dstPath: dstPath,
+      onChange: notifyListeners,
+    )
+        .then((_) {
+      if (t.status == TransferStatus.done) {
+        pushToast('Transfer complete', '${item.name} → ${dst.endpointLabel} (${formatBytes(t.sizeBytes)})',
+            ToastKind.success);
+        if (identical(dst, rightPane) || identical(dst, leftPane)) dst.refresh();
+      } else if (t.status == TransferStatus.error) {
+        pushToast('Transfer failed', '${item.name}: ${t.errorMessage ?? 'error'}', ToastKind.error);
+      }
+    });
   }
 
   void pauseAll() {
@@ -175,14 +263,14 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  /// Advances active transfers and promotes queued ones — gives the queue a
-  /// living feel without any real network I/O.
+  /// Advances *simulated* transfers only (real ones are driven by
+  /// [TransferService]). Keeps the demo queue feeling alive.
   void _tick() {
     var changed = false;
     for (final t in transfers) {
+      if (t.live) continue;
       if (t.status == TransferStatus.active) {
         changed = true;
-        // Larger files crawl, small files race — keeps it believable.
         final step = t.sizeBytes > 10 * mB ? 0.015 : 0.18;
         t.progress = (t.progress + step).clamp(0, 1);
         if (t.progress >= 1) {
@@ -201,16 +289,15 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    // Promote queued → active while under the thread budget.
-    if (activeCount < maxThreads) {
-      final next = transfers.where((t) => t.status == TransferStatus.queued).cast<Transfer?>().firstWhere(
-            (t) => true,
-            orElse: () => null,
-          );
-      if (next != null) {
-        next.status = TransferStatus.active;
-        next.speed = next.sizeBytes > 10 * mB ? '1.4 MB/s' : '210 KB/s';
-        changed = true;
+    final simActive = transfers.where((t) => !t.live && t.status == TransferStatus.active).length;
+    if (simActive < maxThreads) {
+      for (final t in transfers) {
+        if (!t.live && t.status == TransferStatus.queued) {
+          t.status = TransferStatus.active;
+          t.speed = t.sizeBytes > 10 * mB ? '1.4 MB/s' : '210 KB/s';
+          changed = true;
+          break;
+        }
       }
     }
 
