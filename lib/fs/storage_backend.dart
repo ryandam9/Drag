@@ -170,11 +170,23 @@ class S3Backend extends StorageBackend {
   String displayPath(String path) => 's3://$bucket/$path';
 
   static Minio _build(Connection c) {
-    final host = c.endpoint.isNotEmpty
+    var host = c.endpoint.isNotEmpty
         ? c.endpoint
         : (c.region.isEmpty ? 's3.amazonaws.com' : 's3.${c.region}.amazonaws.com');
+
+    // Allow "host:port" custom endpoints (MinIO / S3-compatible services).
+    int? port;
+    final scheme = RegExp(r'^https?://');
+    host = host.replaceFirst(scheme, '');
+    final colon = host.indexOf(':');
+    if (colon != -1) {
+      port = int.tryParse(host.substring(colon + 1));
+      host = host.substring(0, colon);
+    }
+
     return Minio(
       endPoint: host,
+      port: port,
       accessKey: c.accessKeyId,
       secretKey: c.secretAccessKey,
       sessionToken: c.sessionToken.isEmpty ? null : c.sessionToken,
