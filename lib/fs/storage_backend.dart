@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:minio/minio.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/connection.dart';
 import '../models/file_item.dart';
+import 'aws/s3_client.dart';
+import 'aws/sigv4.dart';
 
 /// A readable handle: the byte stream plus the total size (for progress/ETA).
 class ReadHandle {
@@ -142,7 +143,7 @@ class LocalBackend extends StorageBackend {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Amazon S3 / S3-compatible (real, via minio)
+// Amazon S3 / S3-compatible (real, via our own SigV4 S3 client)
 // ─────────────────────────────────────────────────────────────────────────
 class S3Backend extends StorageBackend {
   S3Backend(this.connection) {
@@ -150,7 +151,7 @@ class S3Backend extends StorageBackend {
   }
 
   final Connection connection;
-  Minio? _client;
+  S3Client? _client;
 
   String get bucket => connection.bucket;
 
@@ -169,29 +170,17 @@ class S3Backend extends StorageBackend {
   @override
   String displayPath(String path) => 's3://$bucket/$path';
 
-  static Minio _build(Connection c) {
-    var host = c.endpoint.isNotEmpty
-        ? c.endpoint
-        : (c.region.isEmpty ? 's3.amazonaws.com' : 's3.${c.region}.amazonaws.com');
-
-    // Allow "host:port" custom endpoints (MinIO / S3-compatible services).
-    int? port;
-    final scheme = RegExp(r'^https?://');
-    host = host.replaceFirst(scheme, '');
-    final colon = host.indexOf(':');
-    if (colon != -1) {
-      port = int.tryParse(host.substring(colon + 1));
-      host = host.substring(0, colon);
-    }
-
-    return Minio(
-      endPoint: host,
-      port: port,
-      accessKey: c.accessKeyId,
-      secretKey: c.secretAccessKey,
-      sessionToken: c.sessionToken.isEmpty ? null : c.sessionToken,
-      region: c.region.isEmpty ? null : c.region,
-      useSSL: c.useSsl,
+  static S3Client _build(Connection c) {
+    return S3Client(
+      bucket: c.bucket,
+      region: c.region,
+      endpoint: c.endpoint,
+      useSsl: c.useSsl,
+      credentials: AwsCredentials(
+        c.accessKeyId,
+        c.secretAccessKey,
+        sessionToken: c.sessionToken.isEmpty ? null : c.sessionToken,
+      ),
     );
   }
 
@@ -203,26 +192,24 @@ class S3Backend extends StorageBackend {
     final items = <FileItem>[];
     if (path.isNotEmpty) items.add(const FileItem(name: '..', isDir: true));
 
-    await for (final result in client.listObjects(bucket, prefix: path, recursive: false)) {
-      // CommonPrefixes → folders.
-      for (final prefix in result.prefixes) {
-        final name = prefix.substring(path.length).replaceAll(RegExp(r'/$'), '');
-        if (name.isEmpty) continue;
-        items.add(FileItem(name: name, isDir: true));
-      }
-      // Contents → objects.
-      for (final obj in result.objects) {
-        final key = obj.key ?? '';
-        if (key == path) continue; // the prefix placeholder object itself
-        final name = key.substring(path.length);
-        if (name.isEmpty || name.endsWith('/')) continue;
-        items.add(FileItem(
-          name: name,
-          sizeBytes: obj.size,
-          modified: formatModified(obj.lastModified),
-          perms: 's3',
-        ));
-      }
+    final result = await client.listAll(prefix: path, delimiter: '/');
+    // CommonPrefixes → folders.
+    for (final prefix in result.commonPrefixes) {
+      final name = prefix.substring(path.length).replaceAll(RegExp(r'/$'), '');
+      if (name.isEmpty) continue;
+      items.add(FileItem(name: name, isDir: true));
+    }
+    // Contents → objects.
+    for (final obj in result.objects) {
+      if (obj.key == path) continue; // the prefix placeholder object itself
+      final name = obj.key.substring(path.length);
+      if (name.isEmpty || name.endsWith('/')) continue;
+      items.add(FileItem(
+        name: name,
+        sizeBytes: obj.size,
+        modified: formatModified(obj.lastModified),
+        perms: 's3',
+      ));
     }
     items.sort(StorageBackend.dirsFirst);
     return items;
@@ -231,13 +218,8 @@ class S3Backend extends StorageBackend {
   @override
   Future<ReadHandle> openRead(String path) async {
     final client = _client!;
-    final stream = await client.getObject(bucket, path);
-    var length = stream.contentLength ?? 0;
-    if (length == 0) {
-      final stat = await client.statObject(bucket, path);
-      length = stat.size ?? 0;
-    }
-    return ReadHandle(stream.map(Uint8List.fromList), length);
+    final resp = await client.getObject(path);
+    return ReadHandle(resp.stream.map(Uint8List.fromList), resp.contentLength);
   }
 
   @override
@@ -248,8 +230,11 @@ class S3Backend extends StorageBackend {
     void Function(int sent)? onProgress,
   }) async {
     final client = _client!;
-    await client.putObject(bucket, path, data, size: length, onProgress: onProgress);
+    await client.putObject(path, data, length, onProgress: onProgress);
   }
+
+  @override
+  void dispose() => _client?.close();
 
   @override
   String childPath(String path, String name, bool isDir) => '$path$name${isDir ? '/' : ''}';

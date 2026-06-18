@@ -17,12 +17,18 @@ any combination:
 - **Local / SFTP** — the original SFTP sessions are kept (browsing + transfers
   are simulated).
 
-**S3 is real** (via the [`minio`](https://pub.dev/packages/minio) client):
-listing, upload (`putObject`) and download (`getObject`) hit the actual
-service. Configure an S3 connection in the **Connection Manager** (Access Key,
-Secret, optional Session Token, Region, Bucket, optional custom endpoint for
-S3-compatible services like MinIO), hit **Connect**, then pick it in a pane.
-The **Local** endpoint browses your real filesystem.
+**S3 is real**, and talks to S3 through a **hand-written client** — there is no
+official AWS SDK for Dart, so FileSync ships its own AWS **Signature V4** signer
+(`lib/fs/aws/sigv4.dart`) and a minimal S3 REST client (`lib/fs/aws/s3_client.dart`)
+built on `dart:io` `HttpClient` (streamed `ListObjectsV2` / `GetObject` /
+`PutObject`). No third-party S3 SDK is used. Configure an S3 connection in the
+**Connection Manager** (Access Key, Secret, optional Session Token, Region,
+Bucket, optional custom endpoint for S3-compatible services), hit **Connect**,
+then pick it in a pane. The **Local** endpoint browses your real filesystem.
+
+> The SigV4 implementation is verified against AWS's published signing-key test
+> vector, and the full client is exercised end-to-end (upload/list/download +
+> cross-bucket copy) in `test/s3_integration_test.dart`.
 
 > Credentials are held in memory for the session and are not persisted to disk.
 
@@ -61,6 +67,9 @@ lib/
     storage_backend.dart       StorageBackend interface + LocalBackend + S3Backend
     simulated_backend.dart     SFTP demo backend
     transfer_service.dart      Streams source → dest with live progress (S3/local)
+    aws/
+      sigv4.dart               Hand-written AWS Signature V4 signer
+      s3_client.dart           Minimal S3 REST client (List/Get/Put) on HttpClient
   models/                      FileItem, Connection (incl. S3 fields), Transfer
   data/mock_data.dart          Seed connections (incl. two S3 accounts)
   widgets/                     Reusable chrome (title bar, buttons, badges, nav, toasts)

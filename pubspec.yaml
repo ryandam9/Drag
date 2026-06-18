@@ -11,7 +11,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
-  minio: ^3.5.8
+  crypto: ^3.0.6
+  xml: ^6.5.0
   path: ^1.9.1
 
 dev_dependencies:
