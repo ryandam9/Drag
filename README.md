@@ -99,5 +99,28 @@ flutter build windows --release
 
 ```bash
 flutter analyze
-flutter test
+flutter test                 # 72 hermetic tests
+```
+
+Coverage spans the whole stack:
+
+| File | What it covers |
+| --- | --- |
+| `models_test.dart` | byte/date formatting, `FileItem`, `Connection` (S3 readiness), `Transfer` |
+| `backends_test.dart` | `LocalBackend` (real temp-dir listing + byte round-trip), `S3Backend` path math, `SimulatedBackend` |
+| `pane_controller_test.dart` | listing, navigation (enter dir / `..` / up), selection, breadcrumb, not-ready short-circuit |
+| `app_state_test.dart` | navigation, queue counts & controls, toasts, simulated ticker, endpoint switching, `connect`, and all `dropTransfer` decisions (incl. a real Local→Local transfer) |
+| `sigv4_test.dart` | AWS SigV4 — signing key vs **AWS's published test vector**, header/encoding |
+| `transfer_test.dart` | `TransferService` streaming with progress |
+| `screens_widget_test.dart` | Connection Manager (S3 vs SSH form + editing), Transfer Queue, Settings toggles, toasts |
+| `widget_test.dart` | app boot + nav rail |
+
+Real end-to-end S3 tests live in `s3_integration_test.dart` and **auto-skip**
+unless an S3 server is supplied:
+
+```bash
+flutter test test/s3_integration_test.dart \
+  --dart-define=S3_ENDPOINT=127.0.0.1:9000 \
+  --dart-define=S3_BUCKET=bucket-a --dart-define=S3_BUCKET2=bucket-b \
+  --dart-define=S3_KEY=... --dart-define=S3_SECRET=...
 ```
