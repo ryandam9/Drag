@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
 import '../state/app_state.dart';
+import '../state/scopes.dart';
+import '../state/transfers_controller.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -10,7 +12,9 @@ class TransferQueueScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+    // Subscribe to the transfer queue only — toasts, settings and session
+    // changes no longer rebuild this screen.
+    final app = TransfersScope.of(context);
     return Column(children: [
       _filterBar(app),
       Expanded(child: _table(app)),
@@ -19,7 +23,7 @@ class TransferQueueScreen extends StatelessWidget {
   }
 
   // ── Status filter chips + free text filter ──
-  Widget _filterBar(AppState app) {
+  Widget _filterBar(TransfersController app) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(
@@ -45,7 +49,7 @@ class TransferQueueScreen extends StatelessWidget {
   }
 
   // ── Transfer table ──
-  Widget _table(AppState app) {
+  Widget _table(TransfersController app) {
     return Container(
       color: FsColors.bgSurface,
       child: Column(children: [
@@ -93,7 +97,7 @@ class TransferQueueScreen extends StatelessWidget {
         TransferStatus.paused => (bg: FsColors.badgePausedBg, fg: FsColors.badgePausedFg, label: '⏸ Paused'),
       };
 
-  Widget _row(AppState app, Transfer t) {
+  Widget _row(TransfersController app, Transfer t) {
     final dirGlyph = switch (t.status) {
       TransferStatus.done => '✓',
       TransferStatus.error => '!',
@@ -191,7 +195,7 @@ class TransferQueueScreen extends StatelessWidget {
   }
 
   // ── Aggregate stats footer ──
-  Widget _statsBar(AppState app) {
+  Widget _statsBar(TransfersController app) {
     // "Transferred" aggregates live progress, so rebuild on any transfer's
     // live tick (this footer is only mounted on the queue screen).
     return ListenableBuilder(
@@ -200,7 +204,7 @@ class TransferQueueScreen extends StatelessWidget {
     );
   }
 
-  Widget _statsBarBody(AppState app) {
+  Widget _statsBarBody(TransfersController app) {
     final total = app.transfers.fold<int>(0, (s, t) => s + t.sizeBytes);
     final transferred = app.transfers.fold<double>(0, (s, t) => s + t.sizeBytes * t.progress);
 

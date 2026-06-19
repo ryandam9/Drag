@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../state/app_state.dart';
+import '../state/scopes.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -16,7 +17,8 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+    // Subscribe to settings only; toasts are fired through AppScope.read.
+    final app = SettingsScope.of(context);
     return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SizedBox(width: 170, child: _sidebar()),
       const VerticalDivider(width: 1, color: FsColors.border),
@@ -62,7 +64,8 @@ class SettingsScreen extends StatelessWidget {
   }
 
   // ── Appearance pane ──
-  Widget _content(BuildContext context, AppState app) {
+  Widget _content(BuildContext context, SettingsController app) {
+    final toast = AppScope.read(context).pushToast;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -80,7 +83,7 @@ class SettingsScreen extends StatelessWidget {
               GestureDetector(
                 onTap: () {
                   app.setAccent(c);
-                  app.pushToast('Accent updated', 'Theme accent changed', ToastKind.info);
+                  toast('Accent updated', 'Theme accent changed', ToastKind.info);
                 },
                 child: Container(
                   margin: const EdgeInsets.only(right: 12),
@@ -114,20 +117,20 @@ class SettingsScreen extends StatelessWidget {
                 (v) => app.setMonospaceFont(v))),
         const SizedBox(height: 18),
 
-        _check('Show hidden files', app.showHiddenFiles, app.setShowHiddenFiles, app),
-        _check('Show file permissions column', app.showPermsColumn, app.setShowPermsColumn, app),
-        _check('Show transfer log on startup', app.showLogOnStartup, app.setShowLogOnStartup, app),
-        _check('Confirm before overwriting files', app.confirmOverwrite, app.setConfirmOverwrite, app),
+        _check('Show hidden files', app.showHiddenFiles, app.setShowHiddenFiles),
+        _check('Show file permissions column', app.showPermsColumn, app.setShowPermsColumn),
+        _check('Show transfer log on startup', app.showLogOnStartup, app.setShowLogOnStartup),
+        _check('Confirm before overwriting files', app.confirmOverwrite, app.setConfirmOverwrite),
         const SizedBox(height: 20),
 
         Row(children: [
           FsButton('Save',
               kind: FsButtonKind.primary,
-              onTap: () => app.pushToast('Preferences saved', 'Your settings were applied', ToastKind.success)),
+              onTap: () => toast('Preferences saved', 'Your settings were applied', ToastKind.success)),
           const SizedBox(width: 10),
           FsButton('Reset defaults', onTap: () {
             app.resetSettings();
-            app.pushToast('Defaults restored', 'Settings reset to defaults', ToastKind.info);
+            toast('Defaults restored', 'Settings reset to defaults', ToastKind.info);
           }),
         ]),
       ]),
@@ -135,40 +138,35 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Widget _select(String value, List<String> options, ValueChanged<String> onChanged) {
-    return Builder(builder: (context) {
-      final app = AppScope.of(context);
-      return Container(
-        height: 32,
-        width: 260,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: FsColors.bgDeep,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: FsColors.border),
+    return Container(
+      height: 32,
+      width: 260,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: FsColors.bgDeep,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: FsColors.border),
+      ),
+      alignment: Alignment.centerLeft,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isDense: true,
+          isExpanded: true,
+          dropdownColor: FsColors.bgPanel,
+          icon: const Icon(Icons.expand_more, size: 16, color: FsColors.text2),
+          style: FsType.sans(size: 12, color: FsColors.text1),
+          items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+          // The setter notifies SettingsScope, so the screen rebuilds itself.
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
         ),
-        alignment: Alignment.centerLeft,
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: value,
-            isDense: true,
-            isExpanded: true,
-            dropdownColor: FsColors.bgPanel,
-            icon: const Icon(Icons.expand_more, size: 16, color: FsColors.text2),
-            style: FsType.sans(size: 12, color: FsColors.text1),
-            items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-            onChanged: (v) {
-              if (v != null) {
-                onChanged(v);
-                app.go(AppScreen.settings); // notify
-              }
-            },
-          ),
-        ),
-      );
-    });
+      ),
+    );
   }
 
-  Widget _check(String label, bool value, ValueChanged<bool> set, AppState app) {
+  Widget _check(String label, bool value, ValueChanged<bool> set) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(children: [
@@ -177,10 +175,7 @@ class SettingsScreen extends StatelessWidget {
           height: 18,
           child: Checkbox(
             value: value,
-            onChanged: (v) {
-              set(v ?? false);
-              app.go(AppScreen.settings);
-            },
+            onChanged: (v) => set(v ?? false),
             activeColor: FsColors.accent,
             side: const BorderSide(color: FsColors.border),
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

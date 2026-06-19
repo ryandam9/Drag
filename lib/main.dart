@@ -9,6 +9,7 @@ import 'data/history_db.dart';
 import 'data/settings_store.dart';
 import 'models/connection.dart';
 import 'state/app_state.dart';
+import 'state/scopes.dart';
 import 'theme.dart';
 
 /// Desktop platforms where native window management applies.
@@ -169,7 +170,7 @@ class _DragAppState extends State<DragApp> with WindowListener {
             child: child!,
           );
         },
-        home: const AppShell(),
+        home: AppScopes(state: _state, child: const AppShell()),
       ),
     );
   }
