@@ -4,6 +4,8 @@
 
 # Drag
 
+[![CI](https://github.com/ryandam9/Drag/actions/workflows/ci.yml/badge.svg)](https://github.com/ryandam9/Drag/actions/workflows/ci.yml)
+
 A cross-platform **file transfer client** built with Flutter for macOS, Linux
 & Windows desktop — a dark, dense, developer-focused UI with drag-and-drop
 transfers between **local disk, Amazon S3, and SFTP** endpoints.
