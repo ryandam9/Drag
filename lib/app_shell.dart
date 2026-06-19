@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'models/connection.dart';
 import 'screens/browser_screen.dart';
 import 'screens/connection_manager_screen.dart';
+import 'screens/dashboard_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/transfer_queue_screen.dart';
 import 'state/app_state.dart';
@@ -10,6 +11,7 @@ import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/nav_rail.dart';
 import 'widgets/toast_overlay.dart';
+import 'widgets/transfer_progress.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({super.key});
@@ -32,6 +34,10 @@ class AppShell extends StatelessWidget {
             TbButton('⊗ Clear done', onTap: app.clearDone),
           ],
         ),
+      AppScreen.dashboard => (
+          'History Dashboard',
+          [TbButton('↺ Refresh', onTap: app.refreshHistory)],
+        ),
       AppScreen.settings => ('Preferences', <Widget>[]),
     };
 
@@ -39,6 +45,7 @@ class AppShell extends StatelessWidget {
       AppScreen.browser => const BrowserScreen(),
       AppScreen.connections => const ConnectionManagerScreen(),
       AppScreen.queue => const TransferQueueScreen(),
+      AppScreen.dashboard => const DashboardScreen(),
       AppScreen.settings => const SettingsScreen(),
     };
 
@@ -62,6 +69,7 @@ class AppShell extends StatelessWidget {
             ]),
           ),
         ]),
+        const ActiveTransferOverlay(),
         const ToastOverlay(),
       ]),
     );

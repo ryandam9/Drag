@@ -18,6 +18,14 @@ class Transfer {
   /// ones (seed data, SFTP demo) are advanced by the AppState ticker.
   final bool live;
 
+  /// Full source / destination paths (for the completion notice and history).
+  final String sourcePath;
+  final String destPath;
+
+  /// Wall-clock timing, set by [TransferService].
+  DateTime? startedAt;
+  DateTime? finishedAt;
+
   Transfer({
     required this.name,
     required this.route,
@@ -30,5 +38,26 @@ class Transfer {
     this.status = TransferStatus.queued,
     this.errorMessage,
     this.live = false,
+    this.sourcePath = '',
+    this.destPath = '',
   });
+
+  /// Elapsed transfer time, once finished.
+  Duration? get elapsed =>
+      (startedAt != null && finishedAt != null) ? finishedAt!.difference(startedAt!) : null;
+
+  /// Human-friendly elapsed time, e.g. "0.8s", "1m 04s".
+  String get elapsedLabel => formatDuration(elapsed);
 }
+
+/// Formats a [Duration] like "0.8s" / "12.3s" / "2m 05s".
+String formatDuration(Duration? d) {
+  if (d == null) return '—';
+  final ms = d.inMilliseconds;
+  if (ms < 1000) return '${ms}ms';
+  if (ms < 60000) return '${(ms / 1000).toStringAsFixed(1)}s';
+  final m = d.inMinutes;
+  final s = d.inSeconds % 60;
+  return '${m}m ${s.toString().padLeft(2, '0')}s';
+}
+
