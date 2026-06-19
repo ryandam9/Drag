@@ -64,6 +64,29 @@ void main() {
     expect(pane.path, p.dirname(dir.path));
   });
 
+  test('back / forward navigation history', () async {
+    final pane = localPane();
+    await pane.refresh();
+    expect(pane.canGoBack, isFalse);
+
+    final nested = pane.items.firstWhere((e) => e.name == 'nested');
+    await pane.open(nested); // dir -> nested
+    expect(pane.canGoBack, isTrue);
+    expect(pane.canGoForward, isFalse);
+
+    await pane.goBack();
+    expect(pane.path, dir.path);
+    expect(pane.canGoForward, isTrue);
+
+    await pane.goForward();
+    expect(pane.path, p.join(dir.path, 'nested'));
+
+    // A fresh navigation clears the forward stack.
+    await pane.goBack();
+    await pane.open(nested);
+    expect(pane.canGoForward, isFalse);
+  });
+
   test('select updates index and notifies', () {
     var notified = 0;
     final pane = localPane(onChanged: () => notified++);

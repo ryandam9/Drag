@@ -153,6 +153,44 @@ class SftpBackend extends StorageBackend {
     }
   }
 
+  // ── Mutations ──
+  @override
+  Future<void> makeDir(String path) async {
+    final sftp = await _ensure();
+    await sftp.mkdir(path);
+  }
+
+  @override
+  Future<void> rename(String fromPath, String toPath) async {
+    final sftp = await _ensure();
+    await sftp.rename(fromPath, toPath);
+  }
+
+  @override
+  Future<void> delete(String path, {required bool isDir}) async {
+    final sftp = await _ensure();
+    if (!isDir) {
+      await sftp.remove(path);
+      return;
+    }
+    await _removeDir(sftp, path);
+  }
+
+  Future<void> _removeDir(SftpClient sftp, String dir) async {
+    for (final entry in await sftp.listdir(dir)) {
+      final name = entry.filename;
+      if (name == '.' || name == '..') continue;
+      final child = dir.endsWith('/') ? '$dir$name' : '$dir/$name';
+      final isDir = entry.attr.type == SftpFileType.directory;
+      if (isDir) {
+        await _removeDir(sftp, child);
+      } else {
+        await sftp.remove(child);
+      }
+    }
+    await sftp.rmdir(dir);
+  }
+
   // ── Path helpers (POSIX) ──
   @override
   String childPath(String path, String name, bool isDir) {

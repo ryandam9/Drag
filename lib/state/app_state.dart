@@ -241,6 +241,64 @@ class AppState extends ChangeNotifier {
     return s;
   }
 
+  // ── Pane focus + file operations ──────────────────────────────────────
+
+  /// Which pane toolbar/keyboard actions target.
+  bool focusedLeft = true;
+  PaneController get focusedPane => focusedLeft ? leftPane : rightPane;
+
+  void focusPane(bool left) {
+    if (focusedLeft != left) {
+      focusedLeft = left;
+      notifyListeners();
+    }
+  }
+
+  Future<void> createFolder(PaneController pane, String name) async {
+    if (name.trim().isEmpty) return;
+    if (!pane.backend.supportsMutation) {
+      pushToast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
+      return;
+    }
+    try {
+      await pane.backend.makeDir(pane.backend.childPath(pane.path, name.trim(), true));
+      await pane.refresh();
+      pushToast('Folder created', name.trim(), ToastKind.success);
+    } catch (e) {
+      pushToast('Couldn\'t create folder', _short(e), ToastKind.error);
+    }
+  }
+
+  Future<void> renameItem(PaneController pane, FileItem item, String newName) async {
+    if (item.isParent || newName.trim().isEmpty || newName.trim() == item.name) return;
+    try {
+      final from = pane.backend.childPath(pane.path, item.name, item.isDir);
+      final to = pane.backend.childPath(pane.path, newName.trim(), item.isDir);
+      await pane.backend.rename(from, to);
+      await pane.refresh();
+      pushToast('Renamed', '${item.name} → ${newName.trim()}', ToastKind.success);
+    } catch (e) {
+      pushToast('Couldn\'t rename', _short(e), ToastKind.error);
+    }
+  }
+
+  Future<void> deleteItem(PaneController pane, FileItem item) async {
+    if (item.isParent) return;
+    try {
+      await pane.backend.delete(pane.backend.childPath(pane.path, item.name, item.isDir),
+          isDir: item.isDir);
+      await pane.refresh();
+      pushToast('Deleted', item.name, ToastKind.info);
+    } catch (e) {
+      pushToast('Couldn\'t delete', _short(e), ToastKind.error);
+    }
+  }
+
+  String _short(Object e) {
+    final m = e.toString().replaceFirst('Exception: ', '');
+    return m.length > 80 ? '${m.substring(0, 80)}…' : m;
+  }
+
   void switchSession(int id) {
     if (sessions.any((s) => s.id == id) && id != activeSessionId) {
       activeSessionId = id;

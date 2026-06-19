@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/connection.dart';
 import '../models/file_item.dart';
@@ -21,26 +22,184 @@ class _BrowserScreenState extends State<BrowserScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    return Column(
-      children: [
-        _sessionTabs(app),
-        _toolbar(app),
-        Expanded(
-          child: LayoutBuilder(builder: (context, c) {
-            final leftW = (c.maxWidth - 5) * _split;
-            return Row(
-              children: [
-                SizedBox(width: leftW, child: _pane(app, app.leftPane, left: true)),
-                _divider(c.maxWidth),
-                Expanded(child: _pane(app, app.rightPane, left: false)),
-              ],
-            );
-          }),
-        ),
-        _queueStrip(app),
-        _logPanel(),
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (node, event) => _onKey(app, event),
+      child: Column(
+        children: [
+          _sessionTabs(app),
+          _toolbar(app),
+          Expanded(
+            child: LayoutBuilder(builder: (context, c) {
+              final leftW = (c.maxWidth - 5) * _split;
+              return Row(
+                children: [
+                  SizedBox(width: leftW, child: _pane(app, app.leftPane, left: true)),
+                  _divider(c.maxWidth),
+                  Expanded(child: _pane(app, app.rightPane, left: false)),
+                ],
+              );
+            }),
+          ),
+          _queueStrip(app),
+          _logPanel(),
+        ],
+      ),
+    );
+  }
+
+  KeyEventResult _onKey(AppState app, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final pane = app.focusedPane;
+    switch (event.logicalKey) {
+      case LogicalKeyboardKey.f2:
+        _renameSelected(app, pane);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.delete:
+        _deleteSelected(app, pane);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.backspace:
+        pane.goUp();
+        return KeyEventResult.handled;
+      default:
+        return KeyEventResult.ignored;
+    }
+  }
+
+  // ── File-operation handlers (act on a pane + its selection) ──
+  FileItem? _selected(PaneController pane) {
+    final i = pane.selectedIndex;
+    if (i == null || i < 0 || i >= pane.items.length) return null;
+    final item = pane.items[i];
+    return item.isParent ? null : item;
+  }
+
+  Future<void> _newFolder(AppState app, PaneController pane) async {
+    if (!pane.backend.supportsMutation) {
+      app.pushToast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
+      return;
+    }
+    final name = await _promptText(title: 'New folder', hint: 'Folder name', confirm: 'Create');
+    if (name != null) await app.createFolder(pane, name);
+  }
+
+  Future<void> _renameSelected(AppState app, PaneController pane) async {
+    final item = _selected(pane);
+    if (item == null) {
+      app.pushToast('Nothing selected', 'Select an item to rename', ToastKind.info);
+      return;
+    }
+    final name = await _promptText(title: 'Rename', initial: item.name, confirm: 'Rename');
+    if (name != null) await app.renameItem(pane, item, name);
+  }
+
+  Future<void> _deleteSelected(AppState app, PaneController pane) async {
+    final item = _selected(pane);
+    if (item == null) {
+      app.pushToast('Nothing selected', 'Select an item to delete', ToastKind.info);
+      return;
+    }
+    await _deleteItem(app, pane, item);
+  }
+
+  Future<void> _deleteItem(AppState app, PaneController pane, FileItem item) async {
+    final ok = await _confirm(
+      title: 'Delete "${item.name}"?',
+      message: item.isDir
+          ? 'This permanently deletes the folder and everything in it.'
+          : 'This permanently deletes the file.',
+    );
+    if (ok) await app.deleteItem(pane, item);
+  }
+
+  Future<void> _showRowMenu(
+      AppState app, PaneController pane, bool left, FileItem item, Offset pos) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final choice = await showMenu<String>(
+      context: context,
+      color: FsColors.bgPanel,
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, overlay.size.width - pos.dx, 0),
+      items: [
+        PopupMenuItem(value: 'transfer', child: _menuText(left ? '⬆ Upload to other pane' : '⬇ Download to other pane')),
+        PopupMenuItem(value: 'rename', child: _menuText('✎ Rename')),
+        PopupMenuItem(value: 'delete', child: _menuText('⊗ Delete', color: FsColors.red)),
+        const PopupMenuDivider(),
+        PopupMenuItem(value: 'newFolder', child: _menuText('⊕ New folder')),
+        PopupMenuItem(value: 'copyPath', child: _menuText('📋 Copy path')),
       ],
     );
+    switch (choice) {
+      case 'transfer':
+        app.dropTransfer(DragPayload(item, left), !left);
+      case 'rename':
+        final name = await _promptText(title: 'Rename', initial: item.name, confirm: 'Rename');
+        if (name != null) await app.renameItem(pane, item, name);
+      case 'delete':
+        await _deleteItem(app, pane, item);
+      case 'newFolder':
+        await _newFolder(app, pane);
+      case 'copyPath':
+        await Clipboard.setData(
+            ClipboardData(text: pane.backend.childPath(pane.path, item.name, item.isDir)));
+        app.pushToast('Copied', 'Path copied to clipboard', ToastKind.info);
+    }
+  }
+
+  Widget _menuText(String t, {Color color = FsColors.text1}) =>
+      Text(t, style: FsType.sans(size: 12, color: color));
+
+  // ── Dialogs ──
+  Future<String?> _promptText({
+    required String title,
+    String initial = '',
+    String hint = '',
+    String confirm = 'OK',
+  }) {
+    final ctl = TextEditingController(text: initial);
+    ctl.selection = TextSelection(baseOffset: 0, extentOffset: initial.length);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: FsColors.bgPanel,
+        title: Text(title, style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+        content: SizedBox(
+          width: 360,
+          child: TextField(
+            controller: ctl,
+            autofocus: true,
+            onSubmitted: (v) => Navigator.pop(ctx, v),
+            style: FsType.sans(size: 13, color: FsColors.text1),
+            cursorColor: FsColors.accent,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: FsType.sans(size: 13, color: FsColors.text3),
+              enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: FsColors.border)),
+              focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: FsColors.accent)),
+            ),
+          ),
+        ),
+        actions: [
+          FsButton('Cancel', onTap: () => Navigator.pop(ctx)),
+          FsButton(confirm, kind: FsButtonKind.primary, onTap: () => Navigator.pop(ctx, ctl.text)),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _confirm({required String title, required String message}) async {
+    final r = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: FsColors.bgPanel,
+        title: Text(title, style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+        content: Text(message, style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
+        actions: [
+          FsButton('Cancel', onTap: () => Navigator.pop(ctx, false)),
+          FsButton('Delete', kind: FsButtonKind.danger, onTap: () => Navigator.pop(ctx, true)),
+        ],
+      ),
+    );
+    return r ?? false;
   }
 
   // ── Session tabs — one open server per tab, switchable & closable ──
@@ -140,17 +299,17 @@ class _BrowserScreenState extends State<BrowserScreen> {
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
-        ToolButton('← Back', onTap: app.leftPane.goUp),
-        const ToolButton('→ Fwd'),
-        ToolButton('↑ Up', onTap: app.rightPane.goUp),
+        ToolButton('← Back', onTap: app.focusedPane.canGoBack ? app.focusedPane.goBack : null),
+        ToolButton('→ Fwd', onTap: app.focusedPane.canGoForward ? app.focusedPane.goForward : null),
+        ToolButton('↑ Up', onTap: app.focusedPane.goUp),
         const ToolSep(),
         const ToolButton('⇄ Sync', active: true),
         ToolButton('↯ Queue', onTap: () => app.go(AppScreen.queue)),
         const ToolButton('📋 Log'),
         const ToolSep(),
-        const ToolButton('⊕ New Folder'),
-        const ToolButton('✎ Rename'),
-        const ToolButton('⊗ Delete', color: FsColors.red),
+        ToolButton('⊕ New Folder', onTap: () => _newFolder(app, app.focusedPane)),
+        ToolButton('✎ Rename', onTap: () => _renameSelected(app, app.focusedPane)),
+        ToolButton('⊗ Delete', color: FsColors.red, onTap: () => _deleteSelected(app, app.focusedPane)),
         const Spacer(),
         Text('Filter:', style: FsType.sans(size: 10, color: FsColors.text3)),
         const SizedBox(width: 6),
@@ -184,17 +343,26 @@ class _BrowserScreenState extends State<BrowserScreen> {
         app.dropTransfer(d.data, left);
       },
       builder: (context, candidate, rejected) {
-        return Container(
-          decoration: BoxDecoration(
-            color: hover ? FsColors.accent.withValues(alpha: 0.06) : null,
-            border: Border.all(color: hover ? FsColors.accent : Colors.transparent, width: 2),
+        final focused = app.focusedLeft == left;
+        return Listener(
+          onPointerDown: (_) => app.focusPane(left),
+          child: Container(
+            decoration: BoxDecoration(
+              color: hover ? FsColors.accent.withValues(alpha: 0.06) : null,
+              border: Border.all(
+                color: hover
+                    ? FsColors.accent
+                    : (focused ? FsColors.borderHi : Colors.transparent),
+                width: 2,
+              ),
+            ),
+            child: Column(children: [
+              _paneHeader(app, pane, left: left),
+              _breadcrumb(pane.breadcrumb),
+              Expanded(child: _paneBody(app, pane, left: left)),
+              _paneFooter(app, pane),
+            ]),
           ),
-          child: Column(children: [
-            _paneHeader(app, pane, left: left),
-            _breadcrumb(pane.breadcrumb),
-            Expanded(child: _paneBody(app, pane, left: left)),
-            _paneFooter(app, pane),
-          ]),
         );
       },
     );
@@ -427,13 +595,16 @@ class _BrowserScreenState extends State<BrowserScreen> {
             itemBuilder: (context, i) {
               final f = pane.items[i];
               final selected = pane.selectedIndex == i;
-              final row = _fileRow(pane, f, i, selected: selected);
+              final row = _fileRow(app, pane, f, i, left: left, selected: selected);
               if (!f.isDir) {
                 return Draggable<DragPayload>(
                   data: DragPayload(f, left),
                   dragAnchorStrategy: pointerDragAnchorStrategy,
                   feedback: _dragGhost(f),
-                  onDragStarted: () => pane.select(i),
+                  onDragStarted: () {
+                    app.focusPane(left);
+                    pane.select(i);
+                  },
                   childWhenDragging: Opacity(opacity: 0.4, child: row),
                   child: row,
                 );
@@ -471,7 +642,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  Widget _fileRow(PaneController pane, FileItem f, int index, {required bool selected}) {
+  Widget _fileRow(AppState app, PaneController pane, FileItem f, int index,
+      {required bool left, required bool selected}) {
     return Hoverable(builder: (hover) {
       Color bg = Colors.transparent;
       if (selected) {
@@ -481,8 +653,18 @@ class _BrowserScreenState extends State<BrowserScreen> {
       }
       final nameColor = f.isDir ? FsColors.accentHi : FsColors.text1;
       return GestureDetector(
-        onTap: () => pane.select(index),
+        onTap: () {
+          app.focusPane(left);
+          pane.select(index);
+        },
         onDoubleTap: (f.isDir || f.isParent) ? () => pane.open(f) : null,
+        onSecondaryTapDown: f.isParent
+            ? null
+            : (d) {
+                app.focusPane(left);
+                pane.select(index);
+                _showRowMenu(app, pane, left, f, d.globalPosition);
+              },
         child: MouseRegion(
           cursor: f.isDir ? SystemMouseCursors.click : SystemMouseCursors.grab,
           child: Container(
