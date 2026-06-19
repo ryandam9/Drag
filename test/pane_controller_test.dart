@@ -87,6 +87,30 @@ void main() {
     expect(pane.canGoForward, isFalse);
   });
 
+  test('multi-select: single / toggle / range / clear-on-refresh', () async {
+    final pane = localPane();
+    await pane.refresh();
+    final iA = pane.items.indexWhere((e) => e.name == 'a.txt');
+    final iN = pane.items.indexWhere((e) => e.name == 'nested');
+
+    pane.select(iA);
+    expect(pane.selection, {iA});
+
+    pane.toggleSelect(iN);
+    expect(pane.selection.containsAll({iA, iN}), isTrue);
+    expect(pane.selectedItems().map((e) => e.name), containsAll(['a.txt', 'nested']));
+
+    pane.toggleSelect(iA);
+    expect(pane.isSelected(iA), isFalse);
+
+    pane.select(iN);
+    pane.selectRange(iA);
+    expect(pane.selection.length, (iA - iN).abs() + 1);
+
+    await pane.refresh();
+    expect(pane.selection, isEmpty);
+  });
+
   test('select updates index and notifies', () {
     var notified = 0;
     final pane = localPane(onChanged: () => notified++);

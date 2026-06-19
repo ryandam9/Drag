@@ -197,6 +197,16 @@ void main() {
       expect(await File(p.join(dir.path, 'a.txt')).exists(), isFalse);
     });
 
+    test('deleteItems removes multiple files', () async {
+      await File(p.join(dir.path, 'c.txt')).writeAsString('c');
+      await app.leftPane.refresh();
+      final items = app.leftPane.items.where((e) => e.name == 'a.txt' || e.name == 'c.txt').toList();
+      expect(items.length, 2);
+      await app.deleteItems(app.leftPane, items);
+      expect(await File(p.join(dir.path, 'a.txt')).exists(), isFalse);
+      expect(await File(p.join(dir.path, 'c.txt')).exists(), isFalse);
+    });
+
     test('focusedPane follows focusPane', () {
       app.focusPane(false);
       expect(identical(app.focusedPane, app.rightPane), isTrue);
@@ -337,6 +347,43 @@ void main() {
       }
       expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
       expect(await File(p.join(dst.path, 'payload.bin')).readAsBytes(), List.filled(4096, 9));
+    });
+
+    test('dropping a multi-selection transfers every selected file', () async {
+      final src = await Directory.systemTemp.createTemp('drop_msrc');
+      final dst = await Directory.systemTemp.createTemp('drop_mdst');
+      addTearDown(() => src.delete(recursive: true));
+      addTearDown(() => dst.delete(recursive: true));
+      await File(p.join(src.path, 'f1.bin')).writeAsBytes(List.filled(1024, 1));
+      await File(p.join(src.path, 'f2.bin')).writeAsBytes(List.filled(2048, 2));
+
+      app.leftPane
+        ..backend = LocalBackend()
+        ..path = src.path;
+      await app.leftPane.refresh();
+      app.rightPane
+        ..backend = LocalBackend()
+        ..connection = null
+        ..path = dst.path;
+      await app.rightPane.refresh();
+
+      for (var i = 0; i < app.leftPane.items.length; i++) {
+        final f = app.leftPane.items[i];
+        if (f.name == 'f1.bin' || f.name == 'f2.bin') app.leftPane.toggleSelect(i);
+      }
+      final dragged = app.leftPane.items.firstWhere((e) => e.name == 'f1.bin');
+      app.dropTransfer(DragPayload(dragged, true), false);
+
+      expect(app.transfers.where((t) => t.name == 'f1.bin' || t.name == 'f2.bin').length, 2);
+
+      for (var i = 0; i < 200; i++) {
+        final pending = app.transfers
+            .where((t) => t.live && t.status != TransferStatus.done && t.status != TransferStatus.error);
+        if (pending.isEmpty) break;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await File(p.join(dst.path, 'f1.bin')).exists(), isTrue);
+      expect(await File(p.join(dst.path, 'f2.bin')).exists(), isTrue);
     });
   });
 
