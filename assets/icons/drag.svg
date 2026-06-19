@@ -4,21 +4,14 @@
       <stop offset="0" stop-color="#3B82F6"/>
       <stop offset="1" stop-color="#60A5FA"/>
     </linearGradient>
-    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
-      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
   </defs>
-  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#bg)"/>
-  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#sheen)"/>
-
-  <!-- transfer arrows (drag between panes) -->
-  <g fill="none" stroke="#ffffff" stroke-width="74" stroke-linecap="round" stroke-linejoin="round">
-    <!-- top arrow, pointing right -->
-    <line x1="312" y1="404" x2="624" y2="404"/>
-    <polyline points="566,330 700,404 566,478"/>
-    <!-- bottom arrow, pointing left -->
-    <line x1="712" y1="620" x2="400" y2="620"/>
-    <polyline points="458,546 324,620 458,694"/>
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
+  <g stroke="#ffffff" stroke-width="60" fill="none">
+    <path d="M286 470 A226 226 0 0 1 738 470"/>
+    <path d="M738 554 A226 226 0 0 1 286 554"/>
+  </g>
+  <g fill="#ffffff">
+    <polygon points="757,527 802,452 679,481"/>
+    <polygon points="267,497 222,572 345,543"/>
   </g>
 </svg>
