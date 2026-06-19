@@ -559,7 +559,8 @@ class AppState extends ChangeNotifier {
       srcPath: srcPath,
       dst: dst.backend,
       dstPath: dstPath,
-      onChange: _safeNotify,
+      onStatus: _safeNotify,
+      onProgress: t.touchLive, // progress repaints only the progress widgets
     )
         .then((_) {
       if (_disposed) return;
@@ -673,11 +674,12 @@ class AppState extends ChangeNotifier {
   /// Advances *simulated* transfers only (real ones are driven by
   /// [TransferService]). Keeps the demo queue feeling alive.
   void _tick() {
-    var changed = false;
+    // Progress-only steps ping the per-transfer ticker (cheap, local repaint);
+    // status transitions set [statusChanged] and hit the global notifier.
+    var statusChanged = false;
     for (final t in transfers) {
       if (t.live) continue;
       if (t.status == TransferStatus.active) {
-        changed = true;
         t.startedAt ??= DateTime.now();
         final step = t.sizeBytes > 10 * mB ? 0.015 : 0.18;
         t.progress = (t.progress + step).clamp(0, 1);
@@ -688,9 +690,11 @@ class AppState extends ChangeNotifier {
           t.finishedAt = DateTime.now();
           _completionToast(t);
           _record(t);
+          statusChanged = true;
         } else {
           final remaining = ((1 - t.progress) * (t.sizeBytes > 10 * mB ? 90 : 4)).round();
           t.eta = '0:${remaining.toString().padLeft(2, '0')}';
+          t.touchLive();
         }
       }
     }
@@ -702,13 +706,13 @@ class AppState extends ChangeNotifier {
           t.status = TransferStatus.active;
           t.startedAt = DateTime.now();
           t.speed = t.sizeBytes > 10 * mB ? '1.4 MB/s' : '210 KB/s';
-          changed = true;
+          statusChanged = true;
           break;
         }
       }
     }
 
-    if (changed) notifyListeners();
+    if (statusChanged) notifyListeners();
   }
 
   /// Advances the simulated transfer ticker once (for deterministic tests).
@@ -719,6 +723,9 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _ticker?.cancel();
+    for (final t in transfers) {
+      t.dispose();
+    }
     super.dispose();
   }
 }

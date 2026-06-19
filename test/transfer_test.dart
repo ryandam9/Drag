@@ -52,13 +52,15 @@ void main() {
     );
 
     var progressSeen = false;
+    var statusCalls = 0;
     await TransferService().run(
       t: t,
       src: backend,
       srcPath: srcFile.path,
       dst: backend,
       dstPath: dstPath,
-      onChange: () {
+      onStatus: () => statusCalls++,
+      onProgress: () {
         if (t.progress > 0 && t.progress < 1) progressSeen = true;
       },
     );
@@ -66,6 +68,8 @@ void main() {
     expect(t.status, TransferStatus.done);
     expect(t.progress, 1.0);
     expect(await File(dstPath).readAsBytes(), payload);
+    // onStatus fires at least at start (active) and end (done).
+    expect(statusCalls, greaterThanOrEqualTo(2));
     // Either we observed intermediate progress, or the file was small enough to
     // finish in one chunk — both are valid; the key invariant is completion.
     expect(progressSeen || t.progress == 1.0, isTrue);

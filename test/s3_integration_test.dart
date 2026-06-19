@@ -79,7 +79,7 @@ void main() {
       srcPath: srcFile.path,
       dst: s3,
       dstPath: 'folder/upload.bin',
-      onChange: () {},
+      onStatus: () {},
     );
     expect(up.status, TransferStatus.done, reason: up.errorMessage ?? '');
 
@@ -104,7 +104,7 @@ void main() {
       srcPath: 'folder/upload.bin',
       dst: local,
       dstPath: outPath,
-      onChange: () {},
+      onStatus: () {},
     );
     expect(down.status, TransferStatus.done, reason: down.errorMessage ?? '');
 
@@ -132,14 +132,14 @@ void main() {
     final t1 = Transfer(
         name: 'seed.bin', route: 'local→A', direction: TransferDirection.upload,
         sizeBytes: payload.length, session: 'A', live: true);
-    await svc.run(t: t1, src: local, srcPath: seed.path, dst: a, dstPath: 'report.bin', onChange: () {});
+    await svc.run(t: t1, src: local, srcPath: seed.path, dst: a, dstPath: 'report.bin', onStatus: () {});
     expect(t1.status, TransferStatus.done, reason: t1.errorMessage ?? '');
 
     // Copy A → B (cross-account, streamed).
     final t2 = Transfer(
         name: 'report.bin', route: 'A→B', direction: TransferDirection.upload,
         sizeBytes: payload.length, session: 'B', live: true);
-    await svc.run(t: t2, src: a, srcPath: 'report.bin', dst: b, dstPath: 'copied/report.bin', onChange: () {});
+    await svc.run(t: t2, src: a, srcPath: 'report.bin', dst: b, dstPath: 'copied/report.bin', onStatus: () {});
     expect(t2.status, TransferStatus.done, reason: t2.errorMessage ?? '');
 
     // Confirm it now lives in bucket B with identical bytes.
@@ -148,7 +148,7 @@ void main() {
     final t3 = Transfer(
         name: 'report.bin', route: 'B→local', direction: TransferDirection.download,
         sizeBytes: payload.length, session: 'B', live: true);
-    await svc.run(t: t3, src: b, srcPath: 'copied/report.bin', dst: local, dstPath: out, onChange: () {});
+    await svc.run(t: t3, src: b, srcPath: 'copied/report.bin', dst: local, dstPath: out, onStatus: () {});
     expect(await File(out).readAsBytes(), payload);
   }, skip: (_endpoint.isEmpty || _bucket2.isEmpty) ? 'set S3_ENDPOINT + S3_BUCKET2 to run' : false);
 

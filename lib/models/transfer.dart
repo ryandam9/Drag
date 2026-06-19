@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 enum TransferStatus { active, queued, paused, error, done }
 
 enum TransferDirection { upload, download }
@@ -25,6 +27,17 @@ class Transfer {
   /// Wall-clock timing, set by [TransferService].
   DateTime? startedAt;
   DateTime? finishedAt;
+
+  /// High-frequency "live" updates (progress / speed / eta) ping this notifier
+  /// instead of the global [AppState] one, so only the small progress widgets
+  /// rebuild — not the file tables. Status transitions (queued → active → done)
+  /// still go through the global notifier. See [touchLive].
+  final ValueNotifier<int> liveTick = ValueNotifier<int>(0);
+
+  /// Signal that progress/speed/eta changed (rebuilds progress widgets only).
+  void touchLive() => liveTick.value++;
+
+  void dispose() => liveTick.dispose();
 
   Transfer({
     required this.name,

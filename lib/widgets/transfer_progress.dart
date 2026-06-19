@@ -44,6 +44,14 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild only on this transfer's live ticks (progress/speed/eta).
+    return ValueListenableBuilder<int>(
+      valueListenable: transfer.liveTick,
+      builder: (context, _, _) => _build(),
+    );
+  }
+
+  Widget _build() {
     final t = transfer;
     final big = t.sizeBytes >= _bigFileBytes;
     final indeterminate = t.progress <= 0;

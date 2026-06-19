@@ -753,22 +753,28 @@ class _BrowserScreenState extends State<BrowserScreen> {
         Text(current != null ? 'Transferring — ${current.name}' : 'Idle',
             style: FsType.sans(size: 11, color: FsColors.text2)),
         const SizedBox(width: 10),
-        if (current != null) ...[
-          SizedBox(
-            width: 200,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: current.progress,
-                minHeight: 4,
-                backgroundColor: FsColors.bgPanel,
-                valueColor: AlwaysStoppedAnimation(FsColors.accent),
+        if (current != null)
+          // Live progress repaints here only — not the whole browser pane.
+          ValueListenableBuilder<int>(
+            valueListenable: current.liveTick,
+            builder: (context, _, _) => Row(children: [
+              SizedBox(
+                width: 200,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: current.progress,
+                    minHeight: 4,
+                    backgroundColor: FsColors.bgPanel,
+                    valueColor: AlwaysStoppedAnimation(FsColors.accent),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Text('${(current.progress * 100).round()}% · ${current.speed}',
+                  style: FsType.mono(size: 10, color: FsColors.accentHi)),
+            ]),
           ),
-          const SizedBox(width: 10),
-          Text('${(current.progress * 100).round()}% · ${current.speed}', style: FsType.mono(size: 10, color: FsColors.accentHi)),
-        ],
         const Spacer(),
         Text('${app.queuedCount} remaining', style: FsType.sans(size: 11, color: FsColors.text2)),
         const SizedBox(width: 10),
