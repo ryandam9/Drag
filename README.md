@@ -39,9 +39,13 @@ then pick it in a pane. The **Local** endpoint browses your real filesystem.
 | **Browser** | Dual-pane file browser; **each pane has an endpoint picker** (Local / any saved S3 or SFTP connection). Drag a file from either pane onto the other to start a transfer. Async listing with loading/error/not-connected states, breadcrumbs, toolbar, live progress strip and a log console. |
 | **Connection Manager** | Saved/recent sessions sidebar with online indicators. Form adapts to the protocol: SSH fields for SFTP, or **S3 credentials** (access key, secret, session token, region, bucket, endpoint, SSL) for S3. |
 | **Transfer Queue** | Active / queued / paused / done / error transfers with per-file progress, speed, ETA, a status filter, an aggregate stats bar and an adjustable parallel-thread count. |
+| **History Dashboard** | Persistent transfer history backed by **SQLite** — stat cards (total / succeeded / failed / data transferred / avg speed) and a table of past transfers (file, route, size, time taken, speed, when, status). Refresh / clear. |
 | **Preferences** | Categorised settings with theme, accent-color swatches, fonts and toggles. |
 
-In-app toast notifications surface transfer events (success / error / info).
+While a transfer runs, a floating **progress card** (animated ring + bar, live
+speed/ETA, "big file" badge) appears. On completion an in-app **notification**
+reports the destination path, size and time taken. Every finished transfer is
+written to the SQLite history database.
 
 ## Highlights
 
@@ -70,10 +74,14 @@ lib/
     aws/
       sigv4.dart               Hand-written AWS Signature V4 signer
       s3_client.dart           Minimal S3 REST client (List/Get/Put) on HttpClient
-  models/                      FileItem, Connection (incl. S3 fields), Transfer
-  data/mock_data.dart          Seed connections (incl. two S3 accounts)
-  widgets/                     Reusable chrome (title bar, buttons, badges, nav, toasts)
-  screens/                     browser / connection_manager / transfer_queue / settings
+  models/                      FileItem, Connection (incl. S3 fields), Transfer (timing)
+  data/
+    mock_data.dart             Seed connections (incl. two S3 accounts)
+    history_db.dart            SQLite history repository (sqflite_common_ffi)
+  widgets/                     Title bar, buttons, badges, nav, toasts,
+                               transfer_progress (active-transfer card)
+  screens/                     browser / connection_manager / transfer_queue /
+                               dashboard / settings
 ```
 
 ## Running

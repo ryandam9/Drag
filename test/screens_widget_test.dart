@@ -1,5 +1,7 @@
+import 'package:filesync/data/history_db.dart';
 import 'package:filesync/models/connection.dart';
 import 'package:filesync/screens/connection_manager_screen.dart';
+import 'package:filesync/screens/dashboard_screen.dart';
 import 'package:filesync/screens/settings_screen.dart';
 import 'package:filesync/screens/transfer_queue_screen.dart';
 import 'package:filesync/state/app_state.dart';
@@ -99,6 +101,40 @@ void main() {
       await tester.tap(unchecked);
       await tester.pump();
       expect(app.showLogOnStartup, isTrue);
+    });
+  });
+
+  group('Dashboard', () {
+    // Inject history data directly (the real SQLite path is covered by the
+    // plain-async tests in history_db_test.dart / app_state_test.dart; doing
+    // real DB I/O inside testWidgets' fake-async zone would deadlock).
+    testWidgets('renders stat cards and history rows', (tester) async {
+      app.history = [
+        TransferRecord(
+          name: 'archive.zip',
+          sourcePath: 'Local:/a/archive.zip',
+          destPath: 's3://bucket/archive.zip',
+          session: 'bucket',
+          sizeBytes: 5000,
+          direction: 0,
+          durationMs: 1000,
+          success: true,
+          finishedAt: DateTime.now(),
+        ),
+      ];
+      app.historyStats = const HistoryStats(
+          total: 1, succeeded: 1, failed: 0, totalBytes: 5000, avgBytesPerSecond: 5000);
+
+      await pumpScreen(tester, const DashboardScreen());
+
+      expect(find.text('Total transfers'), findsOneWidget);
+      expect(find.text('Data transferred'), findsOneWidget);
+      expect(find.text('archive.zip'), findsOneWidget);
+    });
+
+    testWidgets('shows empty state with no history', (tester) async {
+      await pumpScreen(tester, const DashboardScreen());
+      expect(find.text('No transfers yet'), findsOneWidget);
     });
   });
 

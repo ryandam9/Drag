@@ -22,6 +22,7 @@ class TransferService {
     required void Function() onChange,
   }) async {
     t.status = TransferStatus.active;
+    t.startedAt = DateTime.now();
     onChange();
 
     final stopwatch = Stopwatch()..start();
@@ -68,6 +69,7 @@ class TransferService {
       t.status = TransferStatus.error;
       t.errorMessage = _friendly(e);
     } finally {
+      t.finishedAt = DateTime.now();
       onChange();
     }
   }

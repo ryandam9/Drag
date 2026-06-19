@@ -4,9 +4,11 @@ import 'package:filesync/fs/storage_backend.dart';
 import 'package:filesync/models/connection.dart';
 import 'package:filesync/models/file_item.dart';
 import 'package:filesync/models/transfer.dart';
+import 'package:filesync/data/history_db.dart';
 import 'package:filesync/state/app_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
   late AppState app;
@@ -224,6 +226,30 @@ void main() {
       }
       expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
       expect(await File(p.join(dst.path, 'payload.bin')).readAsBytes(), List.filled(4096, 9));
+    });
+  });
+
+  group('history recording', () {
+    test('a completed simulated transfer is written to history', () async {
+      final repo = await HistoryRepository.open(inMemoryDatabasePath);
+      addTearDown(repo.close);
+      final withDb = AppState(tickEnabled: false, autoRefreshPanes: false, history: repo);
+      addTearDown(withDb.dispose);
+
+      expect(withDb.hasHistoryDb, isTrue);
+
+      final t = withDb.transfers.firstWhere(
+          (t) => t.status == TransferStatus.active && t.sizeBytes < 10 * 1024 * 1024);
+      for (var i = 0; i < 10 && t.status == TransferStatus.active; i++) {
+        withDb.debugTick();
+      }
+      expect(t.status, TransferStatus.done);
+
+      // _record runs asynchronously; let it settle.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(withDb.history, isNotEmpty);
+      expect(withDb.historyStats.total, greaterThanOrEqualTo(1));
+      expect(withDb.history.any((r) => r.name == t.name), isTrue);
     });
   });
 }

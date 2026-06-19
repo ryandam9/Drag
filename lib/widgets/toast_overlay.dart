@@ -58,7 +58,14 @@ class _ToastCard extends StatelessWidget {
                 children: [
                   Text(t.title, style: FsType.sans(size: 12, weight: FontWeight.w600, color: t.kind.fg)),
                   const SizedBox(height: 2),
-                  Text(t.subtitle, style: FsType.sans(size: 11, color: t.kind.fg.withValues(alpha: 0.85))),
+                  Text(t.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: FsType.sans(size: 11, color: t.kind.fg.withValues(alpha: 0.85))),
+                  if (t.detail != null) ...[
+                    const SizedBox(height: 3),
+                    Text(t.detail!, style: FsType.mono(size: 10, color: t.kind.fg.withValues(alpha: 0.7))),
+                  ],
                 ],
               ),
             ),

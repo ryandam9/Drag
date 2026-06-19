@@ -82,6 +82,7 @@ class NavRail extends StatelessWidget {
           item(Icons.lan_outlined, 'Connections', AppScreen.connections),
           item(Icons.swap_vert_rounded, 'Transfer Queue', AppScreen.queue,
               badge: app.activeCount + app.queuedCount),
+          item(Icons.insights_outlined, 'History Dashboard', AppScreen.dashboard),
           const Spacer(),
           item(Icons.settings_outlined, 'Preferences', AppScreen.settings),
           const SizedBox(height: 12),

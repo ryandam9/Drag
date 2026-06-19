@@ -79,7 +79,24 @@ void main() {
     });
   });
 
+  group('formatDuration', () {
+    test('ms / seconds / minutes', () {
+      expect(formatDuration(null), '—');
+      expect(formatDuration(const Duration(milliseconds: 800)), '800ms');
+      expect(formatDuration(const Duration(milliseconds: 12300)), '12.3s');
+      expect(formatDuration(const Duration(minutes: 2, seconds: 5)), '2m 05s');
+    });
+  });
+
   group('Transfer', () {
+    test('elapsed + elapsedLabel', () {
+      final t = Transfer(name: 'f', route: 'r', direction: TransferDirection.upload, sizeBytes: 1, session: 's')
+        ..startedAt = DateTime(2025, 1, 1, 0, 0, 0)
+        ..finishedAt = DateTime(2025, 1, 1, 0, 0, 3);
+      expect(t.elapsed, const Duration(seconds: 3));
+      expect(t.elapsedLabel, '3.0s');
+    });
+
     test('defaults', () {
       final t = Transfer(
         name: 'f',

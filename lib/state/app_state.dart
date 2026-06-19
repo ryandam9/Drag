@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../data/history_db.dart';
 import '../data/mock_data.dart';
 import '../fs/simulated_backend.dart';
 import '../fs/storage_backend.dart';
@@ -13,14 +14,15 @@ import 'pane_controller.dart';
 
 export 'pane_controller.dart' show DragPayload;
 
-enum AppScreen { browser, connections, queue, settings }
+enum AppScreen { browser, connections, queue, dashboard, settings }
 
 class ToastMessage {
   final String title;
   final String subtitle;
+  final String? detail;
   final ToastKind kind;
   final int id;
-  ToastMessage(this.id, this.title, this.subtitle, this.kind);
+  ToastMessage(this.id, this.title, this.subtitle, this.kind, {this.detail});
 }
 
 enum ToastKind { success, error, info }
@@ -51,7 +53,8 @@ class AppState extends ChangeNotifier {
   /// [tickEnabled] starts the demo ticker (disable for deterministic tests);
   /// [autoRefreshPanes] kicks off the initial pane listings (disable in tests
   /// that don't want real filesystem I/O).
-  AppState({bool tickEnabled = true, bool autoRefreshPanes = true}) {
+  AppState({bool tickEnabled = true, bool autoRefreshPanes = true, HistoryRepository? history}) {
+    _history = history;
     leftPane = PaneController(backend: _localBackend, onChanged: notifyListeners);
     // Right pane defaults to the first S3 account to surface the new feature.
     final firstS3 = connections.firstWhere((c) => c.isS3, orElse: () => connections.first);
@@ -67,6 +70,7 @@ class AppState extends ChangeNotifier {
       leftPane.refresh();
       rightPane.refresh();
     }
+    if (_history != null) refreshHistory();
   }
 
   Timer? _ticker;
@@ -74,12 +78,18 @@ class AppState extends ChangeNotifier {
   final TransferService _transfers = TransferService();
   final LocalBackend _localBackend = LocalBackend();
   final Map<Connection, StorageBackend> _backendCache = {};
+  late final HistoryRepository? _history;
 
   AppScreen screen = AppScreen.browser;
 
   final List<Connection> connections = buildConnections();
   final List<Transfer> transfers = buildTransfers();
   final List<ToastMessage> toasts = [];
+
+  // ── Transfer history (SQLite-backed) ──
+  List<TransferRecord> history = const [];
+  HistoryStats historyStats = const HistoryStats();
+  bool get hasHistoryDb => _history != null;
 
   late final PaneController leftPane;
   late final PaneController rightPane;
@@ -184,6 +194,8 @@ class AppState extends ChangeNotifier {
       session: dst.endpointLabel,
       status: TransferStatus.queued,
       live: !simulated,
+      sourcePath: '${src.endpointLabel}:$srcPath',
+      destPath: dst.displayPath,
     );
     transfers.insert(0, t);
     notifyListeners();
@@ -206,9 +218,9 @@ class AppState extends ChangeNotifier {
     )
         .then((_) {
       if (_disposed) return;
+      _record(t);
       if (t.status == TransferStatus.done) {
-        pushToast('Transfer complete', '${item.name} → ${dst.endpointLabel} (${formatBytes(t.sizeBytes)})',
-            ToastKind.success);
+        _completionToast(t);
         if (identical(dst, rightPane) || identical(dst, leftPane)) dst.refresh();
       } else if (t.status == TransferStatus.error) {
         pushToast('Transfer failed', '${item.name}: ${t.errorMessage ?? 'error'}', ToastKind.error);
@@ -261,15 +273,50 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void pushToast(String title, String sub, ToastKind kind) {
+  void pushToast(String title, String sub, ToastKind kind, {String? detail}) {
     if (_disposed) return;
-    final msg = ToastMessage(_toastSeq++, title, sub, kind);
+    final msg = ToastMessage(_toastSeq++, title, sub, kind, detail: detail);
     toasts.add(msg);
     notifyListeners();
-    Future.delayed(const Duration(seconds: 4), () {
+    Future.delayed(const Duration(seconds: 5), () {
       toasts.removeWhere((m) => m.id == msg.id);
       _safeNotify();
     });
+  }
+
+  /// Rich "transfer completed" notification: destination path, size, time.
+  void _completionToast(Transfer t) {
+    final dest = t.destPath.isNotEmpty ? t.destPath : '${t.session} · ${t.name}';
+    pushToast(
+      'File transfer completed',
+      dest,
+      ToastKind.success,
+      detail: '${formatBytes(t.sizeBytes)} · ${t.elapsedLabel}'
+          '${t.speed != '—' ? ' · ${t.speed}' : ''}',
+    );
+  }
+
+  /// Persist a finished transfer to history and refresh the dashboard data.
+  Future<void> _record(Transfer t) async {
+    final repo = _history;
+    if (repo == null) return;
+    try {
+      await repo.add(TransferRecord.fromTransfer(t));
+      await refreshHistory();
+    } catch (_) {/* history is best-effort */}
+  }
+
+  Future<void> refreshHistory() async {
+    final repo = _history;
+    if (repo == null) return;
+    history = await repo.recent();
+    historyStats = await repo.stats();
+    _safeNotify();
+  }
+
+  Future<void> clearHistory() async {
+    await _history?.clear();
+    await refreshHistory();
   }
 
   /// Notify only while still mounted — async callbacks (toasts, live
@@ -286,17 +333,16 @@ class AppState extends ChangeNotifier {
       if (t.live) continue;
       if (t.status == TransferStatus.active) {
         changed = true;
+        t.startedAt ??= DateTime.now();
         final step = t.sizeBytes > 10 * mB ? 0.015 : 0.18;
         t.progress = (t.progress + step).clamp(0, 1);
         if (t.progress >= 1) {
           t.status = TransferStatus.done;
           t.eta = 'Done';
           t.speed = t.speed == '—' ? '1.0 MB/s' : t.speed;
-          pushToast(
-            t.direction == TransferDirection.upload ? 'Upload complete' : 'Download complete',
-            '${t.name} → ${t.session} (${formatBytes(t.sizeBytes)})',
-            ToastKind.success,
-          );
+          t.finishedAt = DateTime.now();
+          _completionToast(t);
+          _record(t);
         } else {
           final remaining = ((1 - t.progress) * (t.sizeBytes > 10 * mB ? 90 : 4)).round();
           t.eta = '0:${remaining.toString().padLeft(2, '0')}';
@@ -309,6 +355,7 @@ class AppState extends ChangeNotifier {
       for (final t in transfers) {
         if (!t.live && t.status == TransferStatus.queued) {
           t.status = TransferStatus.active;
+          t.startedAt = DateTime.now();
           t.speed = t.sizeBytes > 10 * mB ? '1.4 MB/s' : '210 KB/s';
           changed = true;
           break;

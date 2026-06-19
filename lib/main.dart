@@ -1,22 +1,35 @@
 import 'package:flutter/material.dart';
 
 import 'app_shell.dart';
+import 'data/history_db.dart';
 import 'state/app_state.dart';
 import 'theme.dart';
 
-void main() {
-  runApp(const FileSyncApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Open the local SQLite history database (best-effort — the app still runs
+  // without it, the dashboard just shows "unavailable").
+  HistoryRepository? history;
+  try {
+    history = await HistoryRepository.open();
+  } catch (_) {
+    history = null;
+  }
+
+  runApp(FileSyncApp(history: history));
 }
 
 class FileSyncApp extends StatefulWidget {
-  const FileSyncApp({super.key});
+  final HistoryRepository? history;
+  const FileSyncApp({super.key, this.history});
 
   @override
   State<FileSyncApp> createState() => _FileSyncAppState();
 }
 
 class _FileSyncAppState extends State<FileSyncApp> {
-  final AppState _state = AppState();
+  late final AppState _state = AppState(history: widget.history);
 
   @override
   void dispose() {
