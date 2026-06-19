@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../data/connection_store.dart';
 import '../data/history_db.dart';
 import '../data/mock_data.dart';
 import '../fs/sftp_backend.dart';
@@ -55,10 +56,23 @@ class AppState extends ChangeNotifier {
   /// [tickEnabled] starts the demo ticker (disable for deterministic tests);
   /// [autoRefreshPanes] kicks off the initial pane listings (disable in tests
   /// that don't want real filesystem I/O).
-  AppState({bool tickEnabled = true, bool autoRefreshPanes = true, HistoryRepository? history}) {
+  AppState({
+    bool tickEnabled = true,
+    bool autoRefreshPanes = true,
+    HistoryRepository? history,
+    ConnectionStore? connectionStore,
+    List<Connection>? connections,
+  }) {
     _history = history;
+    _connectionStore = connectionStore;
+    if (connections != null) {
+      this.connections
+        ..clear()
+        ..addAll(connections);
+    }
+    selectedConnection = this.connections.first;
     // Start with one session: Local ⇄ the first S3 account (surfaces the feature).
-    final firstS3 = connections.firstWhere((c) => c.isS3, orElse: () => connections.first);
+    final firstS3 = this.connections.firstWhere((c) => c.isS3, orElse: () => this.connections.first);
     final initial = _buildSession(firstS3);
     sessions.add(initial);
     activeSessionId = initial.id;
@@ -78,12 +92,15 @@ class AppState extends ChangeNotifier {
   final LocalBackend _localBackend = LocalBackend();
   final Map<Connection, StorageBackend> _backendCache = {};
   late final HistoryRepository? _history;
+  late final ConnectionStore? _connectionStore;
 
   AppScreen screen = AppScreen.browser;
 
   final List<Connection> connections = buildConnections();
   final List<Transfer> transfers = buildTransfers();
   final List<ToastMessage> toasts = [];
+
+  bool get hasConnectionStore => _connectionStore != null;
 
   // ── Transfer history (SQLite-backed) ──
   List<TransferRecord> history = const [];
@@ -103,7 +120,7 @@ class AppState extends ChangeNotifier {
   PaneController get leftPane => activeSession.left;
   PaneController get rightPane => activeSession.right;
 
-  Connection selectedConnection = buildConnections().first;
+  late Connection selectedConnection;
 
   int maxThreads = 5;
   int _toastSeq = 0;
@@ -129,6 +146,53 @@ class AppState extends ChangeNotifier {
   void setMaxThreads(int v) {
     maxThreads = v.clamp(1, 16);
     notifyListeners();
+  }
+
+  // ── Saved connections (persisted) ─────────────────────────────────────
+
+  Future<void> _persistConnections() async {
+    await _connectionStore?.replaceAll(connections);
+  }
+
+  /// Create a blank connection, select it, and persist.
+  Future<Connection> newConnection() async {
+    final c = Connection(id: Connection.newId(), name: 'New connection', host: '');
+    connections.add(c);
+    selectedConnection = c;
+    notifyListeners();
+    await _persistConnections();
+    return c;
+  }
+
+  /// Persist edits made to [c] (in place via the form).
+  Future<void> saveConnection(Connection c) async {
+    if (c.id.isEmpty) c.id = Connection.newId();
+    await _connectionStore?.upsert(c, connections.indexOf(c).clamp(0, connections.length));
+    notifyListeners();
+  }
+
+  Future<Connection> duplicateConnection(Connection c) async {
+    final copy = Connection.fromJson(c.toJson())
+      ..id = Connection.newId()
+      ..name = '${c.name} (copy)';
+    final idx = connections.indexOf(c);
+    connections.insert(idx < 0 ? connections.length : idx + 1, copy);
+    selectedConnection = copy;
+    notifyListeners();
+    await _persistConnections();
+    return copy;
+  }
+
+  Future<void> deleteConnection(Connection c) async {
+    final idx = connections.indexOf(c);
+    connections.remove(c);
+    _backendCache.remove(c);
+    if (connections.isEmpty) connections.add(Connection(id: Connection.newId(), name: 'New connection'));
+    if (identical(selectedConnection, c)) {
+      selectedConnection = connections[idx.clamp(0, connections.length - 1)];
+    }
+    notifyListeners();
+    await _persistConnections();
   }
 
   // ── Endpoints / backends ──────────────────────────────────────────────

@@ -85,7 +85,7 @@ class ConnectionManagerScreen extends StatelessWidget {
             child: FsButton('＋ New Connection',
                 fontSize: 11,
                 padding: const EdgeInsets.symmetric(vertical: 7),
-                onTap: () => app.pushToast('New connection', 'Fill in the form to create one', ToastKind.info)),
+                onTap: () => app.newConnection()),
           ),
         ),
       ]),
@@ -156,12 +156,21 @@ class _ConnectionFormState extends State<ConnectionForm> {
               kind: FsButtonKind.primary,
               onTap: () => app.connect(c)),
           const SizedBox(width: 10),
-          FsButton('💾 Save', onTap: () => app.pushToast('Saved', '${c.name} configuration stored', ToastKind.success)),
+          FsButton('💾 Save', onTap: () {
+            app.saveConnection(c);
+            app.pushToast('Saved', '${c.name} configuration stored', ToastKind.success);
+          }),
           const SizedBox(width: 10),
-          const FsButton('⧉ Duplicate'),
+          FsButton('⧉ Duplicate', onTap: () => app.duplicateConnection(c)),
           const Spacer(),
-          const FsButton('⊗ Delete',
-              kind: FsButtonKind.danger, fontSize: 11, padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+          FsButton('⊗ Delete',
+              kind: FsButtonKind.danger,
+              fontSize: 11,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              onTap: () {
+                app.deleteConnection(c);
+                app.pushToast('Deleted', '${c.name} removed', ToastKind.info);
+              }),
         ]),
       ]),
     );

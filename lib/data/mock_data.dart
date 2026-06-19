@@ -33,7 +33,16 @@ final remoteFiles = <FileItem>[
   FileItem(name: 'pm2.config.js', sizeBytes: (1.2 * kB).round(), modified: '2025-06-09  18:44', perms: '-rw-r--r--'),
 ];
 
-List<Connection> buildConnections() => [
+List<Connection> buildConnections() {
+  final list = _seedConnections();
+  // Stable ids so persisted edits map back to the right seed entry.
+  for (var i = 0; i < list.length; i++) {
+    list[i].id = 'seed-$i';
+  }
+  return list;
+}
+
+List<Connection> _seedConnections() => [
       Connection(
         name: 'prod-server-01',
         host: 'prod-server-01.example.com',

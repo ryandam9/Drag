@@ -26,7 +26,11 @@ extension AuthMethodLabel on AuthMethod {
 
 enum ConnGroup { recent, saved }
 
+int _idSeq = 0;
+
 class Connection {
+  /// Stable identifier used for persistence (and, later, keychain lookups).
+  String id;
   String name;
   String host;
   int port;
@@ -66,6 +70,7 @@ class Connection {
       accessKeyId.isNotEmpty && secretAccessKey.isNotEmpty && bucket.isNotEmpty;
 
   Connection({
+    this.id = '',
     required this.name,
     this.host = '',
     this.port = 22,
@@ -92,4 +97,62 @@ class Connection {
     this.endpoint = '',
     this.useSsl = true,
   });
+
+  /// Generates a process-unique id for a new connection.
+  static String newId() =>
+      '${DateTime.now().microsecondsSinceEpoch}-${_idSeq++}';
+
+  /// Serializes everything EXCEPT secrets (password, passphrase, secret access
+  /// key, session token). Secrets belong in the OS keychain — see issue #16.
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'name': name,
+        'host': host,
+        'port': port,
+        'username': username,
+        'protocol': protocol.name,
+        'auth': auth.name,
+        'keyFile': keyFile,
+        'remotePath': remotePath,
+        'localPath': localPath,
+        'timeout': timeout,
+        'keepAlive': keepAlive,
+        'openInNewTab': openInNewTab,
+        'group': group.name,
+        'details': details,
+        'lastConnected': lastConnected,
+        'accessKeyId': accessKeyId,
+        'region': region,
+        'bucket': bucket,
+        'endpoint': endpoint,
+        'useSsl': useSsl,
+      };
+
+  factory Connection.fromJson(Map<String, Object?> m) {
+    T byName<T extends Enum>(List<T> values, Object? v, T fallback) =>
+        values.firstWhere((e) => e.name == v, orElse: () => fallback);
+    return Connection(
+      id: (m['id'] as String?) ?? '',
+      name: (m['name'] as String?) ?? '',
+      host: (m['host'] as String?) ?? '',
+      port: (m['port'] as int?) ?? 22,
+      username: (m['username'] as String?) ?? '',
+      protocol: byName(Protocol.values, m['protocol'], Protocol.sftp),
+      auth: byName(AuthMethod.values, m['auth'], AuthMethod.privateKey),
+      keyFile: (m['keyFile'] as String?) ?? '',
+      remotePath: (m['remotePath'] as String?) ?? '/',
+      localPath: (m['localPath'] as String?) ?? '',
+      timeout: (m['timeout'] as int?) ?? 30,
+      keepAlive: (m['keepAlive'] as bool?) ?? true,
+      openInNewTab: (m['openInNewTab'] as bool?) ?? false,
+      group: byName(ConnGroup.values, m['group'], ConnGroup.saved),
+      details: (m['details'] as String?) ?? '',
+      lastConnected: (m['lastConnected'] as String?) ?? '',
+      accessKeyId: (m['accessKeyId'] as String?) ?? '',
+      region: (m['region'] as String?) ?? 'us-east-1',
+      bucket: (m['bucket'] as String?) ?? '',
+      endpoint: (m['endpoint'] as String?) ?? '',
+      useSsl: (m['useSsl'] as bool?) ?? true,
+    );
+  }
 }
