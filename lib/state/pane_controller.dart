@@ -8,7 +8,11 @@ import '../models/file_item.dart';
 /// at, the current directory, the listing, and selection — plus async
 /// loading/error state for real backends (Local / S3).
 class PaneController {
-  PaneController({required this.backend, required this.onChanged, this.connection});
+  PaneController(
+      {required this.backend,
+      required this.onChanged,
+      this.connection,
+      this.showHidden = true});
 
   StorageBackend backend;
 
@@ -17,7 +21,17 @@ class PaneController {
 
   final VoidCallback onChanged;
 
+  /// When false, dot-files (names starting with `.`) are filtered out of the
+  /// listing. Driven by the "Show hidden files" setting.
+  bool showHidden;
+
   late String path = backend.initialPath;
+
+  /// The unfiltered listing as returned by the backend.
+  List<FileItem> _all = const [];
+
+  /// The listing the UI sees (after the hidden-file filter). Selection indices
+  /// are relative to this list.
   List<FileItem> items = const [];
   bool loading = false;
   String? error;
@@ -60,6 +74,7 @@ class PaneController {
 
   Future<void> refresh() async {
     if (!backend.isReady) {
+      _all = const [];
       items = const [];
       error = null;
       loading = false;
@@ -70,8 +85,10 @@ class PaneController {
     error = null;
     onChanged();
     try {
-      items = await backend.list(path);
+      _all = await backend.list(path);
+      _applyFilter();
     } catch (e) {
+      _all = const [];
       items = const [];
       error = e.toString().replaceFirst('Exception: ', '');
     } finally {
@@ -80,6 +97,23 @@ class PaneController {
       selection.clear();
       onChanged();
     }
+  }
+
+  void _applyFilter() {
+    items = showHidden
+        ? _all
+        : _all.where((f) => f.isParent || !f.name.startsWith('.')).toList();
+  }
+
+  /// Toggle hidden-file visibility, re-filtering the current listing in place
+  /// (clears selection, since indices shift).
+  void setShowHidden(bool value) {
+    if (showHidden == value) return;
+    showHidden = value;
+    selectedIndex = null;
+    selection.clear();
+    _applyFilter();
+    onChanged();
   }
 
   Future<void> open(FileItem item) async {

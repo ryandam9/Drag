@@ -16,6 +16,7 @@ dependencies:
   path: ^1.9.1
   sqflite_common_ffi: ^2.4.2
   dartssh2: ^2.18.0
+  window_manager: ^0.4.3
 
 dev_dependencies:
   flutter_test:

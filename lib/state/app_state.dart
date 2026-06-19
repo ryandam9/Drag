@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../data/connection_store.dart';
 import '../data/history_db.dart';
 import '../data/mock_data.dart';
+import '../data/settings_store.dart';
 import '../fs/sftp_backend.dart';
 import '../fs/storage_backend.dart';
 import '../fs/transfer_service.dart';
@@ -61,10 +62,14 @@ class AppState extends ChangeNotifier {
     bool autoRefreshPanes = true,
     HistoryRepository? history,
     ConnectionStore? connectionStore,
+    SettingsStore? settingsStore,
+    AppSettings? settings,
     List<Connection>? connections,
   }) {
     _history = history;
     _connectionStore = connectionStore;
+    _settingsStore = settingsStore;
+    if (settings != null) _applySettings(settings);
     if (connections != null) {
       this.connections
         ..clear()
@@ -93,6 +98,7 @@ class AppState extends ChangeNotifier {
   final Map<Connection, StorageBackend> _backendCache = {};
   late final HistoryRepository? _history;
   late final ConnectionStore? _connectionStore;
+  late final SettingsStore? _settingsStore;
 
   AppScreen screen = AppScreen.browser;
 
@@ -126,12 +132,140 @@ class AppState extends ChangeNotifier {
   int _toastSeq = 0;
 
   // ── Settings (Appearance) ──
+  // These are applied live and persisted via [SettingsStore]; see the setters.
   String themeName = 'Dark (default)';
   Color accent = FsColors.accent;
+  double uiFontSize = 13;
+  String monospaceFont = 'JetBrains Mono';
   bool showHiddenFiles = true;
   bool showPermsColumn = true;
   bool showLogOnStartup = false;
   bool confirmOverwrite = true;
+  AppSettings _windowGeometry = AppSettings();
+
+  bool get hasSettingsStore => _settingsStore != null;
+
+  /// Snapshot of the current settings for persistence.
+  AppSettings get currentSettings => AppSettings(
+        themeName: themeName,
+        accentValue: accent.toARGB32(),
+        uiFontSize: uiFontSize,
+        monospaceFont: monospaceFont,
+        showHiddenFiles: showHiddenFiles,
+        showPermsColumn: showPermsColumn,
+        showLogOnStartup: showLogOnStartup,
+        confirmOverwrite: confirmOverwrite,
+        windowWidth: _windowGeometry.windowWidth,
+        windowHeight: _windowGeometry.windowHeight,
+        windowX: _windowGeometry.windowX,
+        windowY: _windowGeometry.windowY,
+      );
+
+  /// Apply persisted settings to in-memory state + the global theme accent.
+  /// Called from the constructor before panes/sessions are built so the
+  /// hidden-file filter and accent are correct from the first frame.
+  void _applySettings(AppSettings s) {
+    themeName = s.themeName;
+    accent = Color(s.accentValue);
+    uiFontSize = s.uiFontSize;
+    monospaceFont = s.monospaceFont;
+    showHiddenFiles = s.showHiddenFiles;
+    showPermsColumn = s.showPermsColumn;
+    showLogOnStartup = s.showLogOnStartup;
+    confirmOverwrite = s.confirmOverwrite;
+    _windowGeometry = s;
+    FsColors.accent = accent;
+    FsColors.accentHi = FsColors.highlightFor(accent);
+  }
+
+  Future<void> _persistSettings() async => _settingsStore?.save(currentSettings);
+
+  // ── Settings mutators (apply live + persist) ──
+
+  void setThemeName(String v) {
+    themeName = v;
+    notifyListeners();
+    _persistSettings();
+  }
+
+  void setAccent(Color c) {
+    accent = c;
+    FsColors.accent = c;
+    FsColors.accentHi = FsColors.highlightFor(c);
+    notifyListeners();
+    _persistSettings();
+  }
+
+  void setUiFontSize(double v) {
+    uiFontSize = v;
+    notifyListeners();
+    _persistSettings();
+  }
+
+  void setMonospaceFont(String v) {
+    monospaceFont = v;
+    notifyListeners();
+    _persistSettings();
+  }
+
+  void setShowHiddenFiles(bool v) {
+    showHiddenFiles = v;
+    for (final s in sessions) {
+      s.left.setShowHidden(v);
+      s.right.setShowHidden(v);
+    }
+    notifyListeners();
+    _persistSettings();
+  }
+
+  void setShowPermsColumn(bool v) {
+    showPermsColumn = v;
+    notifyListeners();
+    _persistSettings();
+  }
+
+  void setShowLogOnStartup(bool v) {
+    showLogOnStartup = v;
+    notifyListeners();
+    _persistSettings();
+  }
+
+  void setConfirmOverwrite(bool v) {
+    confirmOverwrite = v;
+    notifyListeners();
+    _persistSettings();
+  }
+
+  /// Restore everything to defaults (and persist).
+  void resetSettings() {
+    _applySettings(AppSettings(
+      windowWidth: _windowGeometry.windowWidth,
+      windowHeight: _windowGeometry.windowHeight,
+      windowX: _windowGeometry.windowX,
+      windowY: _windowGeometry.windowY,
+    ));
+    for (final s in sessions) {
+      s.left.setShowHidden(showHiddenFiles);
+      s.right.setShowHidden(showHiddenFiles);
+    }
+    notifyListeners();
+    _persistSettings();
+  }
+
+  /// Persist the latest window geometry (called from the window listener).
+  Future<void> saveWindowState({
+    required double width,
+    required double height,
+    required double x,
+    required double y,
+  }) async {
+    _windowGeometry
+      ..windowWidth = width
+      ..windowHeight = height
+      ..windowX = x
+      ..windowY = y;
+    await _persistSettings();
+  }
 
   void go(AppScreen s) {
     screen = s;
@@ -213,9 +347,13 @@ class AppState extends ChangeNotifier {
   // ── Sessions / tabs ───────────────────────────────────────────────────
 
   Session _buildSession(Connection? remote) {
-    final left = PaneController(backend: _localBackend, onChanged: _safeNotify);
-    final right =
-        PaneController(backend: _backendFor(remote), connection: remote, onChanged: _safeNotify);
+    final left = PaneController(
+        backend: _localBackend, onChanged: _safeNotify, showHidden: showHiddenFiles);
+    final right = PaneController(
+        backend: _backendFor(remote),
+        connection: remote,
+        onChanged: _safeNotify,
+        showHidden: showHiddenFiles);
     return Session(id: _sessionSeq++, left: left, right: right);
   }
 
