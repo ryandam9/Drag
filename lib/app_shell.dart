@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'models/connection.dart';
 import 'screens/browser_screen.dart';
 import 'screens/connection_manager_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -22,7 +21,8 @@ class AppShell extends StatelessWidget {
 
     final (title, actions) = switch (app.screen) {
       AppScreen.browser => (
-          'FileSync — ${app.selectedConnection.name} · ${app.selectedConnection.protocol.label}',
+          'FileSync — ${app.activeSession.title}'
+              '${app.sessions.length > 1 ? '  (${app.sessions.length} sessions)' : ''}',
           [TbButton('⊕ New Session', onTap: () => app.go(AppScreen.connections))],
         ),
       AppScreen.connections => ('Connection Manager', <Widget>[]),

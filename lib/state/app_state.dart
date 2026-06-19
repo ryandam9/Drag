@@ -11,8 +11,10 @@ import '../models/file_item.dart';
 import '../models/transfer.dart';
 import '../theme.dart';
 import 'pane_controller.dart';
+import 'session.dart';
 
 export 'pane_controller.dart' show DragPayload;
+export 'session.dart' show Session;
 
 enum AppScreen { browser, connections, queue, dashboard, settings }
 
@@ -55,14 +57,11 @@ class AppState extends ChangeNotifier {
   /// that don't want real filesystem I/O).
   AppState({bool tickEnabled = true, bool autoRefreshPanes = true, HistoryRepository? history}) {
     _history = history;
-    leftPane = PaneController(backend: _localBackend, onChanged: notifyListeners);
-    // Right pane defaults to the first S3 account to surface the new feature.
+    // Start with one session: Local ⇄ the first S3 account (surfaces the feature).
     final firstS3 = connections.firstWhere((c) => c.isS3, orElse: () => connections.first);
-    rightPane = PaneController(
-      backend: _backendFor(firstS3),
-      connection: firstS3,
-      onChanged: notifyListeners,
-    );
+    final initial = _buildSession(firstS3);
+    sessions.add(initial);
+    activeSessionId = initial.id;
     if (tickEnabled) {
       _ticker = Timer.periodic(const Duration(milliseconds: 700), (_) => _tick());
     }
@@ -91,8 +90,18 @@ class AppState extends ChangeNotifier {
   HistoryStats historyStats = const HistoryStats();
   bool get hasHistoryDb => _history != null;
 
-  late final PaneController leftPane;
-  late final PaneController rightPane;
+  // ── Sessions (tabs) ──
+  final List<Session> sessions = [];
+  int _sessionSeq = 0;
+  late int activeSessionId;
+
+  Session get activeSession =>
+      sessions.firstWhere((s) => s.id == activeSessionId, orElse: () => sessions.first);
+
+  /// The active session's panes. Most of the app talks to these getters, so it
+  /// transparently follows whichever tab is in front.
+  PaneController get leftPane => activeSession.left;
+  PaneController get rightPane => activeSession.right;
 
   Connection selectedConnection = buildConnections().first;
 
@@ -131,29 +140,79 @@ class AppState extends ChangeNotifier {
         c, () => c.isS3 ? S3Backend(c) : SimulatedBackend(c));
   }
 
-  /// Point a pane at Local (`connection == null`) or a saved connection.
+  /// Point the active session's pane at Local (`null`) or a saved connection.
   Future<void> setPaneEndpoint(bool left, Connection? c) async {
     final pane = left ? leftPane : rightPane;
     await pane.switchTo(_backendFor(c), c);
   }
 
-  /// Re-create the backend for [c] (picks up freshly entered S3 credentials)
-  /// and refresh any pane currently using it.
-  Future<void> connect(Connection c) async {
-    c.online = c.isS3 ? c.hasS3Credentials : true;
-    _backendCache.remove(c);
-    final backend = _backendFor(c);
-    for (final pane in [leftPane, rightPane]) {
-      if (identical(pane.connection, c)) {
-        await pane.switchTo(backend, c);
+  // ── Sessions / tabs ───────────────────────────────────────────────────
+
+  Session _buildSession(Connection? remote) {
+    final left = PaneController(backend: _localBackend, onChanged: _safeNotify);
+    final right =
+        PaneController(backend: _backendFor(remote), connection: remote, onChanged: _safeNotify);
+    return Session(id: _sessionSeq++, left: left, right: right);
+  }
+
+  /// Open a new tab for [remote] (null = a Local-only tab), or focus the
+  /// existing tab already connected to it. Keeps every server in its own tab.
+  Session openSession(Connection? remote) {
+    if (remote != null) {
+      for (final s in sessions) {
+        if (identical(s.connection, remote)) {
+          activeSessionId = s.id;
+          s.right.refresh();
+          notifyListeners();
+          return s;
+        }
       }
     }
-    if (c.isS3 && !c.hasS3Credentials) {
-      pushToast('Missing credentials', 'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
-    } else {
-      pushToast('Session connected', '${c.name} · ${c.protocol.label}', ToastKind.info);
+    final s = _buildSession(remote);
+    sessions.add(s);
+    activeSessionId = s.id;
+    s.left.refresh();
+    s.right.refresh();
+    notifyListeners();
+    return s;
+  }
+
+  void switchSession(int id) {
+    if (sessions.any((s) => s.id == id) && id != activeSessionId) {
+      activeSessionId = id;
+      notifyListeners();
+    }
+  }
+
+  void closeSession(int id) {
+    final idx = sessions.indexWhere((s) => s.id == id);
+    if (idx < 0) return;
+    sessions.removeAt(idx);
+    if (sessions.isEmpty) {
+      // Never leave zero tabs — drop back to a fresh Local workspace.
+      final fresh = _buildSession(null);
+      sessions.add(fresh);
+      activeSessionId = fresh.id;
+      fresh.left.refresh();
+    } else if (activeSessionId == id) {
+      activeSessionId = sessions[idx.clamp(0, sessions.length - 1)].id;
     }
     notifyListeners();
+  }
+
+  /// Connect to [c]: rebuild its backend (fresh credentials) and open/focus a
+  /// tab for it. S3 connections need credentials first.
+  Future<void> connect(Connection c) async {
+    c.online = c.isS3 ? c.hasS3Credentials : true;
+    _backendCache.remove(c); // pick up freshly entered credentials
+    if (c.isS3 && !c.hasS3Credentials) {
+      pushToast('Missing credentials', 'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
+      notifyListeners();
+      return;
+    }
+    openSession(c);
+    pushToast('Session connected', '${c.name} · ${c.protocol.label}', ToastKind.info);
+    go(AppScreen.browser);
   }
 
   // ── Transfers ─────────────────────────────────────────────────────────

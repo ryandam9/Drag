@@ -43,38 +43,92 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  // ── Session tabs (cosmetic) ──
+  // ── Session tabs — one open server per tab, switchable & closable ──
   Widget _sessionTabs(AppState app) {
-    Widget tab(String name, Color dot, {bool active = false}) {
-      return Container(
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: active ? FsColors.accent : Colors.transparent, width: 2)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          StatusDot(dot, glow: dot == FsColors.green),
-          const SizedBox(width: 7),
-          Text(name, style: FsType.sans(size: 12, color: active ? FsColors.accentHi : FsColors.text2)),
-          const SizedBox(width: 8),
-          const Icon(Icons.close, size: 11, color: FsColors.text3),
-        ]),
-      );
-    }
-
     return Container(
       decoration: const BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.only(left: 8),
+      height: 38,
       child: Row(children: [
-        tab('${app.leftPane.endpointLabel}  ⇄  ${app.rightPane.endpointLabel}', FsColors.green, active: true),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text('＋', style: FsType.sans(size: 13, color: FsColors.text3)),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [for (final s in app.sessions) _tab(app, s)]),
+          ),
         ),
+        // New tab → pick a server to connect.
+        Hoverable(builder: (hover) {
+          return GestureDetector(
+            onTap: () => app.go(AppScreen.connections),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Tooltip(
+                message: 'New session',
+                child: Container(
+                  width: 30,
+                  alignment: Alignment.center,
+                  child: Text('＋',
+                      style: FsType.sans(size: 15, color: hover ? FsColors.accentHi : FsColors.text3)),
+                ),
+              ),
+            ),
+          );
+        }),
       ]),
     );
+  }
+
+  Widget _tab(AppState app, Session s) {
+    final active = s.id == app.activeSessionId;
+    final dot = s.online ? FsColors.green : FsColors.amber;
+    return Hoverable(builder: (hover) {
+      return GestureDetector(
+        onTap: () => app.switchSession(s.id),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            decoration: BoxDecoration(
+              color: active ? FsColors.bgSurface : (hover ? FsColors.bgHover : Colors.transparent),
+              border: Border(
+                bottom: BorderSide(color: active ? FsColors.accent : Colors.transparent, width: 2),
+              ),
+            ),
+            padding: const EdgeInsets.only(left: 14, right: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              StatusDot(dot, glow: s.online),
+              const SizedBox(width: 7),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: Text(s.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: FsType.sans(size: 12, color: active ? FsColors.accentHi : FsColors.text2)),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => app.closeSession(s.id),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Hoverable(builder: (h) => Container(
+                        width: 16,
+                        height: 16,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: h ? FsColors.bgPanel : Colors.transparent,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Icon(Icons.close, size: 11, color: h ? FsColors.text1 : FsColors.text3),
+                      )),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      );
+    });
   }
 
   // ── Toolbar ──
