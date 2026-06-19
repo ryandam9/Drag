@@ -124,6 +124,44 @@ void main() {
       app.debugTick();
       expect(queued.status, TransferStatus.active);
     });
+
+    test('progress-only tick bumps the transfer liveTick, not the global notifier', () {
+      // Isolate a single small active transfer; park everything else as done so
+      // the tick neither promotes a queued one nor completes this one.
+      final t = app.transfers.firstWhere(
+          (t) => t.status == TransferStatus.active && t.sizeBytes < 10 * 1024 * 1024);
+      for (final other in app.transfers) {
+        if (!identical(other, t)) other.status = TransferStatus.done;
+      }
+      t.progress = 0; // ensure one 0.18 step stays below 1.0
+
+      var globalNotifies = 0;
+      app.addListener(() => globalNotifies++);
+      final tickBefore = t.liveTick.value;
+
+      app.debugTick();
+
+      expect(t.progress, greaterThan(0)); // advanced
+      expect(t.progress, lessThan(1));
+      expect(t.liveTick.value, tickBefore + 1); // local repaint fired
+      expect(globalNotifies, 0); // file tables / counts did NOT rebuild
+    });
+
+    test('completing a transfer DOES fire the global notifier', () {
+      final t = app.transfers.firstWhere(
+          (t) => t.status == TransferStatus.active && t.sizeBytes < 10 * 1024 * 1024);
+      for (final other in app.transfers) {
+        if (!identical(other, t)) other.status = TransferStatus.done;
+      }
+      t.progress = 0.95; // one step tips it over → status change
+
+      var globalNotifies = 0;
+      app.addListener(() => globalNotifies++);
+      app.debugTick();
+
+      expect(t.status, TransferStatus.done);
+      expect(globalNotifies, greaterThan(0));
+    });
   });
 
   group('endpoints', () {

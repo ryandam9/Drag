@@ -61,7 +61,7 @@ void main() {
       session: 'sftp',
       live: true,
     );
-    await svc.run(t: up, src: local, srcPath: srcFile.path, dst: sftp, dstPath: remotePath, onChange: () {});
+    await svc.run(t: up, src: local, srcPath: srcFile.path, dst: sftp, dstPath: remotePath, onStatus: () {});
     expect(up.status, TransferStatus.done, reason: up.errorMessage ?? '');
 
     // 2) List and confirm
@@ -78,7 +78,7 @@ void main() {
       session: 'sftp',
       live: true,
     );
-    await svc.run(t: down, src: sftp, srcPath: remotePath, dst: local, dstPath: outPath, onChange: () {});
+    await svc.run(t: down, src: sftp, srcPath: remotePath, dst: local, dstPath: outPath, onStatus: () {});
     expect(down.status, TransferStatus.done, reason: down.errorMessage ?? '');
 
     // 4) Bytes must match

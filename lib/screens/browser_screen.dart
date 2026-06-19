@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 
 import '../models/connection.dart';
 import '../models/file_item.dart';
+import '../models/transfer.dart';
 import '../state/app_state.dart';
 import '../state/pane_controller.dart';
+import '../state/scopes.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -25,32 +27,40 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final showLog = _showLogOverride ?? app.showLogOnStartup;
-    return Focus(
-      autofocus: true,
-      onKeyEvent: (node, event) => _onKey(app, event),
-      child: Column(
-        children: [
-          _sessionTabs(app),
-          _toolbar(app),
-          Expanded(
-            child: LayoutBuilder(builder: (context, c) {
-              final leftW = (c.maxWidth - 5) * _split;
-              return Row(
-                children: [
-                  SizedBox(width: leftW, child: _pane(app, app.leftPane, left: true)),
-                  _divider(c.maxWidth),
-                  Expanded(child: _pane(app, app.rightPane, left: false)),
-                ],
-              );
-            }),
-          ),
-          _queueStrip(app),
-          if (showLog) _logPanel(),
-        ],
-      ),
-    );
+    // Action-only handle (no global subscription). The panes, endpoint picker
+    // and settings-driven bits subscribe to their own scopes below, so the
+    // dense file tables no longer rebuild on toast/transfer/history churn.
+    final app = AppScope.read(context);
+    return Builder(builder: (context) {
+      SessionsScope.of(context); // tabs, panes, focus, navigation history
+      ConnectionsScope.of(context); // endpoint pickers
+      final settings = SettingsScope.of(context); // perms column, log default
+      final showLog = _showLogOverride ?? settings.showLogOnStartup;
+      return Focus(
+        autofocus: true,
+        onKeyEvent: (node, event) => _onKey(app, event),
+        child: Column(
+          children: [
+            _sessionTabs(app),
+            _toolbar(app),
+            Expanded(
+              child: LayoutBuilder(builder: (context, c) {
+                final leftW = (c.maxWidth - 5) * _split;
+                return Row(
+                  children: [
+                    SizedBox(width: leftW, child: _pane(app, app.leftPane, left: true)),
+                    _divider(c.maxWidth),
+                    Expanded(child: _pane(app, app.rightPane, left: false)),
+                  ],
+                );
+              }),
+            ),
+            _queueStrip(app),
+            if (showLog) _logPanel(),
+          ],
+        ),
+      );
+    });
   }
 
   KeyEventResult _onKey(AppState app, KeyEvent event) {
@@ -739,8 +749,17 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
   // ── Transfer queue strip ──
   Widget _queueStrip(AppState app) {
-    final active = app.transfers.where((t) => t.status.name == 'active').toList();
-    final current = active.isNotEmpty ? active.first : null;
+    // Subscribe to the transfer queue here so status changes update the strip
+    // without rebuilding the file tables above.
+    return Builder(builder: (context) {
+      TransfersScope.of(context);
+      final active = app.transfers.where((t) => t.status.name == 'active').toList();
+      final current = active.isNotEmpty ? active.first : null;
+      return _queueStripBody(app, current);
+    });
+  }
+
+  Widget _queueStripBody(AppState app, Transfer? current) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: const BoxDecoration(
@@ -753,22 +772,28 @@ class _BrowserScreenState extends State<BrowserScreen> {
         Text(current != null ? 'Transferring — ${current.name}' : 'Idle',
             style: FsType.sans(size: 11, color: FsColors.text2)),
         const SizedBox(width: 10),
-        if (current != null) ...[
-          SizedBox(
-            width: 200,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: current.progress,
-                minHeight: 4,
-                backgroundColor: FsColors.bgPanel,
-                valueColor: AlwaysStoppedAnimation(FsColors.accent),
+        if (current != null)
+          // Live progress repaints here only — not the whole browser pane.
+          ValueListenableBuilder<int>(
+            valueListenable: current.liveTick,
+            builder: (context, _, _) => Row(children: [
+              SizedBox(
+                width: 200,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: current.progress,
+                    minHeight: 4,
+                    backgroundColor: FsColors.bgPanel,
+                    valueColor: AlwaysStoppedAnimation(FsColors.accent),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Text('${(current.progress * 100).round()}% · ${current.speed}',
+                  style: FsType.mono(size: 10, color: FsColors.accentHi)),
+            ]),
           ),
-          const SizedBox(width: 10),
-          Text('${(current.progress * 100).round()}% · ${current.speed}', style: FsType.mono(size: 10, color: FsColors.accentHi)),
-        ],
         const Spacer(),
         Text('${app.queuedCount} remaining', style: FsType.sans(size: 11, color: FsColors.text2)),
         const SizedBox(width: 10),

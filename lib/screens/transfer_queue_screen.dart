@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
 import '../state/app_state.dart';
+import '../state/scopes.dart';
+import '../state/transfers_controller.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -10,7 +12,9 @@ class TransferQueueScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+    // Subscribe to the transfer queue only — toasts, settings and session
+    // changes no longer rebuild this screen.
+    final app = TransfersScope.of(context);
     return Column(children: [
       _filterBar(app),
       Expanded(child: _table(app)),
@@ -19,7 +23,7 @@ class TransferQueueScreen extends StatelessWidget {
   }
 
   // ── Status filter chips + free text filter ──
-  Widget _filterBar(AppState app) {
+  Widget _filterBar(TransfersController app) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(
@@ -45,7 +49,7 @@ class TransferQueueScreen extends StatelessWidget {
   }
 
   // ── Transfer table ──
-  Widget _table(AppState app) {
+  Widget _table(TransfersController app) {
     return Container(
       color: FsColors.bgSurface,
       child: Column(children: [
@@ -93,7 +97,7 @@ class TransferQueueScreen extends StatelessWidget {
         TransferStatus.paused => (bg: FsColors.badgePausedBg, fg: FsColors.badgePausedFg, label: '⏸ Paused'),
       };
 
-  Widget _row(AppState app, Transfer t) {
+  Widget _row(TransfersController app, Transfer t) {
     final dirGlyph = switch (t.status) {
       TransferStatus.done => '✓',
       TransferStatus.error => '!',
@@ -113,9 +117,12 @@ class TransferQueueScreen extends StatelessWidget {
       _ => FsColors.accent,
     };
 
-    return Hoverable(builder: (hover) {
-      return Opacity(
-        opacity: t.status == TransferStatus.done ? 0.55 : 1,
+    // Per-row live ticks repaint just this row, not the whole table.
+    return ValueListenableBuilder<int>(
+      valueListenable: t.liveTick,
+      builder: (context, _, _) => Hoverable(builder: (hover) {
+        return Opacity(
+          opacity: t.status == TransferStatus.done ? 0.55 : 1,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -180,14 +187,24 @@ class TransferQueueScreen extends StatelessWidget {
                     : StatusBadge(badge.label, bg: badge.bg, fg: badge.fg, onTap: () => app.togglePause(t)),
               ),
             ),
-          ]),
-        ),
-      );
-    });
+            ]),
+          ),
+        );
+      }),
+    );
   }
 
   // ── Aggregate stats footer ──
-  Widget _statsBar(AppState app) {
+  Widget _statsBar(TransfersController app) {
+    // "Transferred" aggregates live progress, so rebuild on any transfer's
+    // live tick (this footer is only mounted on the queue screen).
+    return ListenableBuilder(
+      listenable: Listenable.merge([for (final t in app.transfers) t.liveTick]),
+      builder: (context, _) => _statsBarBody(app),
+    );
+  }
+
+  Widget _statsBarBody(TransfersController app) {
     final total = app.transfers.fold<int>(0, (s, t) => s + t.sizeBytes);
     final transferred = app.transfers.fold<double>(0, (s, t) => s + t.sizeBytes * t.progress);
 

@@ -11,19 +11,24 @@ import 'storage_backend.dart';
 ///   • S3 → S3       (copy across accounts / regions — streamed, no server-side
 ///                    copy, so differing credentials are fine)
 class TransferService {
-  /// Runs [t] from [srcPath] on [src] to [dstPath] on [dst]. [onChange] is
-  /// invoked whenever progress/speed/status mutate so the UI can repaint.
+  /// Runs [t] from [srcPath] on [src] to [dstPath] on [dst].
+  ///
+  /// [onStatus] fires on structural changes (active / done / error) that the
+  /// rest of the app cares about (queue counts, toasts, history). [onProgress]
+  /// fires on high-frequency progress/speed/eta updates and should only repaint
+  /// the small progress widgets — keep it off the global notifier.
   Future<void> run({
     required Transfer t,
     required StorageBackend src,
     required String srcPath,
     required StorageBackend dst,
     required String dstPath,
-    required void Function() onChange,
+    required void Function() onStatus,
+    void Function()? onProgress,
   }) async {
     t.status = TransferStatus.active;
     t.startedAt = DateTime.now();
-    onChange();
+    onStatus();
 
     final stopwatch = Stopwatch()..start();
     var sent = 0;
@@ -45,7 +50,7 @@ class TransferService {
         }
         lastBytes = sent;
         lastMs = ms;
-        onChange();
+        onProgress?.call();
       }
     }
 
@@ -70,7 +75,7 @@ class TransferService {
       t.errorMessage = _friendly(e);
     } finally {
       t.finishedAt = DateTime.now();
-      onChange();
+      onStatus();
     }
   }
 

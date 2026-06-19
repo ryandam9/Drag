@@ -5,6 +5,7 @@ import 'package:drag/screens/dashboard_screen.dart';
 import 'package:drag/screens/settings_screen.dart';
 import 'package:drag/screens/transfer_queue_screen.dart';
 import 'package:drag/state/app_state.dart';
+import 'package:drag/state/scopes.dart';
 import 'package:drag/widgets/toast_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,7 +30,7 @@ void main() {
       state: app,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(body: screen),
+        home: AppScopes(state: app, child: Scaffold(body: screen)),
       ),
     ));
     await tester.pump();
