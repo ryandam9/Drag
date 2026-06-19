@@ -37,12 +37,19 @@ class PaneController {
     return [head, ...raw];
   }
 
+  final List<String> _back = [];
+  final List<String> _forward = [];
+  bool get canGoBack => _back.isNotEmpty;
+  bool get canGoForward => _forward.isNotEmpty;
+
   Future<void> switchTo(StorageBackend newBackend, Connection? newConnection) async {
     backend = newBackend;
     connection = newConnection;
     path = newBackend.initialPath;
     selectedIndex = null;
     error = null;
+    _back.clear();
+    _forward.clear();
     await refresh();
   }
 
@@ -71,17 +78,33 @@ class PaneController {
 
   Future<void> open(FileItem item) async {
     if (item.isParent) {
-      path = backend.parentPath(path);
+      await _navigate(backend.parentPath(path));
     } else if (item.isDir) {
-      path = backend.childPath(path, item.name, true);
-    } else {
-      return;
+      await _navigate(backend.childPath(path, item.name, true));
     }
+  }
+
+  Future<void> goUp() => _navigate(backend.parentPath(path));
+
+  Future<void> _navigate(String newPath) async {
+    if (newPath == path) return;
+    _back.add(path);
+    _forward.clear();
+    path = newPath;
     await refresh();
   }
 
-  Future<void> goUp() async {
-    path = backend.parentPath(path);
+  Future<void> goBack() async {
+    if (_back.isEmpty) return;
+    _forward.add(path);
+    path = _back.removeLast();
+    await refresh();
+  }
+
+  Future<void> goForward() async {
+    if (_forward.isEmpty) return;
+    _back.add(path);
+    path = _forward.removeLast();
     await refresh();
   }
 

@@ -212,6 +212,51 @@ class S3Client {
     await resp.drain<void>();
   }
 
+  // ── DeleteObject ──
+  Future<void> deleteObject(String key) async {
+    final canonicalUri = _objectPath(key);
+    final headers = _signer.sign(
+      method: 'DELETE',
+      host: _hostHeader,
+      canonicalUri: canonicalUri,
+      query: const {},
+      headers: const {},
+      payloadHash: emptyBodySha256,
+    );
+    final req = await _http.deleteUrl(_uri(canonicalUri, const {}));
+    headers.forEach(req.headers.set);
+    final resp = await req.close();
+    if (resp.statusCode ~/ 100 != 2) {
+      final body = await resp.transform(utf8.decoder).join();
+      throw _error(resp.statusCode, body);
+    }
+    await resp.drain<void>();
+  }
+
+  // ── CopyObject (server-side copy within the bucket) ──
+  Future<void> copyObject(String srcKey, String dstKey) async {
+    final canonicalUri = _objectPath(dstKey);
+    final copySource =
+        '/${awsUriEncode(bucket, encodeSlash: true)}/${awsUriEncode(srcKey)}';
+    final headers = _signer.sign(
+      method: 'PUT',
+      host: _hostHeader,
+      canonicalUri: canonicalUri,
+      query: const {},
+      headers: {'x-amz-copy-source': copySource},
+      payloadHash: emptyBodySha256,
+    );
+    final req = await _http.putUrl(_uri(canonicalUri, const {}));
+    headers.forEach(req.headers.set);
+    req.headers.contentLength = 0;
+    final resp = await req.close();
+    if (resp.statusCode ~/ 100 != 2) {
+      final body = await resp.transform(utf8.decoder).join();
+      throw _error(resp.statusCode, body);
+    }
+    await resp.drain<void>();
+  }
+
   S3Exception _error(int status, String body) {
     String message = body;
     try {

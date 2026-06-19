@@ -37,7 +37,22 @@ abstract class StorageBackend {
   /// Whether this backend performs real byte transfers (false = demo/simulated).
   bool get supportsTransfer => true;
 
+  /// Whether this backend supports create/rename/delete operations.
+  bool get supportsMutation => true;
+
   Future<List<FileItem>> list(String path);
+
+  /// Create a directory at [path].
+  Future<void> makeDir(String path) =>
+      throw UnsupportedError('makeDir not supported');
+
+  /// Rename/move [fromPath] to [toPath].
+  Future<void> rename(String fromPath, String toPath) =>
+      throw UnsupportedError('rename not supported');
+
+  /// Delete the entry at [path] ([isDir] selects recursive directory removal).
+  Future<void> delete(String path, {required bool isDir}) =>
+      throw UnsupportedError('delete not supported');
 
   Future<ReadHandle> openRead(String path);
 
@@ -139,6 +154,23 @@ class LocalBackend extends StorageBackend {
   }
 
   @override
+  Future<void> makeDir(String path) => Directory(path).create();
+
+  @override
+  Future<void> rename(String fromPath, String toPath) async {
+    final type = await FileSystemEntity.type(fromPath);
+    if (type == FileSystemEntityType.directory) {
+      await Directory(fromPath).rename(toPath);
+    } else {
+      await File(fromPath).rename(toPath);
+    }
+  }
+
+  @override
+  Future<void> delete(String path, {required bool isDir}) =>
+      isDir ? Directory(path).delete(recursive: true) : File(path).delete();
+
+  @override
   String childPath(String path, String name, bool isDir) => p.join(path, name);
 
   @override
@@ -234,6 +266,37 @@ class S3Backend extends StorageBackend {
   }) async {
     final client = _client!;
     await client.putObject(path, data, length, onProgress: onProgress);
+  }
+
+  @override
+  Future<void> makeDir(String path) async {
+    // S3 has no real directories — represent one with a zero-byte key ending '/'.
+    final key = path.endsWith('/') ? path : '$path/';
+    await _client!.putObject(key, const Stream<Uint8List>.empty(), 0);
+  }
+
+  @override
+  Future<void> rename(String fromPath, String toPath) async {
+    if (fromPath.endsWith('/')) {
+      throw UnsupportedError('Renaming S3 folders is not supported');
+    }
+    await _client!.copyObject(fromPath, toPath);
+    await _client!.deleteObject(fromPath);
+  }
+
+  @override
+  Future<void> delete(String path, {required bool isDir}) async {
+    final client = _client!;
+    if (!isDir) {
+      await client.deleteObject(path);
+      return;
+    }
+    // Recursively delete everything under the prefix (and the placeholder).
+    final prefix = path.endsWith('/') ? path : '$path/';
+    final result = await client.listAll(prefix: prefix, delimiter: '');
+    for (final obj in result.objects) {
+      await client.deleteObject(obj.key);
+    }
   }
 
   @override

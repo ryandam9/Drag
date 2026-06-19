@@ -12,6 +12,7 @@
 // It exercises the app's real S3Backend + TransferService: upload a local file
 // to S3, list it back, then download it and assert the bytes round-trip.
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:drag/fs/storage_backend.dart';
 import 'package:drag/fs/transfer_service.dart';
@@ -150,4 +151,24 @@ void main() {
     await svc.run(t: t3, src: b, srcPath: 'copied/report.bin', dst: local, dstPath: out, onChange: () {});
     expect(await File(out).readAsBytes(), payload);
   }, skip: (_endpoint.isEmpty || _bucket2.isEmpty) ? 'set S3_ENDPOINT + S3_BUCKET2 to run' : false);
+
+  test('real S3 file operations: makeDir, write, rename, delete', () async {
+    final s3 = S3Backend(_conn(_bucket));
+    addTearDown(s3.dispose);
+
+    // makeDir → placeholder object; appears as a folder in the listing.
+    await s3.makeDir('ops/');
+    expect((await s3.list('')).where((e) => e.isDir).map((e) => e.name), contains('ops'));
+
+    // write a file, rename it, confirm.
+    await s3.write('ops/x.txt', Stream.value(Uint8List.fromList([1, 2, 3, 4])), 4);
+    await s3.rename('ops/x.txt', 'ops/y.txt');
+    final names = (await s3.list('ops/')).map((e) => e.name).toList();
+    expect(names, contains('y.txt'));
+    expect(names, isNot(contains('x.txt')));
+
+    // delete the folder recursively → gone from the root listing.
+    await s3.delete('ops/', isDir: true);
+    expect((await s3.list('')).map((e) => e.name), isNot(contains('ops')));
+  }, skip: _endpoint.isEmpty ? 'set --dart-define=S3_ENDPOINT to run' : false);
 }

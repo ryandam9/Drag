@@ -165,6 +165,52 @@ void main() {
     });
   });
 
+  group('file operations (focused pane, real local dir)', () {
+    late Directory dir;
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('fs_ops');
+      await File(p.join(dir.path, 'a.txt')).writeAsString('a');
+      app.leftPane
+        ..backend = LocalBackend()
+        ..path = dir.path;
+      await app.leftPane.refresh();
+      app.focusPane(true);
+    });
+    tearDown(() => dir.delete(recursive: true));
+
+    test('createFolder makes a real directory and refreshes', () async {
+      await app.createFolder(app.leftPane, 'docs');
+      expect(await Directory(p.join(dir.path, 'docs')).exists(), isTrue);
+      expect(app.leftPane.items.any((e) => e.name == 'docs'), isTrue);
+    });
+
+    test('renameItem renames the file on disk', () async {
+      final item = app.leftPane.items.firstWhere((e) => e.name == 'a.txt');
+      await app.renameItem(app.leftPane, item, 'b.txt');
+      expect(await File(p.join(dir.path, 'a.txt')).exists(), isFalse);
+      expect(await File(p.join(dir.path, 'b.txt')).exists(), isTrue);
+    });
+
+    test('deleteItem deletes the file', () async {
+      final item = app.leftPane.items.firstWhere((e) => e.name == 'a.txt');
+      await app.deleteItem(app.leftPane, item);
+      expect(await File(p.join(dir.path, 'a.txt')).exists(), isFalse);
+    });
+
+    test('focusedPane follows focusPane', () {
+      app.focusPane(false);
+      expect(identical(app.focusedPane, app.rightPane), isTrue);
+      app.focusPane(true);
+      expect(identical(app.focusedPane, app.leftPane), isTrue);
+    });
+
+    test('createFolder on a read-only backend reports an error', () async {
+      app.leftPane.backend = SimulatedBackend(Connection(name: 'd', protocol: Protocol.sftp));
+      await app.createFolder(app.leftPane, 'x');
+      expect(app.toasts.last.kind, ToastKind.error);
+    });
+  });
+
   group('sessions / tabs', () {
     test('starts with one session for the first S3 account', () {
       expect(app.sessions.length, 1);

@@ -10,6 +10,7 @@
 // Exercises the real SftpBackend + TransferService: connect, list, upload a
 // local file, list it back, download it, and assert the bytes round-trip.
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:drag/fs/sftp_backend.dart';
 import 'package:drag/fs/storage_backend.dart';
@@ -82,5 +83,35 @@ void main() {
 
     // 4) Bytes must match
     expect(await File(outPath).readAsBytes(), payload);
+  }, skip: _host.isEmpty ? 'set --dart-define=SFTP_HOST to run' : false);
+
+  test('real SFTP file operations: mkdir, rename, delete', () async {
+    final conn = Connection(
+      name: 'sftp-ops',
+      protocol: Protocol.sftp,
+      host: _host,
+      port: _port,
+      username: _user,
+      auth: AuthMethod.password,
+      password: _pass,
+      remotePath: _dir,
+    );
+    final sftp = SftpBackend(conn);
+    addTearDown(sftp.dispose);
+
+    final base = '$_dir/drag_ops';
+    await sftp.delete(base, isDir: true).catchError((_) {}); // clean slate
+
+    await sftp.makeDir(base);
+    expect((await sftp.list(_dir)).map((e) => e.name), contains('drag_ops'));
+
+    await sftp.write('$base/a.txt', Stream.value(Uint8List.fromList([9, 9, 9])), 3);
+    await sftp.rename('$base/a.txt', '$base/b.txt');
+    final names = (await sftp.list(base)).map((e) => e.name).toList();
+    expect(names, contains('b.txt'));
+    expect(names, isNot(contains('a.txt')));
+
+    await sftp.delete(base, isDir: true);
+    expect((await sftp.list(_dir)).map((e) => e.name), isNot(contains('drag_ops')));
   }, skip: _host.isEmpty ? 'set --dart-define=SFTP_HOST to run' : false);
 }

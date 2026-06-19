@@ -58,6 +58,35 @@ void main() {
       expect(backend.displayPath('/x/y'), '/x/y');
       expect(backend.isReady, isTrue);
     });
+
+    test('makeDir creates a directory', () async {
+      final path = p.join(dir.path, 'newdir');
+      await backend.makeDir(path);
+      expect(await Directory(path).exists(), isTrue);
+    });
+
+    test('rename moves a file', () async {
+      final from = p.join(dir.path, 'readme.txt');
+      final to = p.join(dir.path, 'readme2.txt');
+      await backend.rename(from, to);
+      expect(await File(from).exists(), isFalse);
+      expect(await File(to).readAsString(), 'hello');
+    });
+
+    test('rename moves a directory', () async {
+      final to = p.join(dir.path, 'sub-renamed');
+      await backend.rename(p.join(dir.path, 'sub'), to);
+      expect(await Directory(to).exists(), isTrue);
+    });
+
+    test('delete removes a file and a directory (recursive)', () async {
+      await backend.delete(p.join(dir.path, 'readme.txt'), isDir: false);
+      expect(await File(p.join(dir.path, 'readme.txt')).exists(), isFalse);
+      await backend.delete(p.join(dir.path, 'sub'), isDir: true);
+      expect(await Directory(p.join(dir.path, 'sub')).exists(), isFalse);
+    });
+
+    test('supportsMutation is true', () => expect(backend.supportsMutation, isTrue));
   });
 
   group('S3Backend (offline path math)', () {
@@ -79,11 +108,18 @@ void main() {
     test('displayPath uses s3:// scheme', () {
       expect(b.displayPath('k'), 's3://bk/k');
     });
+    test('supportsMutation is true', () => expect(b.supportsMutation, isTrue));
   });
 
   group('SimulatedBackend (SFTP)', () {
     final conn = Connection(name: 'host', protocol: Protocol.sftp, username: 'u', remotePath: '/srv');
     final b = SimulatedBackend(conn);
+
+    test('is read-only (no mutation, no transfer)', () {
+      expect(b.supportsMutation, isFalse);
+      expect(b.supportsTransfer, isFalse);
+      expect(() => b.makeDir('/srv/x'), throwsUnsupportedError);
+    });
 
     test('lists mock data', () async {
       final items = await b.list('/srv');
