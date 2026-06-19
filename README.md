@@ -44,7 +44,7 @@ then pick it in a pane. The **Local** endpoint browses your real filesystem.
 | Screen | Description |
 | --- | --- |
 | **Browser** | Dual-pane file browser with **multiple session tabs** — connect to several servers at once and switch between them; each tab keeps its own Local ⇄ remote panes, paths and listings. **Each pane has an endpoint picker** (Local / any saved S3 or SFTP connection). Drag a file from either pane onto the other to start a transfer. Async listing with loading/error/not-connected states, breadcrumbs, toolbar, live progress strip and a log console. |
-| **Connection Manager** | Saved/recent sessions sidebar with online indicators. Form adapts to the protocol: SSH fields for SFTP, or **S3 credentials** (access key, secret, session token, region, bucket, endpoint, SSL) for S3. |
+| **Connection Manager** | Saved/recent sessions sidebar with online indicators. Form adapts to the protocol: SSH fields for SFTP, or **S3 credentials** (access key, secret, session token, region, bucket, endpoint, SSL) for S3. New / Save / Duplicate / Delete **persist to SQLite** (secrets excluded — see #16). |
 | **Transfer Queue** | Active / queued / paused / done / error transfers with per-file progress, speed, ETA, a status filter, an aggregate stats bar and an adjustable parallel-thread count. |
 | **History Dashboard** | Persistent transfer history backed by **SQLite** — stat cards (total / succeeded / failed / data transferred / avg speed) and a table of past transfers (file, route, size, time taken, speed, when, status). Refresh / clear. |
 | **Preferences** | Categorised settings with theme, accent-color swatches, fonts and toggles. |
@@ -86,6 +86,7 @@ lib/
   data/
     mock_data.dart             Seed connections (incl. two S3 accounts)
     history_db.dart            SQLite history repository (sqflite_common_ffi)
+    connection_store.dart      SQLite store for saved connections (no secrets)
   widgets/                     Title bar, buttons, badges, nav, toasts,
                                transfer_progress (active-transfer card)
   screens/                     browser / connection_manager / transfer_queue /
