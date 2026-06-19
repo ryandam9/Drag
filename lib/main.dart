@@ -17,18 +17,18 @@ Future<void> main() async {
     history = null;
   }
 
-  runApp(FileSyncApp(history: history));
+  runApp(DragApp(history: history));
 }
 
-class FileSyncApp extends StatefulWidget {
+class DragApp extends StatefulWidget {
   final HistoryRepository? history;
-  const FileSyncApp({super.key, this.history});
+  const DragApp({super.key, this.history});
 
   @override
-  State<FileSyncApp> createState() => _FileSyncAppState();
+  State<DragApp> createState() => _DragAppState();
 }
 
-class _FileSyncAppState extends State<FileSyncApp> {
+class _DragAppState extends State<DragApp> {
   late final AppState _state = AppState(history: widget.history);
 
   @override
@@ -42,9 +42,9 @@ class _FileSyncAppState extends State<FileSyncApp> {
     return AppScope(
       state: _state,
       child: MaterialApp(
-        title: 'FileSync',
+        title: 'Drag',
         debugShowCheckedModeBanner: false,
-        theme: buildFileSyncTheme(),
+        theme: buildDragTheme(),
         home: const AppShell(),
       ),
     );

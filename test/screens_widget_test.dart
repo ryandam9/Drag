@@ -1,11 +1,11 @@
-import 'package:filesync/data/history_db.dart';
-import 'package:filesync/models/connection.dart';
-import 'package:filesync/screens/connection_manager_screen.dart';
-import 'package:filesync/screens/dashboard_screen.dart';
-import 'package:filesync/screens/settings_screen.dart';
-import 'package:filesync/screens/transfer_queue_screen.dart';
-import 'package:filesync/state/app_state.dart';
-import 'package:filesync/widgets/toast_overlay.dart';
+import 'package:drag/data/history_db.dart';
+import 'package:drag/models/connection.dart';
+import 'package:drag/screens/connection_manager_screen.dart';
+import 'package:drag/screens/dashboard_screen.dart';
+import 'package:drag/screens/settings_screen.dart';
+import 'package:drag/screens/transfer_queue_screen.dart';
+import 'package:drag/state/app_state.dart';
+import 'package:drag/widgets/toast_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

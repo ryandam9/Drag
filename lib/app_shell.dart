@@ -21,7 +21,7 @@ class AppShell extends StatelessWidget {
 
     final (title, actions) = switch (app.screen) {
       AppScreen.browser => (
-          'FileSync — ${app.activeSession.title}'
+          'Drag — ${app.activeSession.title}'
               '${app.sessions.length > 1 ? '  (${app.sessions.length} sessions)' : ''}',
           [TbButton('⊕ New Session', onTap: () => app.go(AppScreen.connections))],
         ),

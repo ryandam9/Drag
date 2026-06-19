@@ -1,10 +1,10 @@
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:filesync/fs/simulated_backend.dart';
-import 'package:filesync/fs/storage_backend.dart';
-import 'package:filesync/models/connection.dart';
-import 'package:filesync/state/pane_controller.dart';
+import 'package:drag/fs/simulated_backend.dart';
+import 'package:drag/fs/storage_backend.dart';
+import 'package:drag/models/connection.dart';
+import 'package:drag/state/pane_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 

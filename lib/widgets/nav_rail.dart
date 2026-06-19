@@ -70,12 +70,13 @@ class NavRail extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 14),
-          // Logo mark.
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(color: FsColors.accent, borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.sync_alt_rounded, size: 17, color: Colors.white),
+          // App icon / logo mark.
+          Tooltip(
+            message: 'Drag',
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset('assets/icons/drag_256.png', width: 32, height: 32, filterQuality: FilterQuality.medium),
+            ),
           ),
           const SizedBox(height: 18),
           item(Icons.folder_copy_outlined, 'Browser', AppScreen.browser),

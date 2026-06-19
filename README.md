@@ -1,4 +1,8 @@
-# FileSync
+<p align="center">
+  <img src="assets/icons/drag.png" width="96" alt="Drag icon"/>
+</p>
+
+# Drag
 
 A cross-platform **file transfer client** built with Flutter for macOS, Linux
 & Windows desktop — a dark, dense, developer-focused UI with drag-and-drop
@@ -18,7 +22,7 @@ any combination:
   are simulated).
 
 **S3 is real**, and talks to S3 through a **hand-written client** — there is no
-official AWS SDK for Dart, so FileSync ships its own AWS **Signature V4** signer
+official AWS SDK for Dart, so Drag ships its own AWS **Signature V4** signer
 (`lib/fs/aws/sigv4.dart`) and a minimal S3 REST client (`lib/fs/aws/s3_client.dart`)
 built on `dart:io` `HttpClient` (streamed `ListObjectsV2` / `GetObject` /
 `PutObject`). No third-party S3 SDK is used. Configure an S3 connection in the

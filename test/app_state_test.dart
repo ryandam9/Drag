@@ -1,11 +1,11 @@
 import 'dart:io';
 
-import 'package:filesync/fs/storage_backend.dart';
-import 'package:filesync/models/connection.dart';
-import 'package:filesync/models/file_item.dart';
-import 'package:filesync/models/transfer.dart';
-import 'package:filesync/data/history_db.dart';
-import 'package:filesync/state/app_state.dart';
+import 'package:drag/fs/storage_backend.dart';
+import 'package:drag/models/connection.dart';
+import 'package:drag/models/file_item.dart';
+import 'package:drag/models/transfer.dart';
+import 'package:drag/data/history_db.dart';
+import 'package:drag/state/app_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';

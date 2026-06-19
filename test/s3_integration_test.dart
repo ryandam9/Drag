@@ -13,10 +13,10 @@
 // to S3, list it back, then download it and assert the bytes round-trip.
 import 'dart:io';
 
-import 'package:filesync/fs/storage_backend.dart';
-import 'package:filesync/fs/transfer_service.dart';
-import 'package:filesync/models/connection.dart';
-import 'package:filesync/models/transfer.dart';
+import 'package:drag/fs/storage_backend.dart';
+import 'package:drag/fs/transfer_service.dart';
+import 'package:drag/models/connection.dart';
+import 'package:drag/models/transfer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _endpoint = String.fromEnvironment('S3_ENDPOINT');
