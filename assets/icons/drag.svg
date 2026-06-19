@@ -6,12 +6,14 @@
     </linearGradient>
   </defs>
   <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
-  <g stroke="#ffffff" stroke-width="60" fill="none">
-    <path d="M286 470 A226 226 0 0 1 738 470"/>
-    <path d="M738 554 A226 226 0 0 1 286 554"/>
-  </g>
-  <g fill="#ffffff">
-    <polygon points="757,527 802,452 679,481"/>
-    <polygon points="267,497 222,572 345,543"/>
+  <g transform="rotate(32 512 512)">
+    <g stroke="#ffffff" stroke-width="60" fill="none">
+      <path d="M286 470 A226 226 0 0 1 738 470"/>
+      <path d="M738 554 A226 226 0 0 1 286 554"/>
+    </g>
+    <g fill="#ffffff">
+      <polygon points="757,527 802,452 679,481"/>
+      <polygon points="267,497 222,572 345,543"/>
+    </g>
   </g>
 </svg>
