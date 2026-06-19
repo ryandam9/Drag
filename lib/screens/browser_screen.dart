@@ -94,22 +94,17 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   Future<void> _deleteSelected(AppState app, PaneController pane) async {
-    final item = _selected(pane);
-    if (item == null) {
+    final items = pane.selectedItems();
+    if (items.isEmpty) {
       app.pushToast('Nothing selected', 'Select an item to delete', ToastKind.info);
       return;
     }
-    await _deleteItem(app, pane, item);
-  }
-
-  Future<void> _deleteItem(AppState app, PaneController pane, FileItem item) async {
     final ok = await _confirm(
-      title: 'Delete "${item.name}"?',
-      message: item.isDir
-          ? 'This permanently deletes the folder and everything in it.'
-          : 'This permanently deletes the file.',
+      title: items.length == 1 ? 'Delete "${items.first.name}"?' : 'Delete ${items.length} items?',
+      message: 'This permanently deletes the selected '
+          '${items.length == 1 ? (items.first.isDir ? 'folder and its contents' : 'file') : 'items'}.',
     );
-    if (ok) await app.deleteItem(pane, item);
+    if (ok) await app.deleteItems(pane, items);
   }
 
   Future<void> _showRowMenu(
@@ -135,7 +130,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         final name = await _promptText(title: 'Rename', initial: item.name, confirm: 'Rename');
         if (name != null) await app.renameItem(pane, item, name);
       case 'delete':
-        await _deleteItem(app, pane, item);
+        await _deleteSelected(app, pane);
       case 'newFolder':
         await _newFolder(app, pane);
       case 'copyPath':
@@ -594,16 +589,17 @@ class _BrowserScreenState extends State<BrowserScreen> {
             itemCount: pane.items.length,
             itemBuilder: (context, i) {
               final f = pane.items[i];
-              final selected = pane.selectedIndex == i;
+              final selected = pane.isSelected(i);
               final row = _fileRow(app, pane, f, i, left: left, selected: selected);
               if (!f.isDir) {
                 return Draggable<DragPayload>(
                   data: DragPayload(f, left),
                   dragAnchorStrategy: pointerDragAnchorStrategy,
-                  feedback: _dragGhost(f),
+                  feedback: _dragGhost(f, pane.isSelected(i) ? pane.selectedItems().length : 1),
                   onDragStarted: () {
                     app.focusPane(left);
-                    pane.select(i);
+                    // Keep an existing multi-selection if this row is part of it.
+                    if (!pane.isSelected(i)) pane.select(i);
                   },
                   childWhenDragging: Opacity(opacity: 0.4, child: row),
                   child: row,
@@ -655,14 +651,22 @@ class _BrowserScreenState extends State<BrowserScreen> {
       return GestureDetector(
         onTap: () {
           app.focusPane(left);
-          pane.select(index);
+          final kb = HardwareKeyboard.instance;
+          if (kb.isControlPressed || kb.isMetaPressed) {
+            pane.toggleSelect(index);
+          } else if (kb.isShiftPressed) {
+            pane.selectRange(index);
+          } else {
+            pane.select(index);
+          }
         },
         onDoubleTap: (f.isDir || f.isParent) ? () => pane.open(f) : null,
         onSecondaryTapDown: f.isParent
             ? null
             : (d) {
                 app.focusPane(left);
-                pane.select(index);
+                // Preserve a multi-selection if right-clicking inside it.
+                if (!pane.isSelected(index)) pane.select(index);
                 _showRowMenu(app, pane, left, f, d.globalPosition);
               },
         child: MouseRegion(
@@ -703,7 +707,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
     });
   }
 
-  Widget _dragGhost(FileItem f) {
+  Widget _dragGhost(FileItem f, int count) {
+    final label = count > 1 ? '$count items' : '${f.name}  ·  ${f.sizeLabel}';
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -715,10 +720,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
           boxShadow: [BoxShadow(color: FsColors.accent.withValues(alpha: 0.3), blurRadius: 24)],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(f.icon, style: const TextStyle(fontSize: 13)),
+          Text(count > 1 ? '📦' : f.icon, style: const TextStyle(fontSize: 13)),
           const SizedBox(width: 6),
-          Text('${f.name}  ·  ${f.sizeLabel}',
-              style: FsType.sans(size: 12, weight: FontWeight.w600, color: FsColors.accentHi)),
+          Text(label, style: FsType.sans(size: 12, weight: FontWeight.w600, color: FsColors.accentHi)),
         ]),
       ),
     );

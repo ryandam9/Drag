@@ -282,15 +282,26 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> deleteItem(PaneController pane, FileItem item) async {
-    if (item.isParent) return;
-    try {
-      await pane.backend.delete(pane.backend.childPath(pane.path, item.name, item.isDir),
-          isDir: item.isDir);
-      await pane.refresh();
-      pushToast('Deleted', item.name, ToastKind.info);
-    } catch (e) {
-      pushToast('Couldn\'t delete', _short(e), ToastKind.error);
+  Future<void> deleteItem(PaneController pane, FileItem item) => deleteItems(pane, [item]);
+
+  Future<void> deleteItems(PaneController pane, List<FileItem> items) async {
+    final targets = items.where((i) => !i.isParent).toList();
+    if (targets.isEmpty) return;
+    var failed = 0;
+    for (final item in targets) {
+      try {
+        await pane.backend.delete(pane.backend.childPath(pane.path, item.name, item.isDir),
+            isDir: item.isDir);
+      } catch (_) {
+        failed++;
+      }
+    }
+    await pane.refresh();
+    if (failed == 0) {
+      pushToast('Deleted', targets.length == 1 ? targets.first.name : '${targets.length} items',
+          ToastKind.info);
+    } else {
+      pushToast('Delete incomplete', '$failed of ${targets.length} failed', ToastKind.error);
     }
   }
 
@@ -345,14 +356,18 @@ class AppState extends ChangeNotifier {
   int get errorCount => transfers.where((t) => t.status == TransferStatus.error).length;
   int get pausedCount => transfers.where((t) => t.status == TransferStatus.paused).length;
 
-  /// Handle a drag from one pane dropped onto another → start a transfer.
+  /// Handle a drag from one pane dropped onto another → start transfer(s).
+  /// Transfers the source pane's whole selection (the dragged row is included).
   void dropTransfer(DragPayload payload, bool ontoLeft) {
     if (payload.fromLeft == ontoLeft) return; // dropped on its own pane
     final src = payload.fromLeft ? leftPane : rightPane;
     final dst = ontoLeft ? leftPane : rightPane;
-    final item = payload.item;
 
-    if (item.isDir || item.isParent) {
+    final selected = src.selectedItems();
+    final candidates = selected.isNotEmpty ? selected : [payload.item];
+    final files = candidates.where((f) => !f.isDir && !f.isParent).toList();
+
+    if (files.isEmpty) {
       pushToast('Not supported', 'Folder transfers aren\'t supported yet — drag files', ToastKind.info);
       return;
     }
@@ -361,9 +376,18 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    for (final item in files) {
+      _enqueueTransfer(src, dst, item, announce: files.length == 1);
+    }
+    if (files.length > 1) {
+      pushToast('Transferring', '${files.length} files → ${dst.endpointLabel}', ToastKind.info);
+    }
+  }
+
+  void _enqueueTransfer(PaneController src, PaneController dst, FileItem item,
+      {bool announce = true}) {
     final srcPath = src.backend.childPath(src.path, item.name, false);
     final dstPath = dst.backend.childPath(dst.path, item.name, false);
-    // Real transfer unless one side can't actually move bytes (demo backend).
     final simulated = !src.backend.supportsTransfer || !dst.backend.supportsTransfer;
     final direction =
         dst.kind == EndpointKind.local ? TransferDirection.download : TransferDirection.upload;
@@ -383,12 +407,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     if (simulated) {
-      pushToast('Queued', '${item.name} → ${dst.endpointLabel}', ToastKind.info);
+      if (announce) pushToast('Queued', '${item.name} → ${dst.endpointLabel}', ToastKind.info);
       return;
     }
 
-    // Real, streamed transfer (Local↔S3 or S3↔S3).
-    pushToast('Transfer started', '${item.name} → ${dst.endpointLabel}', ToastKind.info);
+    if (announce) {
+      pushToast('Transfer started', '${item.name} → ${dst.endpointLabel}', ToastKind.info);
+    }
     _transfers
         .run(
       t: t,
