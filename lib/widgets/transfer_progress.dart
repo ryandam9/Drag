@@ -17,6 +17,10 @@ class ActiveTransferOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    // Keep clear of screens whose bottom-left holds action buttons / forms.
+    if (app.screen == AppScreen.connections || app.screen == AppScreen.settings) {
+      return const SizedBox.shrink();
+    }
     final active = app.transfers.where((t) => t.status == TransferStatus.active).toList()
       ..sort((a, b) => b.sizeBytes.compareTo(a.sizeBytes));
     if (active.isEmpty) return const SizedBox.shrink();

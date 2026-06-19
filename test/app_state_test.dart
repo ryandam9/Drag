@@ -146,7 +146,8 @@ void main() {
       s3
         ..accessKeyId = 'AKIA'
         ..secretAccessKey = 'sec'
-        ..bucket = 'b';
+        ..bucket = 'b'
+        ..endpoint = '127.0.0.1:1'; // fail fast: don't hit real AWS in tests
       await app.connect(s3);
       expect(s3.online, isTrue);
       expect(app.toasts.last.kind, ToastKind.info);
@@ -156,6 +157,59 @@ void main() {
       final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
       await app.connect(sftp);
       expect(sftp.online, isTrue);
+    });
+  });
+
+  group('sessions / tabs', () {
+    test('starts with one session for the first S3 account', () {
+      expect(app.sessions.length, 1);
+      expect(app.activeSession.connection!.isS3, isTrue);
+      expect(app.leftPane, same(app.activeSession.left));
+      expect(app.rightPane, same(app.activeSession.right));
+    });
+
+    test('openSession adds a tab and focuses it', () {
+      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
+      final s = app.openSession(sftp);
+      expect(app.sessions.length, 2);
+      expect(app.activeSessionId, s.id);
+      expect(app.activeSession.title, sftp.name);
+    });
+
+    test('openSession focuses the existing tab for the same connection', () {
+      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
+      final first = app.openSession(sftp);
+      final again = app.openSession(sftp);
+      expect(app.sessions.length, 2); // not 3
+      expect(again.id, first.id);
+    });
+
+    test('switchSession changes the active tab (and panes)', () {
+      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
+      final initialId = app.activeSessionId;
+      app.openSession(sftp);
+      app.switchSession(initialId);
+      expect(app.activeSessionId, initialId);
+      expect(app.rightPane, same(app.activeSession.right));
+    });
+
+    test('closeSession removes a tab and re-points active', () {
+      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
+      final s = app.openSession(sftp);
+      app.closeSession(s.id);
+      expect(app.sessions.any((x) => x.id == s.id), isFalse);
+      expect(app.sessions.length, 1);
+    });
+
+    test('closing the last tab leaves a fresh Local session', () {
+      // Close down to nothing → a Local tab is recreated.
+      while (app.sessions.length > 1) {
+        app.closeSession(app.sessions.first.id);
+      }
+      app.closeSession(app.activeSessionId);
+      expect(app.sessions.length, 1);
+      expect(app.activeSession.connection, isNull); // Local
+      expect(app.activeSession.title, 'Local');
     });
   });
 

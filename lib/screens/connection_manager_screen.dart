@@ -152,10 +152,7 @@ class _ConnectionFormState extends State<ConnectionForm> {
         Row(children: [
           FsButton('⚡ Connect',
               kind: FsButtonKind.primary,
-              onTap: () {
-                app.connect(c);
-                if (!c.isS3 || c.hasS3Credentials) app.go(AppScreen.browser);
-              }),
+              onTap: () => app.connect(c)),
           const SizedBox(width: 10),
           FsButton('💾 Save', onTap: () => app.pushToast('Saved', '${c.name} configuration stored', ToastKind.success)),
           const SizedBox(width: 10),

@@ -23,8 +23,8 @@ void main() {
     await tester.pumpWidget(const FileSyncApp());
     await tester.pump();
 
-    // Title bar shows the active SFTP session.
-    expect(find.textContaining('FileSync — prod-server-01'), findsOneWidget);
+    // Title bar reflects the active session (default tab = first S3 account).
+    expect(find.textContaining('FileSync — s3-prod'), findsOneWidget);
     // Left pane is Local, right pane defaults to an S3 endpoint.
     expect(find.text('LOCAL'), findsOneWidget);
     expect(find.text('S3'), findsOneWidget);
