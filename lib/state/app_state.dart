@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../data/history_db.dart';
 import '../data/mock_data.dart';
-import '../fs/simulated_backend.dart';
+import '../fs/sftp_backend.dart';
 import '../fs/storage_backend.dart';
 import '../fs/transfer_service.dart';
 import '../models/connection.dart';
@@ -137,7 +137,7 @@ class AppState extends ChangeNotifier {
   StorageBackend _backendFor(Connection? c) {
     if (c == null) return _localBackend;
     return _backendCache.putIfAbsent(
-        c, () => c.isS3 ? S3Backend(c) : SimulatedBackend(c));
+        c, () => c.isS3 ? S3Backend(c) : SftpBackend(c));
   }
 
   /// Point the active session's pane at Local (`null`) or a saved connection.
@@ -241,7 +241,8 @@ class AppState extends ChangeNotifier {
 
     final srcPath = src.backend.childPath(src.path, item.name, false);
     final dstPath = dst.backend.childPath(dst.path, item.name, false);
-    final simulated = src.kind == EndpointKind.sftp || dst.kind == EndpointKind.sftp;
+    // Real transfer unless one side can't actually move bytes (demo backend).
+    final simulated = !src.backend.supportsTransfer || !dst.backend.supportsTransfer;
     final direction =
         dst.kind == EndpointKind.local ? TransferDirection.download : TransferDirection.upload;
 

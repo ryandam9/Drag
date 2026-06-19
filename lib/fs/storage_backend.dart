@@ -34,6 +34,9 @@ abstract class StorageBackend {
   /// Whether browsing/transfer can actually be attempted (e.g. S3 needs creds).
   bool get isReady => true;
 
+  /// Whether this backend performs real byte transfers (false = demo/simulated).
+  bool get supportsTransfer => true;
+
   Future<List<FileItem>> list(String path);
 
   Future<ReadHandle> openRead(String path);

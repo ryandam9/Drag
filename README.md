@@ -18,8 +18,9 @@ any combination:
   accounts/regions. Copies are **streamed** through the client
   (`source.openRead → dest.write`), so each side can use its own credentials —
   no server-side copy and no shared-account requirement.
-- **Local / SFTP** — the original SFTP sessions are kept (browsing + transfers
-  are simulated).
+- **SFTP ⇄ Local / S3** — real SFTP via `dartssh2` (password or private-key
+  auth); browse, upload and download against any SSH server, and stream
+  to/from S3 or local with no temp files.
 
 **S3 is real**, and talks to S3 through a **hand-written client** — there is no
 official AWS SDK for Dart, so Drag ships its own AWS **Signature V4** signer
@@ -73,7 +74,8 @@ lib/
     pane_controller.dart       Per-pane endpoint/path/listing/selection state
   fs/
     storage_backend.dart       StorageBackend interface + LocalBackend + S3Backend
-    simulated_backend.dart     SFTP demo backend
+    sftp_backend.dart          Real SFTP backend (dartssh2)
+    simulated_backend.dart     Offline SFTP demo backend (tests/fallback)
     transfer_service.dart      Streams source → dest with live progress (S3/local)
     aws/
       sigv4.dart               Hand-written AWS Signature V4 signer

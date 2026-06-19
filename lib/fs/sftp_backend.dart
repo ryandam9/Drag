@@ -1,0 +1,177 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:dartssh2/dartssh2.dart';
+
+import '../models/connection.dart';
+import '../models/file_item.dart';
+import 'storage_backend.dart';
+
+/// Real SFTP endpoint backed by `dartssh2`. Connects lazily on first use and
+/// reuses the session for subsequent operations, so it composes with the
+/// streamed [TransferService] (SFTP↔Local, SFTP↔S3) like the other backends.
+///
+/// Auth: password or private key (with optional passphrase). Host-key
+/// verification is currently accept-on-connect — see issue #17.
+class SftpBackend extends StorageBackend {
+  SftpBackend(this.connection);
+
+  final Connection connection;
+
+  SSHClient? _client;
+  SftpClient? _sftp;
+  Future<SftpClient>? _connecting;
+
+  @override
+  EndpointKind get kind => EndpointKind.sftp;
+
+  @override
+  String get badge => 'SFTP';
+
+  @override
+  bool get isReady => connection.host.isNotEmpty && connection.username.isNotEmpty;
+
+  @override
+  String get initialPath => connection.remotePath.isEmpty ? '/' : connection.remotePath;
+
+  @override
+  String displayPath(String path) =>
+      'sftp://${connection.username}@${connection.host}$path';
+
+  // ── Connection (lazy, shared) ──
+  Future<SftpClient> _ensure() {
+    if (_sftp != null) return Future.value(_sftp!);
+    return _connecting ??= _connect();
+  }
+
+  Future<SftpClient> _connect() async {
+    try {
+      final socket = await SSHSocket.connect(
+        connection.host,
+        connection.port,
+        timeout: Duration(seconds: connection.timeout.clamp(1, 60)),
+      );
+      final client = SSHClient(
+        socket,
+        username: connection.username,
+        identities: await _identities(),
+        onPasswordRequest: connection.auth == AuthMethod.password
+            ? () => connection.password
+            : null,
+      );
+      _client = client;
+      _sftp = await client.sftp();
+      return _sftp!;
+    } catch (e) {
+      _connecting = null; // allow retry on next attempt
+      rethrow;
+    }
+  }
+
+  Future<List<SSHKeyPair>?> _identities() async {
+    if (connection.auth != AuthMethod.privateKey || connection.keyFile.isEmpty) {
+      return null;
+    }
+    final path = _expandHome(connection.keyFile);
+    final file = File(path);
+    if (!await file.exists()) {
+      throw Exception('Key file not found: $path');
+    }
+    final pem = await file.readAsString();
+    return SSHKeyPair.fromPem(
+      pem,
+      connection.passphrase.isEmpty ? null : connection.passphrase,
+    );
+  }
+
+  static String _expandHome(String path) {
+    if (!path.startsWith('~')) return path;
+    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    return path.replaceFirst('~', home);
+  }
+
+  // ── Listing ──
+  @override
+  Future<List<FileItem>> list(String path) async {
+    final sftp = await _ensure();
+    final dir = path.isEmpty ? '/' : path;
+    final names = await sftp.listdir(dir);
+
+    final items = <FileItem>[];
+    if (dir != '/') items.add(const FileItem(name: '..', isDir: true));
+
+    for (final entry in names) {
+      final name = entry.filename;
+      if (name == '.' || name == '..') continue;
+      final attr = entry.attr;
+      final longname = entry.longname;
+      final isDir = attr.type == SftpFileType.directory ||
+          (longname.isNotEmpty && longname.startsWith('d'));
+      items.add(FileItem(
+        name: name,
+        isDir: isDir,
+        sizeBytes: isDir ? null : attr.size,
+        modified: attr.modifyTime != null
+            ? formatModified(DateTime.fromMillisecondsSinceEpoch(attr.modifyTime! * 1000))
+            : '',
+        perms: longname.length >= 10 ? longname.substring(0, 10) : '',
+      ));
+    }
+    items.sort(StorageBackend.dirsFirst);
+    return items;
+  }
+
+  // ── Read / write ──
+  @override
+  Future<ReadHandle> openRead(String path) async {
+    final sftp = await _ensure();
+    final file = await sftp.open(path);
+    final stat = await file.stat();
+    final length = stat.size ?? 0;
+    return ReadHandle(file.read(), length);
+  }
+
+  @override
+  Future<void> write(
+    String path,
+    Stream<Uint8List> data,
+    int length, {
+    void Function(int sent)? onProgress,
+  }) async {
+    final sftp = await _ensure();
+    final file = await sftp.open(
+      path,
+      mode: SftpFileOpenMode.create |
+          SftpFileOpenMode.write |
+          SftpFileOpenMode.truncate,
+    );
+    try {
+      final writer = file.write(data, onProgress: onProgress);
+      await writer.done;
+    } finally {
+      await file.close();
+    }
+  }
+
+  // ── Path helpers (POSIX) ──
+  @override
+  String childPath(String path, String name, bool isDir) {
+    final base = path.endsWith('/') ? path : '$path/';
+    return '$base$name';
+  }
+
+  @override
+  String parentPath(String path) {
+    final trimmed = path.endsWith('/') && path.length > 1
+        ? path.substring(0, path.length - 1)
+        : path;
+    final idx = trimmed.lastIndexOf('/');
+    return idx <= 0 ? '/' : trimmed.substring(0, idx);
+  }
+
+  @override
+  void dispose() {
+    _sftp?.close();
+    _client?.close();
+  }
+}
