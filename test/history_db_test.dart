@@ -1,5 +1,5 @@
-import 'package:filesync/data/history_db.dart';
-import 'package:filesync/models/transfer.dart';
+import 'package:drag/data/history_db.dart';
+import 'package:drag/models/transfer.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

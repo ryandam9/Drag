@@ -5,7 +5,26 @@
 #include <gdk/gdkx.h>
 #endif
 
+#include <libgen.h>
+#include <limits.h>
+#include <unistd.h>
+
 #include "flutter/generated_plugin_registrant.h"
+
+// Sets the window icon from the bundled Flutter asset (path is resolved
+// relative to the running executable).
+static void set_window_icon(GtkWindow* window) {
+  char exe_path[PATH_MAX] = {0};
+  ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+  if (len <= 0) return;
+  exe_path[len] = '\0';
+  gchar* dir = g_path_get_dirname(exe_path);
+  gchar* icon_path = g_build_filename(
+      dir, "data", "flutter_assets", "assets", "icons", "drag_512.png", nullptr);
+  gtk_window_set_icon_from_file(window, icon_path, nullptr);
+  g_free(icon_path);
+  g_free(dir);
+}
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -45,14 +64,16 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "filesync");
+    gtk_header_bar_set_title(header_bar, "Drag");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "filesync");
+    gtk_window_set_title(window, "Drag");
   }
 
-  gtk_window_set_default_size(window, 1280, 720);
+  set_window_icon(window);
+
+  gtk_window_set_default_size(window, 1280, 800);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(

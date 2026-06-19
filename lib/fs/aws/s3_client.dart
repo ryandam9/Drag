@@ -38,7 +38,7 @@ class S3Exception implements Exception {
   String toString() => 'S3 error $statusCode: $message';
 }
 
-/// A minimal Amazon S3 client implementing exactly what FileSync needs
+/// A minimal Amazon S3 client implementing exactly what Drag needs
 /// (ListObjectsV2, GetObject, PutObject) over the S3 REST API, signed with
 /// AWS Signature V4. Uses path-style addressing so it works against AWS as
 /// well as S3-compatible servers (MinIO, etc.).

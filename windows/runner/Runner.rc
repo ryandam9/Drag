@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.filesync" "\0"
-            VALUE "FileDescription", "filesync" "\0"
+            VALUE "CompanyName", "Drag" "\0"
+            VALUE "FileDescription", "Drag" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "filesync" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.filesync. All rights reserved." "\0"
-            VALUE "OriginalFilename", "filesync.exe" "\0"
-            VALUE "ProductName", "filesync" "\0"
+            VALUE "InternalName", "drag" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Drag. All rights reserved." "\0"
+            VALUE "OriginalFilename", "drag.exe" "\0"
+            VALUE "ProductName", "Drag" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

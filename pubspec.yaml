@@ -1,4 +1,4 @@
-name: filesync
+name: drag
 description: "FileSync — a cross-platform SFTP/FTP file transfer client (UI implementation of the FileSync mockup)."
 publish_to: 'none'
 version: 1.0.0+1
@@ -23,3 +23,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icons/drag.png
+    - assets/icons/drag_256.png
+    - assets/icons/drag_512.png

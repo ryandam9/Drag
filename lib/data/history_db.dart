@@ -149,7 +149,7 @@ class HistoryRepository {
 
   static Future<String> _defaultPath(DatabaseFactory factory) async {
     final base = await factory.getDatabasesPath();
-    return base.endsWith('/') ? '${base}filesync_history.db' : '$base/filesync_history.db';
+    return base.endsWith('/') ? '${base}drag_history.db' : '$base/drag_history.db';
   }
 
   Future<int> add(TransferRecord record) =>

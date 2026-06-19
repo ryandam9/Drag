@@ -1,4 +1,4 @@
-import 'package:filesync/fs/aws/sigv4.dart';
+import 'package:drag/fs/aws/sigv4.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

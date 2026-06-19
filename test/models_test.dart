@@ -1,6 +1,6 @@
-import 'package:filesync/models/connection.dart';
-import 'package:filesync/models/file_item.dart';
-import 'package:filesync/models/transfer.dart';
+import 'package:drag/models/connection.dart';
+import 'package:drag/models/file_item.dart';
+import 'package:drag/models/transfer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

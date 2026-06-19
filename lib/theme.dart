@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Color palette ported 1:1 from the FileSync mockup CSS variables.
+/// Color palette ported 1:1 from the original mockup CSS variables.
 class FsColors {
   static const bgScaffold = Color(0xFF08090D);
   static const bgDeep = Color(0xFF0F1117);
@@ -69,7 +69,7 @@ class FsType {
       );
 }
 
-ThemeData buildFileSyncTheme() {
+ThemeData buildDragTheme() {
   final base = ThemeData.dark(useMaterial3: true);
   return base.copyWith(
     scaffoldBackgroundColor: FsColors.bgScaffold,

@@ -2,13 +2,13 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:filesync/main.dart';
-import 'package:filesync/state/app_state.dart';
-import 'package:filesync/widgets/nav_rail.dart';
+import 'package:drag/main.dart';
+import 'package:drag/state/app_state.dart';
+import 'package:drag/widgets/nav_rail.dart';
 
 void main() {
   setUp(() {
-    // FileSync is a wide desktop layout; give the test a realistic window.
+    // Drag is a wide desktop layout; give the test a realistic window.
     final binding = TestWidgetsFlutterBinding.ensureInitialized();
     binding.platformDispatcher.views.first.physicalSize = const Size(1320, 860);
     binding.platformDispatcher.views.first.devicePixelRatio = 1.0;
@@ -19,19 +19,19 @@ void main() {
     binding.platformDispatcher.views.first.resetPhysicalSize();
   });
 
-  testWidgets('FileSync boots into the dual-pane browser', (tester) async {
-    await tester.pumpWidget(const FileSyncApp());
+  testWidgets('Drag boots into the dual-pane browser', (tester) async {
+    await tester.pumpWidget(const DragApp());
     await tester.pump();
 
     // Title bar reflects the active session (default tab = first S3 account).
-    expect(find.textContaining('FileSync — s3-prod'), findsOneWidget);
+    expect(find.textContaining('Drag — s3-prod'), findsOneWidget);
     // Left pane is Local, right pane defaults to an S3 endpoint.
     expect(find.text('LOCAL'), findsOneWidget);
     expect(find.text('S3'), findsOneWidget);
   });
 
   testWidgets('Navigation rail switches to the transfer queue', (tester) async {
-    await tester.pumpWidget(const FileSyncApp());
+    await tester.pumpWidget(const DragApp());
     await tester.pump();
 
     expect(find.byType(NavRail), findsOneWidget);

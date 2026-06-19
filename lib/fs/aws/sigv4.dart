@@ -21,7 +21,7 @@ const String unsignedPayload = 'UNSIGNED-PAYLOAD';
 
 /// Implements AWS Signature Version 4 (the scheme used by every official AWS
 /// SDK) for the S3 REST API. This is a hand-written, dependency-free signer —
-/// there is no official AWS SDK for Dart, so FileSync ships its own.
+/// there is no official AWS SDK for Dart, so Drag ships its own.
 ///
 /// Reference: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv4.html
 class SigV4Signer {
