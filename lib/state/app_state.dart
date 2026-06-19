@@ -48,7 +48,10 @@ extension ToastKindStyle on ToastKind {
 /// Single source of truth for the app. Drives navigation, the two file panes
 /// (each backed by Local / S3 / simulated-SFTP), the transfer queue and toasts.
 class AppState extends ChangeNotifier {
-  AppState() {
+  /// [tickEnabled] starts the demo ticker (disable for deterministic tests);
+  /// [autoRefreshPanes] kicks off the initial pane listings (disable in tests
+  /// that don't want real filesystem I/O).
+  AppState({bool tickEnabled = true, bool autoRefreshPanes = true}) {
     leftPane = PaneController(backend: _localBackend, onChanged: notifyListeners);
     // Right pane defaults to the first S3 account to surface the new feature.
     final firstS3 = connections.firstWhere((c) => c.isS3, orElse: () => connections.first);
@@ -57,13 +60,17 @@ class AppState extends ChangeNotifier {
       connection: firstS3,
       onChanged: notifyListeners,
     );
-    _ticker = Timer.periodic(const Duration(milliseconds: 700), (_) => _tick());
-    // Kick off initial listings.
-    leftPane.refresh();
-    rightPane.refresh();
+    if (tickEnabled) {
+      _ticker = Timer.periodic(const Duration(milliseconds: 700), (_) => _tick());
+    }
+    if (autoRefreshPanes) {
+      leftPane.refresh();
+      rightPane.refresh();
+    }
   }
 
-  late final Timer _ticker;
+  Timer? _ticker;
+  bool _disposed = false;
   final TransferService _transfers = TransferService();
   final LocalBackend _localBackend = LocalBackend();
   final Map<Connection, StorageBackend> _backendCache = {};
@@ -195,9 +202,10 @@ class AppState extends ChangeNotifier {
       srcPath: srcPath,
       dst: dst.backend,
       dstPath: dstPath,
-      onChange: notifyListeners,
+      onChange: _safeNotify,
     )
         .then((_) {
+      if (_disposed) return;
       if (t.status == TransferStatus.done) {
         pushToast('Transfer complete', '${item.name} → ${dst.endpointLabel} (${formatBytes(t.sizeBytes)})',
             ToastKind.success);
@@ -254,13 +262,20 @@ class AppState extends ChangeNotifier {
   }
 
   void pushToast(String title, String sub, ToastKind kind) {
+    if (_disposed) return;
     final msg = ToastMessage(_toastSeq++, title, sub, kind);
     toasts.add(msg);
     notifyListeners();
     Future.delayed(const Duration(seconds: 4), () {
       toasts.removeWhere((m) => m.id == msg.id);
-      notifyListeners();
+      _safeNotify();
     });
+  }
+
+  /// Notify only while still mounted — async callbacks (toasts, live
+  /// transfers) may resolve after the AppState has been disposed.
+  void _safeNotify() {
+    if (!_disposed) notifyListeners();
   }
 
   /// Advances *simulated* transfers only (real ones are driven by
@@ -304,9 +319,14 @@ class AppState extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
+  /// Advances the simulated transfer ticker once (for deterministic tests).
+  @visibleForTesting
+  void debugTick() => _tick();
+
   @override
   void dispose() {
-    _ticker.cancel();
+    _disposed = true;
+    _ticker?.cancel();
     super.dispose();
   }
 }
