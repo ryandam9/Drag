@@ -111,6 +111,8 @@ class _ConnectionFormState extends State<ConnectionForm> {
   late final _user = TextEditingController(text: c.username);
   late final _timeout = TextEditingController(text: '${c.timeout}');
   late final _keyFile = TextEditingController(text: c.keyFile);
+  late final _passphrase = TextEditingController(text: c.passphrase);
+  late final _password = TextEditingController(text: c.password);
   late final _remotePath = TextEditingController(text: c.remotePath);
   late final _localPath = TextEditingController(text: c.localPath);
 
@@ -123,7 +125,7 @@ class _ConnectionFormState extends State<ConnectionForm> {
 
   @override
   void dispose() {
-    for (final ctl in [_host, _port, _user, _timeout, _keyFile, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token]) {
+    for (final ctl in [_host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token]) {
       ctl.dispose();
     }
     super.dispose();
@@ -225,14 +227,20 @@ class _ConnectionFormState extends State<ConnectionForm> {
       const SizedBox(height: 8),
       _authTabs(),
       const SizedBox(height: 16),
-      FormField2(
-        'Key file',
-        Row(children: [
-          Expanded(child: _field(_keyFile, (v) => c.keyFile = v, hint: '~/.ssh/id_rsa')),
-          const SizedBox(width: 6),
-          FsButton('Browse…', fontSize: 11, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-        ]),
-      ),
+      if (c.auth == AuthMethod.password)
+        FormField2('Password', _field(_password, (v) => c.password = v, obscure: true, hint: '••••••••'))
+      else ...[
+        FormField2(
+          'Key file',
+          Row(children: [
+            Expanded(child: _field(_keyFile, (v) => c.keyFile = v, hint: '~/.ssh/id_rsa')),
+            const SizedBox(width: 6),
+            FsButton('Browse…', fontSize: 11, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        FormField2('Passphrase', _field(_passphrase, (v) => c.passphrase = v, obscure: true, hint: 'Leave blank if none')),
+      ],
       const SizedBox(height: 12),
       FormField2('Remote start path', _field(_remotePath, (v) => c.remotePath = v)),
       const SizedBox(height: 12),

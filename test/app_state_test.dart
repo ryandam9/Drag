@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:drag/fs/simulated_backend.dart';
 import 'package:drag/fs/storage_backend.dart';
 import 'package:drag/models/connection.dart';
 import 'package:drag/models/file_item.dart';
@@ -154,7 +155,11 @@ void main() {
     });
 
     test('connect() marks SFTP connections online', () async {
-      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
+      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp)
+        // Point at a closed local port so the background SFTP connect fails
+        // fast (this test only asserts the synchronous online flag).
+        ..host = '127.0.0.1'
+        ..port = 1;
       await app.connect(sftp);
       expect(sftp.online, isTrue);
     });
@@ -168,34 +173,37 @@ void main() {
       expect(app.rightPane, same(app.activeSession.right));
     });
 
+    // Use the second (credential-less) S3 account so opening a tab doesn't hit
+    // the network on refresh (S3 without creds short-circuits).
+    Connection secondConn() =>
+        app.connections.firstWhere((c) => c.isS3 && c.name.startsWith('s3-archive'));
+
     test('openSession adds a tab and focuses it', () {
-      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
-      final s = app.openSession(sftp);
+      final conn = secondConn();
+      final s = app.openSession(conn);
       expect(app.sessions.length, 2);
       expect(app.activeSessionId, s.id);
-      expect(app.activeSession.title, sftp.name);
+      expect(app.activeSession.title, conn.name);
     });
 
     test('openSession focuses the existing tab for the same connection', () {
-      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
-      final first = app.openSession(sftp);
-      final again = app.openSession(sftp);
+      final conn = secondConn();
+      final first = app.openSession(conn);
+      final again = app.openSession(conn);
       expect(app.sessions.length, 2); // not 3
       expect(again.id, first.id);
     });
 
     test('switchSession changes the active tab (and panes)', () {
-      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
       final initialId = app.activeSessionId;
-      app.openSession(sftp);
+      app.openSession(secondConn());
       app.switchSession(initialId);
       expect(app.activeSessionId, initialId);
       expect(app.rightPane, same(app.activeSession.right));
     });
 
     test('closeSession removes a tab and re-points active', () {
-      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
-      final s = app.openSession(sftp);
+      final s = app.openSession(secondConn());
       app.closeSession(s.id);
       expect(app.sessions.any((x) => x.id == s.id), isFalse);
       expect(app.sessions.length, 1);
@@ -238,10 +246,13 @@ void main() {
       expect(app.toasts.last.kind, ToastKind.error);
     });
 
-    test('SFTP endpoint produces a simulated (non-live) queued transfer', () async {
+    test('a non-transferring (demo) backend produces a simulated, non-live transfer', () async {
       await app.setPaneEndpoint(true, null); // local ready
-      final sftp = app.connections.firstWhere((c) => c.kind == EndpointKind.sftp);
-      await app.setPaneEndpoint(false, sftp); // simulated, ready
+      // Right pane: a demo backend that can't move real bytes.
+      app.rightPane
+        ..backend = SimulatedBackend(Connection(name: 'demo', protocol: Protocol.sftp, remotePath: '/srv'))
+        ..connection = Connection(name: 'demo', protocol: Protocol.sftp);
+      await app.rightPane.refresh();
       final before = app.transfers.length;
       app.dropTransfer(const DragPayload(_file, true), false);
       expect(app.transfers.length, before + 1);

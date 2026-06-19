@@ -20,6 +20,9 @@ class SimulatedBackend extends StorageBackend {
   String get badge => 'REMOTE';
 
   @override
+  bool get supportsTransfer => false;
+
+  @override
   String get initialPath => connection.remotePath.isEmpty ? '/' : connection.remotePath;
 
   @override

@@ -35,6 +35,7 @@ class Connection {
   AuthMethod auth;
   String keyFile;
   String passphrase;
+  String password;
   String remotePath;
   String localPath;
   int timeout;
@@ -73,6 +74,7 @@ class Connection {
     this.auth = AuthMethod.privateKey,
     this.keyFile = '',
     this.passphrase = '',
+    this.password = '',
     this.remotePath = '/',
     this.localPath = '',
     this.timeout = 30,
