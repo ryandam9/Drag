@@ -1,58 +1,35 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../data/connection_store.dart';
 import '../data/history_db.dart';
-import '../data/mock_data.dart';
 import '../data/settings_store.dart';
-import '../fs/sftp_backend.dart';
-import '../fs/storage_backend.dart';
-import '../fs/transfer_service.dart';
 import '../models/connection.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
-import '../theme.dart';
+import 'connections_controller.dart';
 import 'pane_controller.dart';
 import 'session.dart';
+import 'sessions_controller.dart';
+import 'settings_controller.dart';
+import 'toast.dart';
+import 'transfers_controller.dart';
 
 export 'pane_controller.dart' show DragPayload;
 export 'session.dart' show Session;
+export 'toast.dart' show ToastMessage, ToastKind, ToastKindStyle, ToastSink;
+export 'settings_controller.dart' show SettingsController;
+export 'connections_controller.dart' show ConnectionsController;
+export 'sessions_controller.dart' show SessionsController;
+export 'transfers_controller.dart' show TransfersController;
 
 enum AppScreen { browser, connections, queue, dashboard, settings }
 
-class ToastMessage {
-  final String title;
-  final String subtitle;
-  final String? detail;
-  final ToastKind kind;
-  final int id;
-  ToastMessage(this.id, this.title, this.subtitle, this.kind, {this.detail});
-}
-
-enum ToastKind { success, error, info }
-
-extension ToastKindStyle on ToastKind {
-  String get icon => switch (this) {
-        ToastKind.success => '✅',
-        ToastKind.error => '❌',
-        ToastKind.info => 'ℹ️',
-      };
-
-  Color get color => switch (this) {
-        ToastKind.success => FsColors.green,
-        ToastKind.error => FsColors.red,
-        ToastKind.info => FsColors.accent,
-      };
-
-  Color get fg => switch (this) {
-        ToastKind.success => FsColors.badgeDoneFg,
-        ToastKind.error => FsColors.badgeErrorFg,
-        ToastKind.info => FsColors.accentHi,
-      };
-}
-
-/// Single source of truth for the app. Drives navigation, the two file panes
-/// (each backed by Local / S3 / simulated-SFTP), the transfer queue and toasts.
+/// Coordinator for the app. Owns four focused [ChangeNotifier] controllers —
+/// [settingsController], [connectionsController], [sessionsController],
+/// [transfersController] — plus the cross-cutting bits (navigation, toasts,
+/// history). It forwards each controller's notifications so legacy [AppScope]
+/// consumers keep working, while widgets that subscribe to a specific
+/// controller scope only rebuild for their own slice.
 class AppState extends ChangeNotifier {
   /// [tickEnabled] starts the demo ticker (disable for deterministic tests);
   /// [autoRefreshPanes] kicks off the initial pane listings (disable in tests
@@ -67,432 +44,144 @@ class AppState extends ChangeNotifier {
     List<Connection>? connections,
   }) {
     _history = history;
-    _connectionStore = connectionStore;
-    _settingsStore = settingsStore;
-    if (settings != null) _applySettings(settings);
-    if (connections != null) {
-      this.connections
-        ..clear()
-        ..addAll(connections);
-    }
-    selectedConnection = this.connections.first;
+
+    _settings = SettingsController(
+      store: settingsStore,
+      initial: settings,
+      onShowHiddenChanged: (v) => _sessions.applyShowHidden(v),
+    );
+
+    _connections = ConnectionsController(
+      store: connectionStore,
+      initial: connections,
+      onRemoved: (c) => _sessions.evictBackend(c),
+    );
+
     // Start with one session: Local ⇄ the first S3 account (surfaces the feature).
-    final firstS3 = this.connections.firstWhere((c) => c.isS3, orElse: () => this.connections.first);
-    final initial = _buildSession(firstS3);
-    sessions.add(initial);
-    activeSessionId = initial.id;
-    if (tickEnabled) {
-      _ticker = Timer.periodic(const Duration(milliseconds: 700), (_) => _tick());
-    }
-    if (autoRefreshPanes) {
-      leftPane.refresh();
-      rightPane.refresh();
-    }
+    final list = _connections.connections;
+    final firstS3 = list.firstWhere((c) => c.isS3, orElse: () => list.first);
+    _sessions = SessionsController(
+      initialRemote: firstS3,
+      showHidden: _settings.showHiddenFiles,
+      autoRefresh: autoRefreshPanes,
+      onToast: pushToast,
+    );
+
+    _transfers = TransfersController(
+      tickEnabled: tickEnabled,
+      onToast: pushToast,
+      onRecord: _record,
+    );
+
+    // Forward sub-controller changes so global [AppScope] consumers still update.
+    _settings.addListener(_safeNotify);
+    _connections.addListener(_safeNotify);
+    _sessions.addListener(_safeNotify);
+    _transfers.addListener(_safeNotify);
+
     if (_history != null) refreshHistory();
   }
 
-  Timer? _ticker;
-  bool _disposed = false;
-  final TransferService _transfers = TransferService();
-  final LocalBackend _localBackend = LocalBackend();
-  final Map<Connection, StorageBackend> _backendCache = {};
+  late final SettingsController _settings;
+  late final ConnectionsController _connections;
+  late final SessionsController _sessions;
+  late final TransfersController _transfers;
   late final HistoryRepository? _history;
-  late final ConnectionStore? _connectionStore;
-  late final SettingsStore? _settingsStore;
 
+  bool _disposed = false;
+
+  /// The focused sub-controllers (for scoped subscriptions; see *_scope.dart).
+  SettingsController get settingsController => _settings;
+  ConnectionsController get connectionsController => _connections;
+  SessionsController get sessionsController => _sessions;
+  TransfersController get transfersController => _transfers;
+
+  // ── Navigation ──
   AppScreen screen = AppScreen.browser;
-
-  final List<Connection> connections = buildConnections();
-  final List<Transfer> transfers = buildTransfers();
-  final List<ToastMessage> toasts = [];
-
-  bool get hasConnectionStore => _connectionStore != null;
-
-  // ── Transfer history (SQLite-backed) ──
-  List<TransferRecord> history = const [];
-  HistoryStats historyStats = const HistoryStats();
-  bool get hasHistoryDb => _history != null;
-
-  // ── Sessions (tabs) ──
-  final List<Session> sessions = [];
-  int _sessionSeq = 0;
-  late int activeSessionId;
-
-  Session get activeSession =>
-      sessions.firstWhere((s) => s.id == activeSessionId, orElse: () => sessions.first);
-
-  /// The active session's panes. Most of the app talks to these getters, so it
-  /// transparently follows whichever tab is in front.
-  PaneController get leftPane => activeSession.left;
-  PaneController get rightPane => activeSession.right;
-
-  late Connection selectedConnection;
-
-  int maxThreads = 5;
-  int _toastSeq = 0;
-
-  // ── Settings (Appearance) ──
-  // These are applied live and persisted via [SettingsStore]; see the setters.
-  String themeName = 'Dark (default)';
-  Color accent = FsColors.accent;
-  double uiFontSize = 13;
-  String monospaceFont = 'JetBrains Mono';
-  bool showHiddenFiles = true;
-  bool showPermsColumn = true;
-  bool showLogOnStartup = false;
-  bool confirmOverwrite = true;
-  AppSettings _windowGeometry = AppSettings();
-
-  bool get hasSettingsStore => _settingsStore != null;
-
-  /// Snapshot of the current settings for persistence.
-  AppSettings get currentSettings => AppSettings(
-        themeName: themeName,
-        accentValue: accent.toARGB32(),
-        uiFontSize: uiFontSize,
-        monospaceFont: monospaceFont,
-        showHiddenFiles: showHiddenFiles,
-        showPermsColumn: showPermsColumn,
-        showLogOnStartup: showLogOnStartup,
-        confirmOverwrite: confirmOverwrite,
-        windowWidth: _windowGeometry.windowWidth,
-        windowHeight: _windowGeometry.windowHeight,
-        windowX: _windowGeometry.windowX,
-        windowY: _windowGeometry.windowY,
-      );
-
-  /// Apply persisted settings to in-memory state + the global theme accent.
-  /// Called from the constructor before panes/sessions are built so the
-  /// hidden-file filter and accent are correct from the first frame.
-  void _applySettings(AppSettings s) {
-    themeName = s.themeName;
-    accent = Color(s.accentValue);
-    uiFontSize = s.uiFontSize;
-    monospaceFont = s.monospaceFont;
-    showHiddenFiles = s.showHiddenFiles;
-    showPermsColumn = s.showPermsColumn;
-    showLogOnStartup = s.showLogOnStartup;
-    confirmOverwrite = s.confirmOverwrite;
-    _windowGeometry = s;
-    FsColors.accent = accent;
-    FsColors.accentHi = FsColors.highlightFor(accent);
-  }
-
-  Future<void> _persistSettings() async => _settingsStore?.save(currentSettings);
-
-  // ── Settings mutators (apply live + persist) ──
-
-  void setThemeName(String v) {
-    themeName = v;
-    notifyListeners();
-    _persistSettings();
-  }
-
-  void setAccent(Color c) {
-    accent = c;
-    FsColors.accent = c;
-    FsColors.accentHi = FsColors.highlightFor(c);
-    notifyListeners();
-    _persistSettings();
-  }
-
-  void setUiFontSize(double v) {
-    uiFontSize = v;
-    notifyListeners();
-    _persistSettings();
-  }
-
-  void setMonospaceFont(String v) {
-    monospaceFont = v;
-    notifyListeners();
-    _persistSettings();
-  }
-
-  void setShowHiddenFiles(bool v) {
-    showHiddenFiles = v;
-    for (final s in sessions) {
-      s.left.setShowHidden(v);
-      s.right.setShowHidden(v);
-    }
-    notifyListeners();
-    _persistSettings();
-  }
-
-  void setShowPermsColumn(bool v) {
-    showPermsColumn = v;
-    notifyListeners();
-    _persistSettings();
-  }
-
-  void setShowLogOnStartup(bool v) {
-    showLogOnStartup = v;
-    notifyListeners();
-    _persistSettings();
-  }
-
-  void setConfirmOverwrite(bool v) {
-    confirmOverwrite = v;
-    notifyListeners();
-    _persistSettings();
-  }
-
-  /// Restore everything to defaults (and persist).
-  void resetSettings() {
-    _applySettings(AppSettings(
-      windowWidth: _windowGeometry.windowWidth,
-      windowHeight: _windowGeometry.windowHeight,
-      windowX: _windowGeometry.windowX,
-      windowY: _windowGeometry.windowY,
-    ));
-    for (final s in sessions) {
-      s.left.setShowHidden(showHiddenFiles);
-      s.right.setShowHidden(showHiddenFiles);
-    }
-    notifyListeners();
-    _persistSettings();
-  }
-
-  /// Persist the latest window geometry (called from the window listener).
-  Future<void> saveWindowState({
-    required double width,
-    required double height,
-    required double x,
-    required double y,
-  }) async {
-    _windowGeometry
-      ..windowWidth = width
-      ..windowHeight = height
-      ..windowX = x
-      ..windowY = y;
-    await _persistSettings();
-  }
-
   void go(AppScreen s) {
     screen = s;
     notifyListeners();
   }
 
-  void selectConnection(Connection c) {
-    selectedConnection = c;
+  // ── Toasts ──
+  final List<ToastMessage> toasts = [];
+  int _toastSeq = 0;
+
+  void pushToast(String title, String sub, ToastKind kind, {String? detail}) {
+    if (_disposed) return;
+    final msg = ToastMessage(_toastSeq++, title, sub, kind, detail: detail);
+    toasts.add(msg);
     notifyListeners();
+    Future.delayed(const Duration(seconds: 5), () {
+      toasts.removeWhere((m) => m.id == msg.id);
+      _safeNotify();
+    });
   }
 
-  void setMaxThreads(int v) {
-    maxThreads = v.clamp(1, 16);
-    notifyListeners();
-  }
-
-  // ── Saved connections (persisted) ─────────────────────────────────────
-
-  Future<void> _persistConnections() async {
-    await _connectionStore?.replaceAll(connections);
-  }
-
-  /// Create a blank connection, select it, and persist.
-  Future<Connection> newConnection() async {
-    final c = Connection(id: Connection.newId(), name: 'New connection', host: '');
-    connections.add(c);
-    selectedConnection = c;
-    notifyListeners();
-    await _persistConnections();
-    return c;
-  }
-
-  /// Persist edits made to [c] (in place via the form).
-  Future<void> saveConnection(Connection c) async {
-    if (c.id.isEmpty) c.id = Connection.newId();
-    await _connectionStore?.upsert(c, connections.indexOf(c).clamp(0, connections.length));
-    notifyListeners();
-  }
-
-  Future<Connection> duplicateConnection(Connection c) async {
-    final copy = Connection.fromJson(c.toJson())
-      ..id = Connection.newId()
-      ..name = '${c.name} (copy)';
-    final idx = connections.indexOf(c);
-    connections.insert(idx < 0 ? connections.length : idx + 1, copy);
-    selectedConnection = copy;
-    notifyListeners();
-    await _persistConnections();
-    return copy;
-  }
-
-  Future<void> deleteConnection(Connection c) async {
-    final idx = connections.indexOf(c);
-    connections.remove(c);
-    _backendCache.remove(c);
-    if (connections.isEmpty) connections.add(Connection(id: Connection.newId(), name: 'New connection'));
-    if (identical(selectedConnection, c)) {
-      selectedConnection = connections[idx.clamp(0, connections.length - 1)];
-    }
-    notifyListeners();
-    await _persistConnections();
-  }
-
-  // ── Endpoints / backends ──────────────────────────────────────────────
-
-  /// Builds (and caches) the backend for a connection. `null` → Local.
-  StorageBackend _backendFor(Connection? c) {
-    if (c == null) return _localBackend;
-    return _backendCache.putIfAbsent(
-        c, () => c.isS3 ? S3Backend(c) : SftpBackend(c));
-  }
-
-  /// Point the active session's pane at Local (`null`) or a saved connection.
-  Future<void> setPaneEndpoint(bool left, Connection? c) async {
-    final pane = left ? leftPane : rightPane;
-    await pane.switchTo(_backendFor(c), c);
-  }
-
-  // ── Sessions / tabs ───────────────────────────────────────────────────
-
-  Session _buildSession(Connection? remote) {
-    final left = PaneController(
-        backend: _localBackend, onChanged: _safeNotify, showHidden: showHiddenFiles);
-    final right = PaneController(
-        backend: _backendFor(remote),
-        connection: remote,
-        onChanged: _safeNotify,
-        showHidden: showHiddenFiles);
-    return Session(id: _sessionSeq++, left: left, right: right);
-  }
-
-  /// Open a new tab for [remote] (null = a Local-only tab), or focus the
-  /// existing tab already connected to it. Keeps every server in its own tab.
-  Session openSession(Connection? remote) {
-    if (remote != null) {
-      for (final s in sessions) {
-        if (identical(s.connection, remote)) {
-          activeSessionId = s.id;
-          s.right.refresh();
-          notifyListeners();
-          return s;
-        }
-      }
-    }
-    final s = _buildSession(remote);
-    sessions.add(s);
-    activeSessionId = s.id;
-    s.left.refresh();
-    s.right.refresh();
-    notifyListeners();
-    return s;
-  }
-
-  // ── Pane focus + file operations ──────────────────────────────────────
-
-  /// Which pane toolbar/keyboard actions target.
-  bool focusedLeft = true;
-  PaneController get focusedPane => focusedLeft ? leftPane : rightPane;
-
-  void focusPane(bool left) {
-    if (focusedLeft != left) {
-      focusedLeft = left;
-      notifyListeners();
-    }
-  }
-
-  Future<void> createFolder(PaneController pane, String name) async {
-    if (name.trim().isEmpty) return;
-    if (!pane.backend.supportsMutation) {
-      pushToast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
-      return;
-    }
-    try {
-      await pane.backend.makeDir(pane.backend.childPath(pane.path, name.trim(), true));
-      await pane.refresh();
-      pushToast('Folder created', name.trim(), ToastKind.success);
-    } catch (e) {
-      pushToast('Couldn\'t create folder', _short(e), ToastKind.error);
-    }
-  }
-
-  Future<void> renameItem(PaneController pane, FileItem item, String newName) async {
-    if (item.isParent || newName.trim().isEmpty || newName.trim() == item.name) return;
-    try {
-      final from = pane.backend.childPath(pane.path, item.name, item.isDir);
-      final to = pane.backend.childPath(pane.path, newName.trim(), item.isDir);
-      await pane.backend.rename(from, to);
-      await pane.refresh();
-      pushToast('Renamed', '${item.name} → ${newName.trim()}', ToastKind.success);
-    } catch (e) {
-      pushToast('Couldn\'t rename', _short(e), ToastKind.error);
-    }
-  }
-
-  Future<void> deleteItem(PaneController pane, FileItem item) => deleteItems(pane, [item]);
-
-  Future<void> deleteItems(PaneController pane, List<FileItem> items) async {
-    final targets = items.where((i) => !i.isParent).toList();
-    if (targets.isEmpty) return;
-    var failed = 0;
-    for (final item in targets) {
-      try {
-        await pane.backend.delete(pane.backend.childPath(pane.path, item.name, item.isDir),
-            isDir: item.isDir);
-      } catch (_) {
-        failed++;
-      }
-    }
-    await pane.refresh();
-    if (failed == 0) {
-      pushToast('Deleted', targets.length == 1 ? targets.first.name : '${targets.length} items',
-          ToastKind.info);
-    } else {
-      pushToast('Delete incomplete', '$failed of ${targets.length} failed', ToastKind.error);
-    }
-  }
-
-  String _short(Object e) {
-    final m = e.toString().replaceFirst('Exception: ', '');
-    return m.length > 80 ? '${m.substring(0, 80)}…' : m;
-  }
-
-  void switchSession(int id) {
-    if (sessions.any((s) => s.id == id) && id != activeSessionId) {
-      activeSessionId = id;
-      notifyListeners();
-    }
-  }
-
-  void closeSession(int id) {
-    final idx = sessions.indexWhere((s) => s.id == id);
-    if (idx < 0) return;
-    sessions.removeAt(idx);
-    if (sessions.isEmpty) {
-      // Never leave zero tabs — drop back to a fresh Local workspace.
-      final fresh = _buildSession(null);
-      sessions.add(fresh);
-      activeSessionId = fresh.id;
-      fresh.left.refresh();
-    } else if (activeSessionId == id) {
-      activeSessionId = sessions[idx.clamp(0, sessions.length - 1)].id;
-    }
-    notifyListeners();
-  }
+  // ── Connections (facade → ConnectionsController) ──
+  List<Connection> get connections => _connections.connections;
+  Connection get selectedConnection => _connections.selected;
+  bool get hasConnectionStore => _connections.hasStore;
+  void selectConnection(Connection c) => _connections.select(c);
+  Future<Connection> newConnection() => _connections.create();
+  Future<void> saveConnection(Connection c) => _connections.save(c);
+  Future<Connection> duplicateConnection(Connection c) => _connections.duplicate(c);
+  Future<void> deleteConnection(Connection c) => _connections.delete(c);
 
   /// Connect to [c]: rebuild its backend (fresh credentials) and open/focus a
   /// tab for it. S3 connections need credentials first.
   Future<void> connect(Connection c) async {
     c.online = c.isS3 ? c.hasS3Credentials : true;
-    _backendCache.remove(c); // pick up freshly entered credentials
+    _sessions.evictBackend(c); // pick up freshly entered credentials
     if (c.isS3 && !c.hasS3Credentials) {
       pushToast('Missing credentials', 'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
       notifyListeners();
       return;
     }
-    openSession(c);
+    _sessions.openSession(c);
     pushToast('Session connected', '${c.name} · ${c.protocol.label}', ToastKind.info);
     go(AppScreen.browser);
   }
 
-  // ── Transfers ─────────────────────────────────────────────────────────
+  // ── Sessions / panes (facade → SessionsController) ──
+  List<Session> get sessions => _sessions.sessions;
+  int get activeSessionId => _sessions.activeSessionId;
+  Session get activeSession => _sessions.activeSession;
+  PaneController get leftPane => _sessions.leftPane;
+  PaneController get rightPane => _sessions.rightPane;
+  bool get focusedLeft => _sessions.focusedLeft;
+  PaneController get focusedPane => _sessions.focusedPane;
 
-  int get activeCount => transfers.where((t) => t.status == TransferStatus.active).length;
-  int get queuedCount => transfers.where((t) => t.status == TransferStatus.queued).length;
-  int get doneCount => transfers.where((t) => t.status == TransferStatus.done).length;
-  int get errorCount => transfers.where((t) => t.status == TransferStatus.error).length;
-  int get pausedCount => transfers.where((t) => t.status == TransferStatus.paused).length;
+  void focusPane(bool left) => _sessions.focusPane(left);
+  Session openSession(Connection? remote) => _sessions.openSession(remote);
+  void switchSession(int id) => _sessions.switchSession(id);
+  void closeSession(int id) => _sessions.closeSession(id);
+  Future<void> setPaneEndpoint(bool left, Connection? c) => _sessions.setPaneEndpoint(left, c);
+  Future<void> createFolder(PaneController pane, String name) => _sessions.createFolder(pane, name);
+  Future<void> renameItem(PaneController pane, FileItem item, String newName) =>
+      _sessions.renameItem(pane, item, newName);
+  Future<void> deleteItem(PaneController pane, FileItem item) => _sessions.deleteItem(pane, item);
+  Future<void> deleteItems(PaneController pane, List<FileItem> items) =>
+      _sessions.deleteItems(pane, items);
+
+  // ── Transfers (facade → TransfersController) ──
+  List<Transfer> get transfers => _transfers.transfers;
+  int get maxThreads => _transfers.maxThreads;
+  int get activeCount => _transfers.activeCount;
+  int get queuedCount => _transfers.queuedCount;
+  int get doneCount => _transfers.doneCount;
+  int get errorCount => _transfers.errorCount;
+  int get pausedCount => _transfers.pausedCount;
+
+  void setMaxThreads(int v) => _transfers.setMaxThreads(v);
+  void pauseAll() => _transfers.pauseAll();
+  void resumeAll() => _transfers.resumeAll();
+  void clearDone() => _transfers.clearDone();
+  void togglePause(Transfer t) => _transfers.togglePause(t);
+  void retry(Transfer t) => _transfers.retry(t);
+
+  @visibleForTesting
+  void debugTick() => _transfers.debugTick();
 
   /// Handle a drag from one pane dropped onto another → start transfer(s).
   /// Transfers the source pane's whole selection (the dragged row is included).
@@ -515,132 +204,46 @@ class AppState extends ChangeNotifier {
     }
 
     for (final item in files) {
-      _enqueueTransfer(src, dst, item, announce: files.length == 1);
+      _transfers.enqueue(src, dst, item, announce: files.length == 1);
     }
     if (files.length > 1) {
       pushToast('Transferring', '${files.length} files → ${dst.endpointLabel}', ToastKind.info);
     }
   }
 
-  void _enqueueTransfer(PaneController src, PaneController dst, FileItem item,
-      {bool announce = true}) {
-    final srcPath = src.backend.childPath(src.path, item.name, false);
-    final dstPath = dst.backend.childPath(dst.path, item.name, false);
-    final simulated = !src.backend.supportsTransfer || !dst.backend.supportsTransfer;
-    final direction =
-        dst.kind == EndpointKind.local ? TransferDirection.download : TransferDirection.upload;
+  // ── Settings (facade → SettingsController) ──
+  String get themeName => _settings.themeName;
+  Color get accent => _settings.accent;
+  double get uiFontSize => _settings.uiFontSize;
+  String get monospaceFont => _settings.monospaceFont;
+  bool get showHiddenFiles => _settings.showHiddenFiles;
+  bool get showPermsColumn => _settings.showPermsColumn;
+  bool get showLogOnStartup => _settings.showLogOnStartup;
+  bool get confirmOverwrite => _settings.confirmOverwrite;
+  bool get hasSettingsStore => _settings.hasStore;
+  AppSettings get currentSettings => _settings.current;
 
-    final t = Transfer(
-      name: item.name,
-      route: '${src.endpointLabel} → ${dst.displayPath}',
-      direction: direction,
-      sizeBytes: item.sizeBytes ?? 0,
-      session: dst.endpointLabel,
-      status: TransferStatus.queued,
-      live: !simulated,
-      sourcePath: '${src.endpointLabel}:$srcPath',
-      destPath: dst.displayPath,
-    );
-    transfers.insert(0, t);
-    notifyListeners();
+  void setThemeName(String v) => _settings.setThemeName(v);
+  void setAccent(Color c) => _settings.setAccent(c);
+  void setUiFontSize(double v) => _settings.setUiFontSize(v);
+  void setMonospaceFont(String v) => _settings.setMonospaceFont(v);
+  void setShowHiddenFiles(bool v) => _settings.setShowHiddenFiles(v);
+  void setShowPermsColumn(bool v) => _settings.setShowPermsColumn(v);
+  void setShowLogOnStartup(bool v) => _settings.setShowLogOnStartup(v);
+  void setConfirmOverwrite(bool v) => _settings.setConfirmOverwrite(v);
+  void resetSettings() => _settings.resetSettings();
+  Future<void> saveWindowState({
+    required double width,
+    required double height,
+    required double x,
+    required double y,
+  }) =>
+      _settings.saveWindowState(width: width, height: height, x: x, y: y);
 
-    if (simulated) {
-      if (announce) pushToast('Queued', '${item.name} → ${dst.endpointLabel}', ToastKind.info);
-      return;
-    }
-
-    if (announce) {
-      pushToast('Transfer started', '${item.name} → ${dst.endpointLabel}', ToastKind.info);
-    }
-    _transfers
-        .run(
-      t: t,
-      src: src.backend,
-      srcPath: srcPath,
-      dst: dst.backend,
-      dstPath: dstPath,
-      onStatus: _safeNotify,
-      onProgress: t.touchLive, // progress repaints only the progress widgets
-    )
-        .then((_) {
-      if (_disposed) return;
-      _record(t);
-      if (t.status == TransferStatus.done) {
-        _completionToast(t);
-        if (identical(dst, rightPane) || identical(dst, leftPane)) dst.refresh();
-      } else if (t.status == TransferStatus.error) {
-        pushToast('Transfer failed', '${item.name}: ${t.errorMessage ?? 'error'}', ToastKind.error);
-      }
-    });
-  }
-
-  void pauseAll() {
-    for (final t in transfers) {
-      if (t.status == TransferStatus.active || t.status == TransferStatus.queued) {
-        t.status = TransferStatus.paused;
-        t.speed = '—';
-        t.eta = '—';
-      }
-    }
-    notifyListeners();
-  }
-
-  void resumeAll() {
-    for (final t in transfers) {
-      if (t.status == TransferStatus.paused) t.status = TransferStatus.queued;
-    }
-    notifyListeners();
-  }
-
-  void clearDone() {
-    transfers.removeWhere((t) => t.status == TransferStatus.done);
-    notifyListeners();
-  }
-
-  void togglePause(Transfer t) {
-    switch (t.status) {
-      case TransferStatus.active:
-      case TransferStatus.queued:
-        t.status = TransferStatus.paused;
-        t.speed = '—';
-        t.eta = '—';
-      case TransferStatus.paused:
-        t.status = TransferStatus.queued;
-      default:
-        break;
-    }
-    notifyListeners();
-  }
-
-  void retry(Transfer t) {
-    t.status = TransferStatus.queued;
-    t.errorMessage = null;
-    t.progress = 0;
-    notifyListeners();
-  }
-
-  void pushToast(String title, String sub, ToastKind kind, {String? detail}) {
-    if (_disposed) return;
-    final msg = ToastMessage(_toastSeq++, title, sub, kind, detail: detail);
-    toasts.add(msg);
-    notifyListeners();
-    Future.delayed(const Duration(seconds: 5), () {
-      toasts.removeWhere((m) => m.id == msg.id);
-      _safeNotify();
-    });
-  }
-
-  /// Rich "transfer completed" notification: destination path, size, time.
-  void _completionToast(Transfer t) {
-    final dest = t.destPath.isNotEmpty ? t.destPath : '${t.session} · ${t.name}';
-    pushToast(
-      'File transfer completed',
-      dest,
-      ToastKind.success,
-      detail: '${formatBytes(t.sizeBytes)} · ${t.elapsedLabel}'
-          '${t.speed != '—' ? ' · ${t.speed}' : ''}',
-    );
-  }
+  // ── Transfer history (SQLite-backed) ──
+  List<TransferRecord> history = const [];
+  HistoryStats historyStats = const HistoryStats();
+  bool get hasHistoryDb => _history != null;
 
   /// Persist a finished transfer to history and refresh the dashboard data.
   Future<void> _record(Transfer t) async {
@@ -671,61 +274,17 @@ class AppState extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  /// Advances *simulated* transfers only (real ones are driven by
-  /// [TransferService]). Keeps the demo queue feeling alive.
-  void _tick() {
-    // Progress-only steps ping the per-transfer ticker (cheap, local repaint);
-    // status transitions set [statusChanged] and hit the global notifier.
-    var statusChanged = false;
-    for (final t in transfers) {
-      if (t.live) continue;
-      if (t.status == TransferStatus.active) {
-        t.startedAt ??= DateTime.now();
-        final step = t.sizeBytes > 10 * mB ? 0.015 : 0.18;
-        t.progress = (t.progress + step).clamp(0, 1);
-        if (t.progress >= 1) {
-          t.status = TransferStatus.done;
-          t.eta = 'Done';
-          t.speed = t.speed == '—' ? '1.0 MB/s' : t.speed;
-          t.finishedAt = DateTime.now();
-          _completionToast(t);
-          _record(t);
-          statusChanged = true;
-        } else {
-          final remaining = ((1 - t.progress) * (t.sizeBytes > 10 * mB ? 90 : 4)).round();
-          t.eta = '0:${remaining.toString().padLeft(2, '0')}';
-          t.touchLive();
-        }
-      }
-    }
-
-    final simActive = transfers.where((t) => !t.live && t.status == TransferStatus.active).length;
-    if (simActive < maxThreads) {
-      for (final t in transfers) {
-        if (!t.live && t.status == TransferStatus.queued) {
-          t.status = TransferStatus.active;
-          t.startedAt = DateTime.now();
-          t.speed = t.sizeBytes > 10 * mB ? '1.4 MB/s' : '210 KB/s';
-          statusChanged = true;
-          break;
-        }
-      }
-    }
-
-    if (statusChanged) notifyListeners();
-  }
-
-  /// Advances the simulated transfer ticker once (for deterministic tests).
-  @visibleForTesting
-  void debugTick() => _tick();
-
   @override
   void dispose() {
     _disposed = true;
-    _ticker?.cancel();
-    for (final t in transfers) {
-      t.dispose();
-    }
+    _settings.removeListener(_safeNotify);
+    _connections.removeListener(_safeNotify);
+    _sessions.removeListener(_safeNotify);
+    _transfers.removeListener(_safeNotify);
+    _settings.dispose();
+    _connections.dispose();
+    _sessions.dispose();
+    _transfers.dispose();
     super.dispose();
   }
 }
@@ -736,6 +295,14 @@ class AppScope extends InheritedNotifier<AppState> {
 
   static AppState of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();
+    assert(scope != null, 'AppScope not found in widget tree');
+    return scope!.notifier!;
+  }
+
+  /// Read [AppState] without subscribing to rebuilds — for action-only access
+  /// from widgets that subscribe to a narrower controller scope instead.
+  static AppState read(BuildContext context) {
+    final scope = context.getInheritedWidgetOfExactType<AppScope>();
     assert(scope != null, 'AppScope not found in widget tree');
     return scope!.notifier!;
   }
