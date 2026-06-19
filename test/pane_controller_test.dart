@@ -119,6 +119,36 @@ void main() {
     expect(notified, 1);
   });
 
+  test('hidden-file filter hides/show dot-files and clears selection', () async {
+    await File(p.join(dir.path, '.secret')).writeAsString('x');
+    final pane = localPane();
+    await pane.refresh();
+    // Shown by default.
+    expect(pane.items.any((e) => e.name == '.secret'), isTrue);
+
+    pane.select(0);
+    pane.setShowHidden(false);
+    expect(pane.items.any((e) => e.name == '.secret'), isFalse);
+    // Visible (non-dot) entries remain.
+    expect(pane.items.any((e) => e.name == 'a.txt'), isTrue);
+    // Toggling re-filters and clears the now-stale selection.
+    expect(pane.selection, isEmpty);
+
+    pane.setShowHidden(true);
+    expect(pane.items.any((e) => e.name == '.secret'), isTrue);
+  });
+
+  test('hidden filter set before refresh applies on first listing', () async {
+    await File(p.join(dir.path, '.env')).writeAsString('x');
+    final pane = PaneController(
+        backend: LocalBackend(), onChanged: () {}, showHidden: false)
+      ..path = dir.path;
+    await pane.refresh();
+    expect(pane.items.any((e) => e.name == '.env'), isFalse);
+    // '..' parent entry is never filtered.
+    expect(pane.items.where((e) => e.isParent).length, lessThanOrEqualTo(1));
+  });
+
   test('not-ready backend short-circuits refresh with empty items', () async {
     final pane = PaneController(
       backend: S3Backend(Connection(name: 's', protocol: Protocol.s3, bucket: 'b')),

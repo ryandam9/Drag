@@ -7,7 +7,7 @@ class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   static const _accents = [
-    FsColors.accent,
+    FsColors.accentDefault,
     FsColors.green,
     FsColors.purple,
     FsColors.amber,
@@ -70,7 +70,7 @@ class SettingsScreen extends StatelessWidget {
         const SizedBox(height: 16),
 
         FormField2('Theme', _select(app.themeName, const ['Dark (default)', 'Light', 'System'],
-            (v) => app.themeName = v)),
+            (v) => app.setThemeName(v))),
         const SizedBox(height: 14),
 
         FormField2(
@@ -79,7 +79,7 @@ class SettingsScreen extends StatelessWidget {
             for (final c in _accents)
               GestureDetector(
                 onTap: () {
-                  app.accent = c;
+                  app.setAccent(c);
                   app.pushToast('Accent updated', 'Theme accent changed', ToastKind.info);
                 },
                 child: Container(
@@ -103,16 +103,21 @@ class SettingsScreen extends StatelessWidget {
         ),
         const SizedBox(height: 14),
 
-        FormField2('UI font size', _select('13px', const ['12px', '13px', '14px'], (_) {})),
+        FormField2(
+            'UI font size',
+            _select('${app.uiFontSize.toInt()}px', const ['12px', '13px', '14px'],
+                (v) => app.setUiFontSize(double.parse(v.replaceAll('px', ''))))),
         const SizedBox(height: 14),
-        FormField2('Monospace font',
-            _select('JetBrains Mono', const ['JetBrains Mono', 'Fira Code', 'Menlo'], (_) {})),
+        FormField2(
+            'Monospace font',
+            _select(app.monospaceFont, const ['JetBrains Mono', 'Fira Code', 'Menlo'],
+                (v) => app.setMonospaceFont(v))),
         const SizedBox(height: 18),
 
-        _check('Show hidden files', app.showHiddenFiles, (v) => app.showHiddenFiles = v, app),
-        _check('Show file permissions column', app.showPermsColumn, (v) => app.showPermsColumn = v, app),
-        _check('Show transfer log on startup', app.showLogOnStartup, (v) => app.showLogOnStartup = v, app),
-        _check('Confirm before overwriting files', app.confirmOverwrite, (v) => app.confirmOverwrite = v, app),
+        _check('Show hidden files', app.showHiddenFiles, app.setShowHiddenFiles, app),
+        _check('Show file permissions column', app.showPermsColumn, app.setShowPermsColumn, app),
+        _check('Show transfer log on startup', app.showLogOnStartup, app.setShowLogOnStartup, app),
+        _check('Confirm before overwriting files', app.confirmOverwrite, app.setConfirmOverwrite, app),
         const SizedBox(height: 20),
 
         Row(children: [
@@ -120,7 +125,10 @@ class SettingsScreen extends StatelessWidget {
               kind: FsButtonKind.primary,
               onTap: () => app.pushToast('Preferences saved', 'Your settings were applied', ToastKind.success)),
           const SizedBox(width: 10),
-          const FsButton('Reset defaults'),
+          FsButton('Reset defaults', onTap: () {
+            app.resetSettings();
+            app.pushToast('Defaults restored', 'Settings reset to defaults', ToastKind.info);
+          }),
         ]),
       ]),
     );

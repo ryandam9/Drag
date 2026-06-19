@@ -288,7 +288,7 @@ class FsTextField extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(6),
-            borderSide: const BorderSide(color: FsColors.accent),
+            borderSide: BorderSide(color: FsColors.accent),
           ),
         ),
       ),

@@ -19,9 +19,14 @@ class _BrowserScreenState extends State<BrowserScreen> {
   bool _dropHoverLeft = false;
   bool _dropHoverRight = false;
 
+  /// Runtime override for the log panel; null = follow the "show log on
+  /// startup" setting.
+  bool? _showLogOverride;
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final showLog = _showLogOverride ?? app.showLogOnStartup;
     return Focus(
       autofocus: true,
       onKeyEvent: (node, event) => _onKey(app, event),
@@ -42,7 +47,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
             }),
           ),
           _queueStrip(app),
-          _logPanel(),
+          if (showLog) _logPanel(),
         ],
       ),
     );
@@ -169,7 +174,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
               hintText: hint,
               hintStyle: FsType.sans(size: 13, color: FsColors.text3),
               enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: FsColors.border)),
-              focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: FsColors.accent)),
+              focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: FsColors.accent)),
             ),
           ),
         ),
@@ -300,7 +305,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
         const ToolSep(),
         const ToolButton('⇄ Sync', active: true),
         ToolButton('↯ Queue', onTap: () => app.go(AppScreen.queue)),
-        const ToolButton('📋 Log'),
+        ToolButton('📋 Log',
+            active: _showLogOverride ?? app.showLogOnStartup,
+            onTap: () => setState(
+                () => _showLogOverride = !(_showLogOverride ?? app.showLogOnStartup))),
         const ToolSep(),
         ToolButton('⊕ New Folder', onTap: () => _newFolder(app, app.focusedPane)),
         ToolButton('✎ Rename', onTap: () => _renameSelected(app, app.focusedPane)),
@@ -521,7 +529,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
       );
     }
     if (pane.loading) {
-      return const Center(
+      return Center(
         child: SizedBox(
             width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
       );
@@ -583,7 +591,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     return Container(
       color: FsColors.bgSurface,
       child: Column(children: [
-        _tableHead(),
+        _tableHead(app.showPermsColumn),
         Expanded(
           child: ListView.builder(
             itemCount: pane.items.length,
@@ -613,7 +621,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  Widget _tableHead() {
+  Widget _tableHead(bool showPerms) {
     Widget cell(String t, int flex, {TextAlign align = TextAlign.left}) => Expanded(
           flex: flex,
           child: Padding(
@@ -633,7 +641,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         cell('NAME', 40),
         cell('SIZE', 15, align: TextAlign.right),
         cell('MODIFIED', 25),
-        cell('PERMS', 20, align: TextAlign.right),
+        if (showPerms) cell('PERMS', 20, align: TextAlign.right),
       ]),
     );
   }
@@ -696,10 +704,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
                 ),
               ),
               Expanded(flex: 25, child: Text(f.modified, style: FsType.mono(size: 11, color: FsColors.text2))),
-              Expanded(
-                flex: 20,
-                child: Text(f.perms, textAlign: TextAlign.right, style: FsType.mono(size: 10, color: FsColors.text3)),
-              ),
+              if (app.showPermsColumn)
+                Expanded(
+                  flex: 20,
+                  child: Text(f.perms, textAlign: TextAlign.right, style: FsType.mono(size: 10, color: FsColors.text3)),
+                ),
             ]),
           ),
         ),
@@ -753,7 +762,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
                 value: current.progress,
                 minHeight: 4,
                 backgroundColor: FsColors.bgPanel,
-                valueColor: const AlwaysStoppedAnimation(FsColors.accent),
+                valueColor: AlwaysStoppedAnimation(FsColors.accent),
               ),
             ),
           ),

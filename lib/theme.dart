@@ -13,8 +13,17 @@ class FsColors {
   static const border = Color(0xFF2A3550);
   static const borderHi = Color(0xFF3D5080);
 
-  static const accent = Color(0xFF3B82F6);
-  static const accentHi = Color(0xFF60A5FA);
+  /// The accent's factory default (used by "Reset defaults").
+  static const accentDefault = Color(0xFF3B82F6);
+
+  /// Accent + its lighter highlight variant. These are mutable so the
+  /// Appearance settings can recolor the whole UI at runtime (see
+  /// [accentFromValue] / `AppState.setAccent`).
+  static Color accent = accentDefault;
+  static Color accentHi = const Color(0xFF60A5FA);
+
+  /// Derives the lighter "accentHi" highlight from a base accent color.
+  static Color highlightFor(Color base) => Color.lerp(base, Colors.white, 0.28)!;
 
   static const green = Color(0xFF22C55E);
   static const amber = Color(0xFFF59E0B);

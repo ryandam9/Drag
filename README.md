@@ -47,7 +47,7 @@ then pick it in a pane. The **Local** endpoint browses your real filesystem.
 | **Connection Manager** | Saved/recent sessions sidebar with online indicators. Form adapts to the protocol: SSH fields for SFTP, or **S3 credentials** (access key, secret, session token, region, bucket, endpoint, SSL) for S3. New / Save / Duplicate / Delete **persist to SQLite** (secrets excluded — see #16). |
 | **Transfer Queue** | Active / queued / paused / done / error transfers with per-file progress, speed, ETA, a status filter, an aggregate stats bar and an adjustable parallel-thread count. |
 | **History Dashboard** | Persistent transfer history backed by **SQLite** — stat cards (total / succeeded / failed / data transferred / avg speed) and a table of past transfers (file, route, size, time taken, speed, when, status). Refresh / clear. |
-| **Preferences** | Categorised settings with theme, accent-color swatches, fonts and toggles. |
+| **Preferences** | Categorised settings that **apply live and persist** (SQLite): accent color recolors the whole UI, UI font size rescales text, "show hidden files" filters dot-files in every pane, and the permissions-column / startup-log toggles take effect immediately. Window size & position are remembered across launches (`window_manager`). |
 
 While a transfer runs, a floating **progress card** (animated ring + bar, live
 speed/ETA, "big file" badge) appears. On completion an in-app **notification**
@@ -87,6 +87,7 @@ lib/
     mock_data.dart             Seed connections (incl. two S3 accounts)
     history_db.dart            SQLite history repository (sqflite_common_ffi)
     connection_store.dart      SQLite store for saved connections (no secrets)
+    settings_store.dart        SQLite store for app settings + window geometry
   widgets/                     Title bar, buttons, badges, nav, toasts,
                                transfer_progress (active-transfer card)
   screens/                     browser / connection_manager / transfer_queue /
@@ -116,7 +117,7 @@ flutter build windows --release
 
 ```bash
 flutter analyze
-flutter test                 # 72 hermetic tests
+flutter test                 # 126 hermetic tests
 ```
 
 Coverage spans the whole stack:
@@ -130,6 +131,7 @@ Coverage spans the whole stack:
 | `sigv4_test.dart` | AWS SigV4 — signing key vs **AWS's published test vector**, header/encoding |
 | `transfer_test.dart` | `TransferService` streaming with progress |
 | `screens_widget_test.dart` | Connection Manager (S3 vs SSH form + editing), Transfer Queue, Settings toggles, toasts |
+| `settings_store_test.dart` | `AppSettings` JSON round-trip, `SettingsStore` SQLite save/load, and `AppState` applying/persisting settings (accent, font size, hidden-file filter, reset) |
 | `widget_test.dart` | app boot + nav rail |
 
 Real end-to-end S3 tests live in `s3_integration_test.dart` and **auto-skip**
