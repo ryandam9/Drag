@@ -7,7 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class AppSettings {
   AppSettings({
     this.themeName = 'Dark (default)',
-    this.accentValue = 0xFF3B82F6,
+    this.accentValue = 0xFF007CBF,
     this.uiFontSize = 13,
     this.monospaceFont = 'JetBrains Mono',
     this.showHiddenFiles = true,
@@ -88,7 +88,7 @@ class AppSettings {
     double? d(Object? v) => (v as num?)?.toDouble();
     return AppSettings(
       themeName: (j['themeName'] as String?) ?? 'Dark (default)',
-      accentValue: (j['accentValue'] as num?)?.toInt() ?? 0xFF3B82F6,
+      accentValue: (j['accentValue'] as num?)?.toInt() ?? 0xFF007CBF,
       uiFontSize: d(j['uiFontSize']) ?? 13,
       monospaceFont: (j['monospaceFont'] as String?) ?? 'JetBrains Mono',
       showHiddenFiles: (j['showHiddenFiles'] as bool?) ?? true,

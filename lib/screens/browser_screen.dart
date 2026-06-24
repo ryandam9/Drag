@@ -707,7 +707,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: bg,
-              border: const Border(bottom: BorderSide(color: Color(0x802A3550))),
+              border: const Border(bottom: BorderSide(color: Color(0x801C3A57))),
             ),
             child: Row(children: [
               Expanded(

@@ -74,7 +74,7 @@ void main() {
       await store.save(AppSettings(uiFontSize: 12));
       final s2 = await store.load();
       expect(s2.uiFontSize, 12);
-      expect(s2.accentValue, 0xFF3B82F6); // back to default in the new object
+      expect(s2.accentValue, 0xFF007CBF); // back to default in the new object
     });
   });
 
@@ -82,7 +82,7 @@ void main() {
     setUp(() {
       // Reset the global palette between tests.
       FsColors.accent = FsColors.accentDefault;
-      FsColors.accentHi = const Color(0xFF60A5FA);
+      FsColors.accentHi = const Color(0xFF06ABDF);
     });
 
     test('applies persisted settings on construction', () {
