@@ -5,6 +5,7 @@
 enum AppFont {
   // ── Proportional / UI fonts ──
   inter('Inter'),
+  googleSans('Google Sans'),
   roboto('Roboto'),
   openSans('Open Sans'),
   lato('Lato'),
@@ -20,6 +21,7 @@ enum AppFont {
 
   // ── Monospace fonts (for paths, logs, the file list) ──
   jetBrainsMono('JetBrains Mono', mono: true),
+  googleSansCode('Google Sans Code', mono: true),
   robotoMono('Roboto Mono', mono: true),
   firaCode('Fira Code', mono: true),
   sourceCodePro('Source Code Pro', mono: true),

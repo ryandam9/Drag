@@ -27,18 +27,10 @@ class AppShell extends ConsumerWidget {
           [TbButton('⊕ New Session', onTap: () => nav.go(AppScreen.connections))],
         ),
       AppScreen.connections => ('Connection Manager', <Widget>[]),
-      AppScreen.queue => (
-          'Transfer Queue',
-          [
-            TbButton('⏸ Pause all', onTap: () => ref.read(transfersProvider.notifier).pauseAll()),
-            TbButton('▶ Resume all', onTap: () => ref.read(transfersProvider.notifier).resumeAll()),
-            TbButton('⊗ Clear done', onTap: () => ref.read(transfersProvider.notifier).clearDone()),
-          ],
-        ),
-      AppScreen.dashboard => (
-          'History Dashboard',
-          [TbButton('↺ Refresh', onTap: () => ref.read(historyProvider.notifier).refresh())],
-        ),
+      // Queue & Dashboard render their own bulk actions in the screen header,
+      // so the title bar stays clean (no duplicate buttons).
+      AppScreen.queue => ('Transfer Queue', <Widget>[]),
+      AppScreen.dashboard => ('History Dashboard', <Widget>[]),
       AppScreen.settings => ('Preferences', <Widget>[]),
     };
 

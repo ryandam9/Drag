@@ -155,7 +155,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(height: 16),
         FormField2(
             'UI font size',
-            _select('${settings.uiFontSize.toInt()}px', const ['12px', '13px', '14px'],
+            _select('${settings.uiFontSize.toInt()}px',
+                const ['11px', '12px', '13px', '14px', '15px', '16px', '17px', '18px'],
                 (v) => notifier.setUiFontSize(double.parse(v.replaceAll('px', ''))))),
         const SizedBox(height: 16),
         FormField2(
