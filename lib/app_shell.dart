@@ -60,7 +60,7 @@ class AppShell extends ConsumerWidget {
               const NavRail(),
               Expanded(
                 child: Container(
-                  color: FsColors.bgSurface,
+                  color: FsColors.bgScaffold,
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 160),
                     child: KeyedSubtree(key: ValueKey(screen), child: body),

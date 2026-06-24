@@ -15,59 +15,68 @@ class DashboardScreen extends ConsumerWidget {
     final history = ref.watch(historyProvider);
     final notifier = ref.read(historyProvider.notifier);
     final s = history.stats;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // ── Header ──
-        Container(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-          decoration: BoxDecoration(
-            color: FsColors.bgDeep,
-            border: Border(bottom: BorderSide(color: FsColors.border)),
+    return Container(
+      color: FsColors.bgScaffold,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Header ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Transfer History',
+                      style: FsType.sans(size: 22, weight: FontWeight.w700, color: FsColors.text1)),
+                  const SizedBox(height: 4),
+                  Text(
+                      history.hasDb
+                          ? 'SQLite · ${s.total} record${s.total == 1 ? '' : 's'}'
+                          : 'SQLite unavailable',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: FsType.sans(size: 13, color: history.hasDb ? FsColors.text2 : FsColors.amber)),
+                ]),
+              ),
+              const SizedBox(width: 12),
+              FsButton('↺ Refresh', onTap: notifier.refresh),
+              const SizedBox(width: 10),
+              FsButton('⊗ Clear history', kind: FsButtonKind.danger, onTap: notifier.clear),
+            ]),
           ),
-          child: Row(children: [
-            Text('Transfer History',
-                style: FsType.sans(size: 15, weight: FontWeight.w600, color: FsColors.text1)),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                  history.hasDb
-                      ? 'SQLite · ${s.total} record${s.total == 1 ? '' : 's'}'
-                      : 'SQLite unavailable',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: FsType.mono(size: 11, color: history.hasDb ? FsColors.text3 : FsColors.amber)),
+
+          // ── Stat cards ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+            child: Row(children: [
+              _StatCard('Total transfers', '${s.total}', Icons.swap_vert_rounded, FsColors.accent),
+              _StatCard('Succeeded', '${s.succeeded}', Icons.check_circle_outline, FsColors.green),
+              _StatCard('Failed', '${s.failed}', Icons.error_outline, FsColors.red),
+              _StatCard('Data transferred', formatBytes(s.totalBytes), Icons.data_usage, FsColors.purple),
+              _StatCard('Avg speed',
+                  s.avgBytesPerSecond > 0 ? '${formatBytes(s.avgBytesPerSecond.round())}/s' : '—',
+                  Icons.speed, FsColors.amber, last: true),
+            ]),
+          ),
+
+          // ── History table ──
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: FsColors.bgSurface,
+                  borderRadius: BorderRadius.circular(FsColors.rCard),
+                  border: Border.all(color: FsColors.border),
+                  boxShadow: FsColors.cardShadow,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _HistoryTable(records: history.records),
+              ),
             ),
-            const Spacer(),
-            FsButton('↺ Refresh',
-                fontSize: 11,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                onTap: notifier.refresh),
-            const SizedBox(width: 8),
-            FsButton('⊗ Clear history',
-                fontSize: 11,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                onTap: notifier.clear),
-          ]),
-        ),
-
-        // ── Stat cards ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-          child: Row(children: [
-            _StatCard('Total transfers', '${s.total}', Icons.swap_vert_rounded, FsColors.accentHi),
-            _StatCard('Succeeded', '${s.succeeded}', Icons.check_circle_outline, FsColors.green),
-            _StatCard('Failed', '${s.failed}', Icons.error_outline, FsColors.red),
-            _StatCard('Data transferred', formatBytes(s.totalBytes), Icons.data_usage, FsColors.purple),
-            _StatCard('Avg speed',
-                s.avgBytesPerSecond > 0 ? '${formatBytes(s.avgBytesPerSecond.round())}/s' : '—',
-                Icons.speed, FsColors.amber),
-          ]),
-        ),
-
-        // ── History table ──
-        Expanded(child: _HistoryTable(records: history.records)),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -77,37 +86,43 @@ class _StatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
-  const _StatCard(this.label, this.value, this.icon, this.color);
+  final bool last;
+  const _StatCard(this.label, this.value, this.icon, this.color, {this.last = false});
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.all(14),
+        margin: EdgeInsets.only(right: last ? 0 : 16),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: FsColors.bgPanel,
-          borderRadius: BorderRadius.circular(10),
+          color: FsColors.bgSurface,
+          borderRadius: BorderRadius.circular(FsColors.rCard),
           border: Border.all(color: FsColors.border),
+          boxShadow: FsColors.cardShadow,
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(icon, size: 15, color: color),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: FsType.sans(size: 11, color: FsColors.text2)),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Color.lerp(color, FsColors.bgSurface, 0.82),
+              borderRadius: BorderRadius.circular(10),
             ),
-          ]),
-          const SizedBox(height: 10),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(height: 14),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(value,
-                maxLines: 1, style: FsType.sans(size: 20, weight: FontWeight.w700, color: FsColors.text1)),
+                maxLines: 1, style: FsType.sans(size: 22, weight: FontWeight.w800, color: FsColors.text1)),
           ),
+          const SizedBox(height: 4),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 12, color: FsColors.text2)),
         ]),
       ),
     );
@@ -123,12 +138,20 @@ class _HistoryTable extends StatelessWidget {
     if (records.isEmpty) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.history, size: 36, color: FsColors.text3),
-          const SizedBox(height: 10),
-          Text('No transfers yet', style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-          const SizedBox(height: 4),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: Color.lerp(FsColors.accent, FsColors.bgSurface, 0.82),
+              borderRadius: BorderRadius.circular(FsColors.rField),
+            ),
+            child: Icon(Icons.history, size: 28, color: FsColors.accent),
+          ),
+          const SizedBox(height: 14),
+          Text('No transfers yet', style: FsType.sans(size: 16, weight: FontWeight.w700, color: FsColors.text1)),
+          const SizedBox(height: 6),
           Text('Completed transfers will appear here.',
-              style: FsType.sans(size: 12, color: FsColors.text2)),
+              style: FsType.sans(size: 13, color: FsColors.text2)),
         ]),
       );
     }
@@ -155,10 +178,10 @@ class _HistoryTable extends StatelessWidget {
           ),
         );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
         color: FsColors.bgDeep,
-        border: Border(bottom: BorderSide(color: FsColors.border), top: BorderSide(color: FsColors.border)),
+        border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
         cell('', 3),
@@ -176,10 +199,10 @@ class _HistoryTable extends StatelessWidget {
   Widget _row(TransferRecord r) {
     return Hoverable(builder: (hover) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
         decoration: BoxDecoration(
           color: hover ? FsColors.bgHover : Colors.transparent,
-          border: const Border(bottom: BorderSide(color: Color(0x661C3A57))),
+          border: Border(bottom: BorderSide(color: FsColors.border)),
         ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           Expanded(

@@ -50,8 +50,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             cursor: SystemMouseCursors.click,
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              color: isActive ? FsColors.bgActive : (hover ? FsColors.bgHover : Colors.transparent),
+              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? FsColors.bgActive
+                    : (hover ? FsColors.bgHover : Colors.transparent),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Text(s.label,
                   style: FsType.sans(
                       size: 12,
@@ -65,9 +71,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return Container(
       color: FsColors.bgDeep,
-      child: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
+      child: ListView(padding: const EdgeInsets.symmetric(vertical: 12), children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Text('PREFERENCES',
               style: TextStyle(
                   fontSize: 10, fontWeight: FontWeight.w700, color: FsColors.text3, letterSpacing: 1)),
@@ -77,14 +83,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// A white rounded card wrapping one settings section, matching the
+  /// attendance-register card style (soft shadow, hairline border, rounded).
+  Widget _card({required List<Widget> children}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: FsColors.bgSurface,
+        borderRadius: BorderRadius.circular(FsColors.rCard),
+        border: Border.all(color: FsColors.border),
+        boxShadow: FsColors.cardShadow,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+    );
+  }
+
   // ── Active pane ──
   Widget _content(AppSettings settings, SettingsNotifier notifier, ToastsNotifier toasts) {
     void toast(String t, String s, ToastKind k) => toasts.push(t, s, k);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_section.label, style: FsType.sans(size: 15, weight: FontWeight.w600, color: FsColors.text1)),
-        const SizedBox(height: 16),
+        Text(_section.label, style: FsType.sans(size: 22, weight: FontWeight.w700, color: FsColors.text1)),
+        const SizedBox(height: 20),
         ...switch (_section) {
           SettingsSection.appearance => _appearance(settings, notifier, toast),
           SettingsSection.browser => _browser(settings, notifier),
@@ -107,38 +129,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   List<Widget> _appearance(AppSettings settings, SettingsNotifier notifier, void Function(String, String, ToastKind) toast) {
     return [
-      Text('Theme', style: FsType.sans(size: 12, weight: FontWeight.w600, color: FsColors.text2)),
-      const SizedBox(height: 4),
-      Text('Bird-inspired palettes — the accent recolors the whole UI.',
-          style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4)),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [
-          for (final t in kBirdThemes)
-            _themeSwatch(t, selected: settings.themeName == t.name, onTap: () {
-              notifier.setTheme(t);
-              toast('Theme applied', t.name, ToastKind.info);
-            }),
-        ],
-      ),
-      const SizedBox(height: 18),
-      FormField2(
-          'UI font',
-          _fontSelect(settings.uiFont, AppFont.sansFonts, (v) => notifier.setUiFont(v))),
-      const SizedBox(height: 14),
-      FormField2(
-          'UI font size',
-          _select('${settings.uiFontSize.toInt()}px', const ['12px', '13px', '14px'],
-              (v) => notifier.setUiFontSize(double.parse(v.replaceAll('px', ''))))),
-      const SizedBox(height: 14),
-      FormField2(
-          'Monospace font',
-          _fontSelect(settings.monospaceFont, AppFont.monoFonts, (v) => notifier.setMonospaceFont(v))),
-      const SizedBox(height: 8),
-      Text('The quick brown fox jumps over the lazy dog · 0123456789',
-          style: FsType.mono(size: 12, color: FsColors.text3)),
+      _card(children: [
+        Text('Theme', style: FsType.sans(size: 15, weight: FontWeight.w700, color: FsColors.text1)),
+        const SizedBox(height: 4),
+        Text('Bird-inspired palettes — the accent recolors the whole UI.',
+            style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4)),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final t in kBirdThemes)
+              _themeSwatch(t, selected: settings.themeName == t.name, onTap: () {
+                notifier.setTheme(t);
+                toast('Theme applied', t.name, ToastKind.info);
+              }),
+          ],
+        ),
+      ]),
+      const SizedBox(height: 16),
+      _card(children: [
+        FormField2(
+            'UI font',
+            _fontSelect(settings.uiFont, AppFont.sansFonts, (v) => notifier.setUiFont(v))),
+        const SizedBox(height: 16),
+        FormField2(
+            'UI font size',
+            _select('${settings.uiFontSize.toInt()}px', const ['12px', '13px', '14px'],
+                (v) => notifier.setUiFontSize(double.parse(v.replaceAll('px', ''))))),
+        const SizedBox(height: 16),
+        FormField2(
+            'Monospace font',
+            _fontSelect(settings.monospaceFont, AppFont.monoFonts, (v) => notifier.setMonospaceFont(v))),
+        const SizedBox(height: 10),
+        Text('The quick brown fox jumps over the lazy dog · 0123456789',
+            style: FsType.mono(size: 12, color: FsColors.text3)),
+      ]),
     ];
   }
 
@@ -149,12 +175,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final mono = fonts.isNotEmpty && fonts.first.mono;
     final current = AppFont.byFamily(family, mono: mono).family;
     return Container(
-      height: 32,
+      height: 36,
       width: 260,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: FsColors.bgDeep,
-        borderRadius: BorderRadius.circular(6),
+        color: FsColors.bgScaffold,
+        borderRadius: BorderRadius.circular(FsColors.rField),
         border: Border.all(color: FsColors.border),
       ),
       alignment: Alignment.centerLeft,
@@ -190,12 +216,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         cursor: SystemMouseCursors.click,
         child: Container(
           width: 184,
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: FsColors.bgPanel,
-            borderRadius: BorderRadius.circular(8),
+            color: FsColors.bgSurface,
+            borderRadius: BorderRadius.circular(FsColors.rField),
             border: Border.all(
                 color: selected ? t.accentHi : FsColors.border, width: selected ? 2 : 1),
+            boxShadow: selected ? FsColors.cardShadow : null,
           ),
           child: Row(children: [
             // Three stacked color chips representing the palette.
@@ -237,26 +264,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   List<Widget> _browser(AppSettings settings, SettingsNotifier notifier) {
     return [
-      _check('Show hidden files', settings.showHiddenFiles, notifier.setShowHiddenFiles),
-      _check('Show file permissions column', settings.showPermsColumn, notifier.setShowPermsColumn),
+      _card(children: [
+        _check('Show hidden files', settings.showHiddenFiles, notifier.setShowHiddenFiles),
+        _check('Show file permissions column', settings.showPermsColumn, notifier.setShowPermsColumn),
+      ]),
     ];
   }
 
   List<Widget> _transfers(AppSettings settings, SettingsNotifier notifier) {
     return [
-      _check('Show transfer log on startup', settings.showLogOnStartup, notifier.setShowLogOnStartup),
-      _check('Confirm before overwriting files', settings.confirmOverwrite, notifier.setConfirmOverwrite),
+      _card(children: [
+        _check('Show transfer log on startup', settings.showLogOnStartup, notifier.setShowLogOnStartup),
+        _check('Confirm before overwriting files', settings.confirmOverwrite, notifier.setConfirmOverwrite),
+      ]),
     ];
   }
 
   Widget _select(String value, List<String> options, ValueChanged<String> onChanged) {
     return Container(
-      height: 32,
+      height: 36,
       width: 260,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: FsColors.bgDeep,
-        borderRadius: BorderRadius.circular(6),
+        color: FsColors.bgScaffold,
+        borderRadius: BorderRadius.circular(FsColors.rField),
         border: Border.all(color: FsColors.border),
       ),
       alignment: Alignment.centerLeft,
