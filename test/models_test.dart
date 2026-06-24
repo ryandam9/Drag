@@ -68,11 +68,17 @@ void main() {
       expect(s3.kind, EndpointKind.s3);
       expect(s3.hasS3Credentials, isFalse);
 
+      // Bucket is optional — credentials alone are enough (discovery mode).
       s3
         ..accessKeyId = 'AKIA'
-        ..secretAccessKey = 'secret'
-        ..bucket = 'b';
+        ..secretAccessKey = 'secret';
       expect(s3.hasS3Credentials, isTrue);
+      s3.bucket = 'b';
+      expect(s3.hasS3Credentials, isTrue);
+
+      // The "use AWS profile" toggle satisfies readiness without typed keys.
+      final prof = Connection(name: 'p', protocol: Protocol.s3, useAwsProfile: true);
+      expect(prof.hasS3Credentials, isTrue);
     });
 
     test('SFTP connection is not S3', () {

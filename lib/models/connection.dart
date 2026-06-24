@@ -67,11 +67,11 @@ class Connection {
   EndpointKind get kind => protocol == Protocol.s3 ? EndpointKind.s3 : EndpointKind.sftp;
   bool get isS3 => protocol == Protocol.s3;
 
-  /// Enough S3 settings present to attempt a real connection: a bucket, plus
-  /// either a typed key/secret or the "use AWS profile" toggle.
+  /// Enough S3 settings present to attempt a connection: typed key/secret, or
+  /// the "use AWS profile" toggle. The bucket is optional — leaving it blank
+  /// lists the account's buckets (discovery mode).
   bool get hasS3Credentials =>
-      bucket.isNotEmpty &&
-      (useAwsProfile || (accessKeyId.isNotEmpty && secretAccessKey.isNotEmpty));
+      useAwsProfile || (accessKeyId.isNotEmpty && secretAccessKey.isNotEmpty);
 
   Connection({
     this.id = '',

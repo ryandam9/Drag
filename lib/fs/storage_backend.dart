@@ -182,14 +182,20 @@ class LocalBackend extends StorageBackend {
 // Amazon S3 / S3-compatible (real, via our own SigV4 S3 client)
 // ─────────────────────────────────────────────────────────────────────────
 class S3Backend extends StorageBackend {
-  S3Backend(this.connection) {
-    if (connection.hasS3Credentials) _client = _build(connection);
-  }
+  S3Backend(this.connection);
 
   final Connection connection;
-  S3Client? _client;
 
-  String get bucket => connection.bucket;
+  /// With no bucket configured, the backend lists the account's buckets at the
+  /// root and the first path segment becomes the bucket name. This supports
+  /// accounts with many buckets across many regions.
+  bool get _discovery => connection.bucket.isEmpty;
+
+  // One client per bucket (built with that bucket's region), plus a service
+  // client for ListBuckets / GetBucketLocation in discovery mode.
+  final Map<String, S3Client> _bucketClients = {};
+  final Map<String, String> _bucketRegions = {};
+  S3Client? _service;
 
   @override
   EndpointKind get kind => EndpointKind.s3;
@@ -198,20 +204,31 @@ class S3Backend extends StorageBackend {
   String get badge => 'S3';
 
   @override
-  bool get isReady => _client != null;
+  bool get isReady => connection.hasS3Credentials;
 
   @override
-  String get initialPath => ''; // bucket root prefix
+  String get initialPath => ''; // bucket prefix, or the bucket list in discovery
 
   @override
-  String displayPath(String path) => 's3://$bucket/$path';
+  String displayPath(String path) =>
+      's3://${_discovery ? path : '${connection.bucket}/$path'}';
 
-  static S3Client _build(Connection c) {
-    final region = c.region.isNotEmpty
-        ? c.region
-        : (c.useAwsProfile ? (loadAwsRegion(resolveAwsProfile(c)) ?? 'us-east-1') : 'us-east-1');
+  /// Splits a pane path into (bucket, key). In fixed-bucket mode the bucket is
+  /// always the configured one and the whole path is the key.
+  (String bucket, String key) _split(String path) {
+    if (!_discovery) return (connection.bucket, path);
+    if (path.isEmpty) return ('', '');
+    final i = path.indexOf('/');
+    return i < 0 ? (path, '') : (path.substring(0, i), path.substring(i + 1));
+  }
+
+  static String _defaultRegion(Connection c) => c.region.isNotEmpty
+      ? c.region
+      : (c.useAwsProfile ? (loadAwsRegion(resolveAwsProfile(c)) ?? 'us-east-1') : 'us-east-1');
+
+  static S3Client _build(Connection c, {required String bucket, required String region}) {
     return S3Client(
-      bucket: c.bucket,
+      bucket: bucket,
       region: region,
       endpoint: c.endpoint,
       useSsl: c.useSsl,
@@ -239,25 +256,56 @@ class S3Backend extends StorageBackend {
     );
   }
 
+  S3Client _serviceClient() =>
+      _service ??= _build(connection, bucket: '', region: _defaultRegion(connection));
+
+  /// A client scoped to [bucket], built with that bucket's own region (resolved
+  /// via GetBucketLocation and cached). With a custom endpoint (MinIO etc.)
+  /// region routing doesn't apply, so the configured region is used as-is.
+  Future<S3Client> _clientFor(String bucket) async {
+    final existing = _bucketClients[bucket];
+    if (existing != null) return existing;
+    final String region;
+    if (!_discovery || connection.endpoint.isNotEmpty) {
+      region = _defaultRegion(connection);
+    } else {
+      region = _bucketRegions[bucket] ??= await _resolveRegion(bucket);
+    }
+    return _bucketClients[bucket] = _build(connection, bucket: bucket, region: region);
+  }
+
+  Future<String> _resolveRegion(String bucket) async {
+    try {
+      return await _serviceClient().getBucketLocation(bucket);
+    } catch (_) {
+      return _defaultRegion(connection); // fall back; object ops will surface errors
+    }
+  }
+
   @override
   Future<List<FileItem>> list(String path) async {
-    final client = _client;
-    if (client == null) throw StateError('S3 connection has no credentials');
+    final (bucket, key) = _split(path);
 
+    // Root of a discovery connection → list the account's buckets.
+    if (_discovery && bucket.isEmpty) {
+      final names = await _serviceClient().listBuckets();
+      return [for (final n in names) FileItem(name: n, isDir: true)]
+        ..sort(StorageBackend.dirsFirst);
+    }
+
+    final client = await _clientFor(bucket);
     final items = <FileItem>[];
     if (path.isNotEmpty) items.add(const FileItem(name: '..', isDir: true));
 
-    final result = await client.listAll(prefix: path, delimiter: '/');
-    // CommonPrefixes → folders.
+    final result = await client.listAll(prefix: key, delimiter: '/');
     for (final prefix in result.commonPrefixes) {
-      final name = prefix.substring(path.length).replaceAll(RegExp(r'/$'), '');
+      final name = prefix.substring(key.length).replaceAll(RegExp(r'/$'), '');
       if (name.isEmpty) continue;
       items.add(FileItem(name: name, isDir: true));
     }
-    // Contents → objects.
     for (final obj in result.objects) {
-      if (obj.key == path) continue; // the prefix placeholder object itself
-      final name = obj.key.substring(path.length);
+      if (obj.key == key) continue; // the prefix placeholder object itself
+      final name = obj.key.substring(key.length);
       if (name.isEmpty || name.endsWith('/')) continue;
       items.add(FileItem(
         name: name,
@@ -272,8 +320,9 @@ class S3Backend extends StorageBackend {
 
   @override
   Future<ReadHandle> openRead(String path) async {
-    final client = _client!;
-    final resp = await client.getObject(path);
+    final (bucket, key) = _split(path);
+    final client = await _clientFor(bucket);
+    final resp = await client.getObject(key);
     return ReadHandle(resp.stream.map(Uint8List.fromList), resp.contentLength);
   }
 
@@ -284,15 +333,18 @@ class S3Backend extends StorageBackend {
     int length, {
     void Function(int sent)? onProgress,
   }) async {
-    final client = _client!;
-    await client.putObject(path, data, length, onProgress: onProgress);
+    final (bucket, key) = _split(path);
+    final client = await _clientFor(bucket);
+    await client.putObject(key, data, length, onProgress: onProgress);
   }
 
   @override
   Future<void> makeDir(String path) async {
-    // S3 has no real directories — represent one with a zero-byte key ending '/'.
-    final key = path.endsWith('/') ? path : '$path/';
-    await _client!.putObject(key, const Stream<Uint8List>.empty(), 0);
+    final (bucket, key) = _split(path);
+    if (bucket.isEmpty) throw UnsupportedError('Select a bucket first');
+    final client = await _clientFor(bucket);
+    final folderKey = key.endsWith('/') ? key : '$key/';
+    await client.putObject(folderKey, const Stream<Uint8List>.empty(), 0);
   }
 
   @override
@@ -300,19 +352,27 @@ class S3Backend extends StorageBackend {
     if (fromPath.endsWith('/')) {
       throw UnsupportedError('Renaming S3 folders is not supported');
     }
-    await _client!.copyObject(fromPath, toPath);
-    await _client!.deleteObject(fromPath);
+    final (fromBucket, fromKey) = _split(fromPath);
+    final (toBucket, toKey) = _split(toPath);
+    if (fromBucket != toBucket) throw UnsupportedError('Cross-bucket rename is not supported');
+    final client = await _clientFor(fromBucket);
+    await client.copyObject(fromKey, toKey);
+    await client.deleteObject(fromKey);
   }
 
   @override
   Future<void> delete(String path, {required bool isDir}) async {
-    final client = _client!;
+    final (bucket, key) = _split(path);
+    if (_discovery && key.isEmpty) {
+      throw UnsupportedError('Deleting a bucket is not supported');
+    }
+    final client = await _clientFor(bucket);
     if (!isDir) {
-      await client.deleteObject(path);
+      await client.deleteObject(key);
       return;
     }
     // Recursively delete everything under the prefix (and the placeholder).
-    final prefix = path.endsWith('/') ? path : '$path/';
+    final prefix = key.endsWith('/') ? key : '$key/';
     final result = await client.listAll(prefix: prefix, delimiter: '');
     for (final obj in result.objects) {
       await client.deleteObject(obj.key);
@@ -320,7 +380,12 @@ class S3Backend extends StorageBackend {
   }
 
   @override
-  void dispose() => _client?.close();
+  void dispose() {
+    _service?.close();
+    for (final c in _bucketClients.values) {
+      c.close();
+    }
+  }
 
   @override
   String childPath(String path, String name, bool isDir) => '$path$name${isDir ? '/' : ''}';

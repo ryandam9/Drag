@@ -52,7 +52,9 @@ class PaneController {
   /// List of path segments for the breadcrumb.
   List<String> get breadcrumb {
     final raw = path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).toList();
-    final head = connection == null ? '~' : (connection!.isS3 ? connection!.bucket : '/');
+    final head = connection == null
+        ? '~'
+        : (connection!.isS3 ? (connection!.bucket.isEmpty ? 's3' : connection!.bucket) : '/');
     return [head, ...raw];
   }
 

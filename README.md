@@ -46,9 +46,16 @@ filesystem.
   automatically — no re-pasting. Region falls back to `~/.aws/config` if the form
   field is blank.
 
-A connection is **verified** by a real, SigV4-signed `ListObjectsV2` against the
-bucket; the **🔌 Test** button reports success or AWS's actual error
-(`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
+**Bucket discovery (multi-bucket / multi-region).** Leave the **Bucket** field
+blank and the connection lists **all buckets in the account** (`ListBuckets`) as
+folders at the root; navigate into any one to browse it. Each bucket's region is
+resolved automatically (`GetBucketLocation`, cached) and a region-correct client
+is used for its objects, so an account with buckets spread across regions works
+from a single connection. Set a Bucket to pin the connection to just that one.
+
+A connection is **verified** by a real, SigV4-signed `ListObjectsV2` (or
+`ListBuckets` in discovery mode); the **🔌 Test** button reports success or AWS's
+actual error (`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
 
 > The SigV4 implementation is verified against AWS's published signing-key test
 > vector, and the full client is exercised end-to-end (upload/list/download +
