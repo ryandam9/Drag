@@ -218,8 +218,16 @@ class FsType {
 
 ThemeData buildDragTheme() {
   final base = ThemeData(useMaterial3: true, colorScheme: FsColors.scheme);
-  // Build the text theme from the user's selected UI font.
-  final uiText = GoogleFonts.getTextTheme(FsType.uiFontFamily, base.textTheme).apply(
+  // Build the text theme from the user's selected UI font. Fonts not in the
+  // google_fonts catalogue (e.g. the bundled Roboto Condensed) aren't supported
+  // by getTextTheme, so fall back to applying the family to the base theme.
+  TextTheme rawText;
+  try {
+    rawText = GoogleFonts.getTextTheme(FsType.uiFontFamily, base.textTheme);
+  } catch (_) {
+    rawText = base.textTheme.apply(fontFamily: FsType.uiFontFamily);
+  }
+  final uiText = rawText.apply(
     bodyColor: FsColors.text1,
     displayColor: FsColors.text1,
   );
