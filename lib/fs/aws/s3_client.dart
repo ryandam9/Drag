@@ -46,10 +46,10 @@ class S3Client {
   S3Client({
     required this.bucket,
     required this.region,
-    required AwsCredentials credentials,
+    required AwsCredentials Function() credentials,
     String endpoint = '',
     this.useSsl = true,
-  })  : _signer = SigV4Signer(credentials: credentials, region: region),
+  })  : _resolveCredentials = credentials,
         _scheme = useSsl ? 'https' : 'http' {
     var host = endpoint.isNotEmpty
         ? endpoint
@@ -66,12 +66,20 @@ class S3Client {
   final String bucket;
   final String region;
   final bool useSsl;
-  final SigV4Signer _signer;
+
+  /// Resolves the credentials to sign with. Called once per request, so a
+  /// rotated ~/.aws profile / session token is picked up automatically.
+  final AwsCredentials Function() _resolveCredentials;
+
   final String _scheme;
   late final String _host;
   int? _port;
 
   final HttpClient _http = HttpClient();
+
+  /// A signer bound to the credentials current at call time.
+  SigV4Signer get _signer =>
+      SigV4Signer(credentials: _resolveCredentials(), region: region);
 
   /// Host header value (includes port when non-default).
   String get _hostHeader {

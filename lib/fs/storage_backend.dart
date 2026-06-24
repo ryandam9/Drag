@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/connection.dart';
 import '../models/file_item.dart';
+import 'aws/aws_profile.dart';
 import 'aws/s3_client.dart';
 import 'aws/sigv4.dart';
 
@@ -206,16 +207,35 @@ class S3Backend extends StorageBackend {
   String displayPath(String path) => 's3://$bucket/$path';
 
   static S3Client _build(Connection c) {
+    final region = c.region.isNotEmpty
+        ? c.region
+        : (c.useAwsProfile ? (loadAwsRegion(resolveAwsProfile(c)) ?? 'us-east-1') : 'us-east-1');
     return S3Client(
       bucket: c.bucket,
-      region: c.region,
+      region: region,
       endpoint: c.endpoint,
       useSsl: c.useSsl,
-      credentials: AwsCredentials(
-        c.accessKeyId,
-        c.secretAccessKey,
-        sessionToken: c.sessionToken.isEmpty ? null : c.sessionToken,
-      ),
+      // Resolved per request → a refreshed ~/.aws profile is picked up live.
+      credentials: () => _resolveCredentials(c),
+    );
+  }
+
+  /// The credentials to sign the next request with — either read fresh from the
+  /// AWS shared-credentials profile, or the typed key/secret/token.
+  static AwsCredentials _resolveCredentials(Connection c) {
+    if (c.useAwsProfile) {
+      final name = resolveAwsProfile(c);
+      final creds = loadAwsCredentials(name);
+      if (creds == null) {
+        throw S3Exception(0,
+            'AWS profile "$name" not found or incomplete in ${awsCredentialsPath()}');
+      }
+      return creds;
+    }
+    return AwsCredentials(
+      c.accessKeyId,
+      c.secretAccessKey,
+      sessionToken: c.sessionToken.isEmpty ? null : c.sessionToken,
     );
   }
 
