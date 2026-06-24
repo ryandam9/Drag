@@ -7,6 +7,7 @@ enum AppFont {
   inter('Inter'),
   googleSans('Google Sans'),
   roboto('Roboto'),
+  robotoCondensed('Roboto Condensed'),
   openSans('Open Sans'),
   lato('Lato'),
   notoSans('Noto Sans'),

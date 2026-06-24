@@ -148,14 +148,12 @@ class FsType {
     double? letterSpacing,
     double? height,
   }) =>
-      GoogleFonts.getFont(
-        uiFontFamily,
-        fontSize: size,
-        fontWeight: weight,
-        color: color ?? FsColors.text1,
-        letterSpacing: letterSpacing,
-        height: height,
-      );
+      _resolve(uiFontFamily,
+          size: size,
+          weight: weight,
+          color: color ?? FsColors.text1,
+          letterSpacing: letterSpacing,
+          height: height);
 
   static TextStyle mono({
     double size = 11,
@@ -164,25 +162,53 @@ class FsType {
     double? letterSpacing,
     double? height,
   }) =>
-      GoogleFonts.getFont(
-        monoFontFamily,
-        fontSize: size,
-        fontWeight: weight,
-        color: color ?? FsColors.text2,
-        letterSpacing: letterSpacing,
-        height: height,
-      );
+      _resolve(monoFontFamily,
+          size: size,
+          weight: weight,
+          color: color ?? FsColors.text2,
+          letterSpacing: letterSpacing,
+          height: height);
 
-  /// A style in a specific Google Fonts [family] — used to preview each font in
-  /// its own typeface inside the font pickers.
+  /// A style in a specific font [family] — used to preview each font in its own
+  /// typeface inside the font pickers.
   static TextStyle family(
     String family, {
     double size = 12,
     FontWeight weight = FontWeight.w400,
     Color? color,
   }) =>
-      GoogleFonts.getFont(family,
-          fontSize: size, fontWeight: weight, color: color ?? FsColors.text1);
+      _resolve(family, size: size, weight: weight, color: color ?? FsColors.text1);
+
+  /// Resolves [family] via Google Fonts when it's in the catalogue, otherwise
+  /// falls back to a bundled/system font of that name. This keeps families that
+  /// aren't in the `google_fonts` package (e.g. Roboto Condensed, shipped as an
+  /// asset) working without throwing.
+  static TextStyle _resolve(
+    String family, {
+    required double size,
+    required FontWeight weight,
+    required Color color,
+    double? letterSpacing,
+    double? height,
+  }) {
+    try {
+      return GoogleFonts.getFont(family,
+          fontSize: size,
+          fontWeight: weight,
+          color: color,
+          letterSpacing: letterSpacing,
+          height: height);
+    } catch (_) {
+      return TextStyle(
+        fontFamily: family,
+        fontSize: size,
+        fontWeight: weight,
+        color: color,
+        letterSpacing: letterSpacing,
+        height: height,
+      );
+    }
+  }
 }
 
 ThemeData buildDragTheme() {
