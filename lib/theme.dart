@@ -75,12 +75,14 @@ class FsType {
     FontWeight weight = FontWeight.w400,
     Color color = FsColors.text2,
     double? letterSpacing,
+    double? height,
   }) =>
       GoogleFonts.jetBrainsMono(
         fontSize: size,
         fontWeight: weight,
         color: color,
         letterSpacing: letterSpacing,
+        height: height,
       );
 }
 

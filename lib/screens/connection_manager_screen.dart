@@ -137,6 +137,7 @@ class ConnectionForm extends ConsumerStatefulWidget {
 class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   Connection get c => widget.connection;
 
+  late final _name = TextEditingController(text: c.name);
   late final _host = TextEditingController(text: c.host);
   late final _port = TextEditingController(text: '${c.port}');
   late final _user = TextEditingController(text: c.username);
@@ -159,7 +160,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
 
   @override
   void dispose() {
-    for (final ctl in [_host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token, _awsProfile]) {
+    for (final ctl in [_name, _host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token, _awsProfile]) {
       ctl.dispose();
     }
     super.dispose();
@@ -170,13 +171,24 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(c.name, style: FsType.sans(size: 15, weight: FontWeight.w600, color: FsColors.text1)),
-        const SizedBox(height: 4),
-        Text(
-          [if (c.lastConnected.isNotEmpty) c.lastConnected, if (c.details.isNotEmpty) c.details].join(' · '),
-          style: FsType.sans(size: 12, color: FsColors.text2),
-        ),
+        Text(c.name.trim().isEmpty ? 'Unnamed connection' : c.name,
+            style: FsType.sans(size: 15, weight: FontWeight.w600, color: FsColors.text1)),
+        if (c.lastConnected.isNotEmpty || c.details.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            [if (c.lastConnected.isNotEmpty) c.lastConnected, if (c.details.isNotEmpty) c.details].join(' · '),
+            style: FsType.sans(size: 12, color: FsColors.text2),
+          ),
+        ],
         const SizedBox(height: 20),
+
+        FormField2('Connection name',
+            _field(_name, (v) {
+              c.name = v;
+              // Refresh the header here and the sidebar list (same name shown).
+              ref.read(connectionsProvider.notifier).touch();
+            }, hint: 'e.g. Prod SFTP, Data bucket')),
+        const SizedBox(height: 16),
 
         FormField2('Protocol', _protocolSelect()),
         const SizedBox(height: 16),
@@ -204,9 +216,82 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
                 _toast('Deleted', '${c.name} removed', ToastKind.info);
               }),
         ]),
+
+        const SizedBox(height: 22),
+        _connectionLog(),
       ]),
     );
   }
+
+  // ── Connection log ──
+  // A persistent, timestamped transcript of Connect / Test attempts. Unlike the
+  // corner toasts (which fade after a few seconds) these stay put so the user
+  // can read each diagnostic in order, right inside the new-connection window.
+  Widget _connectionLog() {
+    final lines = ref.watch(connectionLogProvider);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Text('Connection log',
+            style: FsType.sans(size: 11, weight: FontWeight.w700, color: FsColors.text2, letterSpacing: 0.5)),
+        const SizedBox(width: 8),
+        if (lines.isNotEmpty)
+          Text('${lines.length}', style: FsType.sans(size: 10, color: FsColors.text3)),
+        const Spacer(),
+        if (lines.isNotEmpty)
+          GestureDetector(
+            onTap: () => ref.read(connectionLogProvider.notifier).clear(),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Text('Clear', style: FsType.sans(size: 11, color: FsColors.accentHi)),
+            ),
+          ),
+      ]),
+      const SizedBox(height: 8),
+      Container(
+        height: 160,
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: FsColors.bgDeep,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: FsColors.border),
+        ),
+        child: lines.isEmpty
+            ? Center(
+                child: Text('Test or connect to see diagnostics here.',
+                    style: FsType.sans(size: 11, color: FsColors.text3)),
+              )
+            : ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: lines.length,
+                itemBuilder: (_, i) {
+                  final line = lines[lines.length - 1 - i]; // newest first
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(_stamp(line.time),
+                          style: FsType.mono(size: 11, color: FsColors.text3)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(line.message,
+                            style: FsType.mono(size: 11, color: _logColor(line.kind), height: 1.4)),
+                      ),
+                    ]),
+                  );
+                },
+              ),
+      ),
+    ]);
+  }
+
+  static String _two(int n) => n < 10 ? '0$n' : '$n';
+  static String _stamp(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}:${_two(t.second)}';
+
+  Color _logColor(ToastKind kind) => switch (kind) {
+        ToastKind.success => FsColors.green,
+        ToastKind.error => FsColors.red,
+        ToastKind.info => FsColors.text2,
+      };
 
   // ── S3 credential fields ──
   List<Widget> _s3Fields() {
