@@ -36,7 +36,7 @@ class TitleBar extends StatelessWidget {
     return Container(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
@@ -286,7 +286,7 @@ class FsTextField extends StatelessWidget {
           fillColor: FsColors.bgDeep,
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(6),
-            borderSide: const BorderSide(color: FsColors.border),
+            borderSide: BorderSide(color: FsColors.border),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(6),

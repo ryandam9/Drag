@@ -68,7 +68,7 @@ class NavRail extends ConsumerWidget {
 
     return Container(
       width: 60,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(right: BorderSide(color: FsColors.border)),
       ),

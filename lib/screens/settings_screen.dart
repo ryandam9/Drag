@@ -33,7 +33,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final toast = ref.read(toastsProvider.notifier);
     return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SizedBox(width: 170, child: _sidebar()),
-      const VerticalDivider(width: 1, color: FsColors.border),
+      VerticalDivider(width: 1, color: FsColors.border),
       Expanded(child: _content(settings, notifier, toast)),
     ]);
   }
@@ -65,8 +65,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return Container(
       color: FsColors.bgDeep,
       child: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(14, 8, 14, 4),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
           child: Text('PREFERENCES',
               style: TextStyle(
                   fontSize: 10, fontWeight: FontWeight.w700, color: FsColors.text3, letterSpacing: 1)),
@@ -220,7 +220,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           isDense: true,
           isExpanded: true,
           dropdownColor: FsColors.bgPanel,
-          icon: const Icon(Icons.expand_more, size: 16, color: FsColors.text2),
+          icon: Icon(Icons.expand_more, size: 16, color: FsColors.text2),
           style: FsType.sans(size: 12, color: FsColors.text1),
           items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
           onChanged: (v) {
@@ -246,7 +246,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 value: value,
                 onChanged: (v) => set(v ?? false),
                 activeColor: FsColors.accent,
-                side: const BorderSide(color: FsColors.border),
+                side: BorderSide(color: FsColors.border),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),

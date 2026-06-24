@@ -16,7 +16,7 @@ class ConnectionManagerScreen extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(width: 220, child: _sidebar(ref, state)),
-        const VerticalDivider(width: 1, color: FsColors.border),
+        VerticalDivider(width: 1, color: FsColors.border),
         Expanded(
           child: selected == null
               ? _emptyState(ref)
@@ -32,7 +32,7 @@ class ConnectionManagerScreen extends ConsumerWidget {
       alignment: Alignment.center,
       padding: const EdgeInsets.all(24),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.lan_outlined, size: 36, color: FsColors.text3),
+        Icon(Icons.lan_outlined, size: 36, color: FsColors.text3),
         const SizedBox(height: 12),
         Text('No connections yet',
             style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
@@ -416,7 +416,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
           isDense: true,
           isExpanded: true,
           dropdownColor: FsColors.bgPanel,
-          icon: const Icon(Icons.expand_more, size: 16, color: FsColors.text2),
+          icon: Icon(Icons.expand_more, size: 16, color: FsColors.text2),
           style: FsType.sans(size: 12, color: FsColors.text1),
           items: Protocol.values
               .map((p) => DropdownMenuItem(
@@ -468,7 +468,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
           value: value,
           onChanged: (v) => onChanged(v ?? false),
           activeColor: FsColors.accent,
-          side: const BorderSide(color: FsColors.border),
+          side: BorderSide(color: FsColors.border),
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
       ),

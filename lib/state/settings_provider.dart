@@ -26,6 +26,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   void _applyGlobals(AppSettings s) {
+    // Retint the whole surface ramp from the active theme, then apply the
+    // (possibly custom) persisted accent on top.
+    FsColors.applyTheme(birdThemeByName(s.themeName));
     FsColors.accent = Color(s.accentValue);
     FsColors.accentHi = Color(s.accentHiValue);
   }
