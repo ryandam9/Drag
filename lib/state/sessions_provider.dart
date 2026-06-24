@@ -252,6 +252,36 @@ class SessionsNotifier extends Notifier<SessionsState> {
     }
   }
 
+  /// Actually verify a connection: open a fresh backend with the current
+  /// credentials and perform a real listing (SFTP login + listdir, or S3
+  /// ListObjects). Reports success or the real failure reason, and updates the
+  /// connection's online flag accordingly. Does not open a tab.
+  Future<void> testConnection(Connection c) async {
+    final toasts = ref.read(toastsProvider.notifier);
+    if (c.isS3 && !c.hasS3Credentials) {
+      toasts.push('Missing credentials', 'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
+      return;
+    }
+    if (!c.isS3 && (c.host.isEmpty || c.username.isEmpty)) {
+      toasts.push('Missing details', 'Enter a host and username for ${c.name}', ToastKind.error);
+      return;
+    }
+    toasts.push('Testing connection…', 'Reaching ${c.name}', ToastKind.info);
+    final backend = c.isS3 ? S3Backend(c) : SftpBackend(c);
+    try {
+      await backend.list(backend.initialPath);
+      c.online = true;
+      ref.read(connectionsProvider.notifier).touch();
+      toasts.push('Connection OK', '${c.name} is reachable', ToastKind.success);
+    } catch (e) {
+      c.online = false;
+      ref.read(connectionsProvider.notifier).touch();
+      toasts.push('Connection failed', _short(e), ToastKind.error);
+    } finally {
+      backend.dispose();
+    }
+  }
+
   /// Re-filter every pane after the "show hidden files" setting changes.
   void applyShowHidden(bool show) {
     for (final s in state.sessions) {

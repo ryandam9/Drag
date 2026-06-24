@@ -55,8 +55,11 @@ void main() {
     test('protocol & auth labels', () {
       expect(Protocol.sftp.label, 'SFTP');
       expect(Protocol.s3.label, 'S3');
+      expect(AuthMethod.password.label, 'Password');
       expect(AuthMethod.privateKey.label, 'Private Key');
-      expect(AuthMethod.sshAgent.label, 'SSH Agent');
+      // Only the implemented protocols/auth methods are exposed.
+      expect(Protocol.values, [Protocol.sftp, Protocol.s3]);
+      expect(AuthMethod.values, [AuthMethod.password, AuthMethod.privateKey]);
     });
 
     test('S3 kind & credential readiness', () {

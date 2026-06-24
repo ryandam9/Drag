@@ -188,6 +188,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
           FsButton('⚡ Connect',
               kind: FsButtonKind.primary,
               onTap: () => ref.read(sessionsProvider.notifier).connect(c)),
+          FsButton('🔌 Test', onTap: () => ref.read(sessionsProvider.notifier).testConnection(c)),
           FsButton('💾 Save', onTap: () {
             ref.read(connectionsProvider.notifier).save(c);
             _toast('Saved', '${c.name} configuration stored', ToastKind.success);
@@ -272,7 +273,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
         FormField2(
           'Key file',
           Row(children: [
-            Expanded(child: _field(_keyFile, (v) => c.keyFile = v, hint: '~/.ssh/id_rsa')),
+            Expanded(child: _field(_keyFile, (v) => c.keyFile = v, hint: 'Blank = default ~/.ssh keys')),
             const SizedBox(width: 6),
             FsButton('Browse…', fontSize: 11, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
           ]),
