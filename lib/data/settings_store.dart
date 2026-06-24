@@ -16,6 +16,7 @@ class AppSettings {
     this.showPermsColumn = true,
     this.showLogOnStartup = false,
     this.confirmOverwrite = true,
+    this.sidebarCollapsed = false,
     this.windowWidth,
     this.windowHeight,
     this.windowX,
@@ -44,6 +45,9 @@ class AppSettings {
   bool showLogOnStartup;
   bool confirmOverwrite;
 
+  /// Whether the left navigation sidebar is collapsed to icons only.
+  bool sidebarCollapsed;
+
   // Last window geometry (null until the window has been sized once).
   double? windowWidth;
   double? windowHeight;
@@ -61,6 +65,7 @@ class AppSettings {
     bool? showPermsColumn,
     bool? showLogOnStartup,
     bool? confirmOverwrite,
+    bool? sidebarCollapsed,
     double? windowWidth,
     double? windowHeight,
     double? windowX,
@@ -77,6 +82,7 @@ class AppSettings {
         showPermsColumn: showPermsColumn ?? this.showPermsColumn,
         showLogOnStartup: showLogOnStartup ?? this.showLogOnStartup,
         confirmOverwrite: confirmOverwrite ?? this.confirmOverwrite,
+        sidebarCollapsed: sidebarCollapsed ?? this.sidebarCollapsed,
         windowWidth: windowWidth ?? this.windowWidth,
         windowHeight: windowHeight ?? this.windowHeight,
         windowX: windowX ?? this.windowX,
@@ -94,6 +100,7 @@ class AppSettings {
         'showPermsColumn': showPermsColumn,
         'showLogOnStartup': showLogOnStartup,
         'confirmOverwrite': confirmOverwrite,
+        'sidebarCollapsed': sidebarCollapsed,
         'windowWidth': windowWidth,
         'windowHeight': windowHeight,
         'windowX': windowX,
@@ -113,6 +120,7 @@ class AppSettings {
       showPermsColumn: (j['showPermsColumn'] as bool?) ?? true,
       showLogOnStartup: (j['showLogOnStartup'] as bool?) ?? false,
       confirmOverwrite: (j['confirmOverwrite'] as bool?) ?? true,
+      sidebarCollapsed: (j['sidebarCollapsed'] as bool?) ?? false,
       windowWidth: d(j['windowWidth']),
       windowHeight: d(j['windowHeight']),
       windowX: d(j['windowX']),
