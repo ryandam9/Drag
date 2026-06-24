@@ -103,9 +103,8 @@ class ConnectionManagerScreen extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(c.name,
-                      overflow: TextOverflow.ellipsis,
                       style: FsType.sans(
-                          size: 12,
+                          size: 12.5,
                           weight: active ? FontWeight.w600 : FontWeight.w400,
                           color: active ? FsColors.accentHi : (hover ? FsColors.text1 : FsColors.text2))),
                 ),
