@@ -2,11 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!--
+	  Drag is a file-transfer client: it browses the user's whole filesystem
+	  (Local pane) and opens outbound connections to S3 / SFTP. The macOS App
+	  Sandbox would restrict both, so it is disabled for direct (non-App-Store)
+	  distribution. allow-jit + network.server are required by Flutter's debug
+	  VM service; network.client covers outbound transfers.
+	-->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.network.server</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
 	<true/>
 </dict>
 </plist>
