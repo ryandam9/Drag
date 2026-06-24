@@ -406,7 +406,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     final badgeBg = isLocal
         ? FsColors.badgeLocalBg
         : isS3
-            ? const Color(0xFF3A2A0A)
+            ? FsColors.badgePausedBg
             : FsColors.badgeRemoteBg;
     final badgeFg = isLocal
         ? FsColors.accentHi
@@ -727,7 +727,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: bg,
-              border: const Border(bottom: BorderSide(color: Color(0x801C3A57))),
+              border: Border(bottom: BorderSide(color: FsColors.border)),
             ),
             child: Row(children: [
               Expanded(

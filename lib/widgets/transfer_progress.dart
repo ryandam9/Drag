@@ -65,7 +65,7 @@ class _Card extends StatelessWidget {
         color: FsColors.bgPanel,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: FsColors.borderHi),
-        boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 30, offset: Offset(0, 12))],
+        boxShadow: const [BoxShadow(color: Color(0x1F000000), blurRadius: 30, offset: Offset(0, 12))],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

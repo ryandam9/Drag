@@ -6,6 +6,7 @@ import 'package:drag/screens/dashboard_screen.dart';
 import 'package:drag/screens/settings_screen.dart';
 import 'package:drag/screens/transfer_queue_screen.dart';
 import 'package:drag/state/app.dart';
+import 'package:drag/theme.dart';
 import 'package:drag/widgets/toast_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -167,7 +168,10 @@ void main() {
       await tester.tap(find.text('Galah'));
       await tester.pump();
       expect(c.read(settingsProvider).themeName, 'Galah');
-      expect(c.read(settingsProvider).accentValue, const Color(0xFFE9A7BB).toARGB32());
+      // The accent is the seed-derived Material 3 primary for the bird's colour.
+      final cs = ColorScheme.fromSeed(
+          seedColor: birdThemeByName('Galah').primary, brightness: Brightness.light);
+      expect(c.read(settingsProvider).accentValue, cs.primary.toARGB32());
       await tester.pump(const Duration(seconds: 6)); // drain the toast timer
     });
 

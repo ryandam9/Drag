@@ -28,29 +28,47 @@ class ConnectionManagerScreen extends ConsumerWidget {
 
   Widget _emptyState(WidgetRef ref) {
     return Container(
-      color: FsColors.bgSurface,
+      color: FsColors.bgScaffold,
       alignment: Alignment.center,
-      padding: const EdgeInsets.all(24),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.lan_outlined, size: 36, color: FsColors.text3),
-        const SizedBox(height: 12),
-        Text('No connections yet',
-            style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-        const SizedBox(height: 6),
-        Text('Add a real SFTP or Amazon S3 endpoint to get started.',
-            textAlign: TextAlign.center, style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
-        const SizedBox(height: 16),
-        FsButton('＋ New Connection',
-            kind: FsButtonKind.primary,
-            onTap: () => ref.read(connectionsProvider.notifier).create()),
-      ]),
+      padding: const EdgeInsets.all(40),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 420),
+        padding: const EdgeInsets.all(36),
+        decoration: BoxDecoration(
+          color: FsColors.bgSurface,
+          borderRadius: BorderRadius.circular(FsColors.rCard),
+          border: Border.all(color: FsColors.border),
+          boxShadow: FsColors.cardShadow,
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: FsColors.bgActive,
+              borderRadius: BorderRadius.circular(FsColors.rCard),
+            ),
+            child: Icon(Icons.lan_outlined, size: 30, color: FsColors.accentHi),
+          ),
+          const SizedBox(height: 18),
+          Text('No connections yet',
+              style: FsType.sans(size: 20, weight: FontWeight.w700, color: FsColors.text1)),
+          const SizedBox(height: 8),
+          Text('Add a real SFTP or Amazon S3 endpoint to get started.',
+              textAlign: TextAlign.center, style: FsType.sans(size: 13, color: FsColors.text2, height: 1.5)),
+          const SizedBox(height: 24),
+          FsButton('＋ New Connection',
+              kind: FsButtonKind.primary,
+              onTap: () => ref.read(connectionsProvider.notifier).create()),
+        ]),
+      ),
     );
   }
 
   // ── Saved sessions sidebar ──
   Widget _sidebar(WidgetRef ref, ConnectionsState state) {
     Widget groupLabel(String t) => Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
           child: Text(t,
               style: FsType.sans(size: 10, weight: FontWeight.w700, color: FsColors.text3, letterSpacing: 1)),
         );
@@ -63,16 +81,31 @@ class ConnectionManagerScreen extends ConsumerWidget {
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              color: active ? FsColors.bgActive : (hover ? FsColors.bgHover : Colors.transparent),
+              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: active ? FsColors.bgActive : (hover ? FsColors.bgHover : Colors.transparent),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Row(children: [
-                StatusDot(c.online ? FsColors.green : FsColors.text3, glow: c.online),
+                Container(
+                  width: 22,
+                  height: 22,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: active ? FsColors.bgSurface : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: StatusDot(c.online ? FsColors.green : FsColors.text3, glow: c.online),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(c.name,
                       overflow: TextOverflow.ellipsis,
                       style: FsType.sans(
-                          size: 12, color: active ? FsColors.accentHi : (hover ? FsColors.text1 : FsColors.text2))),
+                          size: 12,
+                          weight: active ? FontWeight.w600 : FontWeight.w400,
+                          color: active ? FsColors.accentHi : (hover ? FsColors.text1 : FsColors.text2))),
                 ),
                 if (c.isS3) Text('S3', style: FsType.sans(size: 9, weight: FontWeight.w700, color: FsColors.amber)),
               ]),
@@ -89,8 +122,8 @@ class ConnectionManagerScreen extends ConsumerWidget {
       color: FsColors.bgDeep,
       child: Column(children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(14, 10, 14, 4),
-          child: FsTextField(hint: 'Search sessions…', mono: false, height: 28),
+          padding: EdgeInsets.fromLTRB(12, 14, 12, 4),
+          child: FsTextField(hint: 'Search sessions…', mono: false, height: 34),
         ),
         Expanded(
           child: state.connections.isEmpty
@@ -166,60 +199,92 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
     super.dispose();
   }
 
+  /// White rounded card wrapper for grouping form sections.
+  Widget _card({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: FsColors.bgSurface,
+        borderRadius: BorderRadius.circular(FsColors.rCard),
+        border: Border.all(color: FsColors.border),
+        boxShadow: FsColors.cardShadow,
+      ),
+      child: child,
+    );
+  }
+
+  /// Large section header.
+  Widget _sectionTitle(String t) => Text(t,
+      style: FsType.sans(size: 16, weight: FontWeight.w700, color: FsColors.text1));
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(c.name.trim().isEmpty ? 'Unnamed connection' : c.name,
-            style: FsType.sans(size: 15, weight: FontWeight.w600, color: FsColors.text1)),
-        if (c.lastConnected.isNotEmpty || c.details.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            [if (c.lastConnected.isNotEmpty) c.lastConnected, if (c.details.isNotEmpty) c.details].join(' · '),
-            style: FsType.sans(size: 12, color: FsColors.text2),
-          ),
-        ],
-        const SizedBox(height: 20),
+      padding: const EdgeInsets.all(28),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 820),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(c.name.trim().isEmpty ? 'Unnamed connection' : c.name,
+                style: FsType.sans(size: 22, weight: FontWeight.w700, color: FsColors.text1)),
+            if (c.lastConnected.isNotEmpty || c.details.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                [if (c.lastConnected.isNotEmpty) c.lastConnected, if (c.details.isNotEmpty) c.details].join(' · '),
+                style: FsType.sans(size: 13, color: FsColors.text2),
+              ),
+            ],
+            const SizedBox(height: 20),
 
-        FormField2('Connection name',
-            _field(_name, (v) {
-              c.name = v;
-              // Refresh the header here and the sidebar list (same name shown).
-              ref.read(connectionsProvider.notifier).touch();
-            }, hint: 'e.g. Prod SFTP, Data bucket')),
-        const SizedBox(height: 16),
+            // ── General card: name + protocol ──
+            _card(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                FormField2('Connection name',
+                    _field(_name, (v) {
+                      c.name = v;
+                      // Refresh the header here and the sidebar list (same name shown).
+                      ref.read(connectionsProvider.notifier).touch();
+                    }, hint: 'e.g. Prod SFTP, Data bucket')),
+                const SizedBox(height: 16),
+                FormField2('Protocol', _protocolSelect()),
+              ]),
+            ),
+            const SizedBox(height: 18),
 
-        FormField2('Protocol', _protocolSelect()),
-        const SizedBox(height: 16),
+            // ── Connection detail card ──
+            _card(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                  children: c.isS3 ? _s3Fields() : _sshFields()),
+            ),
+            const SizedBox(height: 18),
 
-        if (c.isS3) ..._s3Fields() else ..._sshFields(),
-
-        const SizedBox(height: 18),
-        // Wrap so the buttons flow onto a second line on narrow windows.
-        Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          FsButton('⚡ Connect',
-              kind: FsButtonKind.primary,
-              onTap: () => ref.read(sessionsProvider.notifier).connect(c)),
-          FsButton('🔌 Test', onTap: () => ref.read(sessionsProvider.notifier).testConnection(c)),
-          FsButton('💾 Save', onTap: () {
-            ref.read(connectionsProvider.notifier).save(c);
-            _toast('Saved', '${c.name} configuration stored', ToastKind.success);
-          }),
-          FsButton('⧉ Duplicate', onTap: () => ref.read(connectionsProvider.notifier).duplicate(c)),
-          FsButton('⊗ Delete',
-              kind: FsButtonKind.danger,
-              fontSize: 11,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              onTap: () {
-                ref.read(connectionsProvider.notifier).delete(c);
-                _toast('Deleted', '${c.name} removed', ToastKind.info);
+            // Wrap so the buttons flow onto a second line on narrow windows.
+            Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              FsButton('⚡ Connect',
+                  kind: FsButtonKind.primary,
+                  onTap: () => ref.read(sessionsProvider.notifier).connect(c)),
+              FsButton('🔌 Test', onTap: () => ref.read(sessionsProvider.notifier).testConnection(c)),
+              FsButton('💾 Save', onTap: () {
+                ref.read(connectionsProvider.notifier).save(c);
+                _toast('Saved', '${c.name} configuration stored', ToastKind.success);
               }),
-        ]),
+              FsButton('⧉ Duplicate', onTap: () => ref.read(connectionsProvider.notifier).duplicate(c)),
+              FsButton('⊗ Delete',
+                  kind: FsButtonKind.danger,
+                  fontSize: 11,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  onTap: () {
+                    ref.read(connectionsProvider.notifier).delete(c);
+                    _toast('Deleted', '${c.name} removed', ToastKind.info);
+                  }),
+            ]),
 
-        const SizedBox(height: 22),
-        _connectionLog(),
-      ]),
+            const SizedBox(height: 20),
+            _connectionLog(),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -229,31 +294,31 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   // can read each diagnostic in order, right inside the new-connection window.
   Widget _connectionLog() {
     final lines = ref.watch(connectionLogProvider);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return _card(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Text('Connection log',
-            style: FsType.sans(size: 11, weight: FontWeight.w700, color: FsColors.text2, letterSpacing: 0.5)),
+        _sectionTitle('Connection log'),
         const SizedBox(width: 8),
         if (lines.isNotEmpty)
-          Text('${lines.length}', style: FsType.sans(size: 10, color: FsColors.text3)),
+          Text('${lines.length}', style: FsType.sans(size: 11, color: FsColors.text3)),
         const Spacer(),
         if (lines.isNotEmpty)
           GestureDetector(
             onTap: () => ref.read(connectionLogProvider.notifier).clear(),
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
-              child: Text('Clear', style: FsType.sans(size: 11, color: FsColors.accentHi)),
+              child: Text('Clear', style: FsType.sans(size: 12, weight: FontWeight.w600, color: FsColors.accentHi)),
             ),
           ),
       ]),
-      const SizedBox(height: 8),
+      const SizedBox(height: 12),
       Container(
         height: 160,
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: FsColors.bgDeep,
-          borderRadius: BorderRadius.circular(8),
+          color: FsColors.bgScaffold,
+          borderRadius: BorderRadius.circular(FsColors.rField),
           border: Border.all(color: FsColors.border),
         ),
         child: lines.isEmpty
@@ -281,7 +346,8 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
                 },
               ),
       ),
-    ]);
+    ]),
+    );
   }
 
   static String _two(int n) => n < 10 ? '0$n' : '$n';
@@ -329,12 +395,12 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
       ],
       const SizedBox(height: 14),
       _checkRow('Use SSL (HTTPS)', c.useSsl, (v) => setState(() => c.useSsl = v)),
-      const SizedBox(height: 6),
+      const SizedBox(height: 12),
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: FsColors.bgPanel,
-          borderRadius: BorderRadius.circular(8),
+          color: FsColors.bgScaffold,
+          borderRadius: BorderRadius.circular(FsColors.rField),
           border: Border.all(color: FsColors.border),
         ),
         child: Row(children: [
@@ -366,7 +432,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
         Expanded(child: FormField2('Timeout (s)', _field(_timeout, (v) => c.timeout = int.tryParse(v) ?? c.timeout))),
       ]),
       const SizedBox(height: 16),
-      Text('Authentication', style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.text2)),
+      Text('Authentication', style: FsType.sans(size: 13, weight: FontWeight.w700, color: FsColors.text1)),
       const SizedBox(height: 8),
       _authTabs(),
       const SizedBox(height: 16),
@@ -401,12 +467,12 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
 
   Widget _protocolSelect() {
     return Container(
-      height: 32,
+      height: 38,
       width: 260,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: FsColors.bgDeep,
-        borderRadius: BorderRadius.circular(6),
+        color: FsColors.bgSurface,
+        borderRadius: BorderRadius.circular(FsColors.rField),
         border: Border.all(color: FsColors.border),
       ),
       alignment: Alignment.centerLeft,
@@ -436,7 +502,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   Widget _authTabs() {
     final methods = AuthMethod.values;
     return Container(
-      decoration: BoxDecoration(border: Border.all(color: FsColors.border), borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(border: Border.all(color: FsColors.border), borderRadius: BorderRadius.circular(FsColors.rField)),
       clipBehavior: Clip.antiAlias,
       child: IntrinsicHeight(
         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -446,11 +512,11 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
               child: MouseRegion(
                 cursor: SystemMouseCursors.click,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                   color: m == c.auth ? FsColors.bgActive : Colors.transparent,
                   child: Text(m.label,
                       style: FsType.sans(
-                          size: 11, weight: FontWeight.w600, color: m == c.auth ? FsColors.accentHi : FsColors.text2)),
+                          size: 12, weight: FontWeight.w600, color: m == c.auth ? FsColors.accentHi : FsColors.text2)),
                 ),
               ),
             ),

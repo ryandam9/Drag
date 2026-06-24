@@ -13,42 +13,134 @@ class TransferQueueScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(transfersProvider);
     final notifier = ref.read(transfersProvider.notifier);
-    return Column(children: [
-      _filterBar(state, notifier),
-      Expanded(child: _table(state, notifier)),
-      _statsBar(state, notifier),
-    ]);
+    return Container(
+      color: FsColors.bgScaffold,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _header(state, notifier),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+            child: _statsCard(state, notifier),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: _queueCard(state, notifier),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  // ── Status filter chips + free text filter ──
-  Widget _filterBar(TransfersState s, TransfersNotifier n) {
+  // ── Title + status pills + bulk actions ──
+  Widget _header(TransfersState s, TransfersNotifier n) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text('Transfers',
+                style: FsType.sans(size: 22, weight: FontWeight.w700, color: FsColors.text1)),
+            const Spacer(),
+            TbButton('⏸ Pause all', onTap: n.pauseAll),
+            TbButton('▶ Resume all', onTap: n.resumeAll),
+            TbButton('⊗ Clear done', onTap: n.clearDone),
+          ]),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  StatusBadge('● Active  ${s.activeCount}', bg: FsColors.badgeLocalBg, fg: FsColors.accentHi),
+                  const SizedBox(width: 6),
+                  StatusBadge('⊡ Queued  ${s.queuedCount}', bg: FsColors.badgeQueuedBg, fg: FsColors.badgeQueuedFg),
+                  const SizedBox(width: 6),
+                  StatusBadge('✓ Done  ${s.doneCount}', bg: FsColors.badgeDoneBg, fg: FsColors.badgeDoneFg),
+                  const SizedBox(width: 6),
+                  StatusBadge('✕ Error  ${s.errorCount}', bg: FsColors.badgeErrorBg, fg: FsColors.badgeErrorFg),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const FsTextField(hint: 'Filter transfers…', mono: false, width: 200, height: 32),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  // ── Stats card: tinted icon chip + big number + label per status ──
+  Widget _statsCard(TransfersState s, TransfersNotifier n) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
-        color: FsColors.bgPanel,
-        border: Border(bottom: BorderSide(color: FsColors.border)),
+        color: FsColors.bgSurface,
+        borderRadius: BorderRadius.circular(FsColors.rCard),
+        border: Border.all(color: FsColors.border),
+        boxShadow: FsColors.cardShadow,
       ),
       child: Row(children: [
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              StatusBadge('● Active  ${s.activeCount}', bg: FsColors.badgeLocalBg, fg: FsColors.accentHi),
-              const SizedBox(width: 6),
-              StatusBadge('⊡ Queued  ${s.queuedCount}', bg: FsColors.badgeQueuedBg, fg: FsColors.badgeQueuedFg),
-              const SizedBox(width: 6),
-              StatusBadge('✓ Done  ${s.doneCount}', bg: FsColors.badgeDoneBg, fg: FsColors.badgeDoneFg),
-              const SizedBox(width: 6),
-              StatusBadge('✕ Error  ${s.errorCount}', bg: FsColors.badgeErrorBg, fg: FsColors.badgeErrorFg),
-            ]),
+        _stat('Active', s.activeCount, Icons.swap_vert_rounded, FsColors.accent),
+        _statDivider(),
+        _stat('Queued', s.queuedCount, Icons.schedule_rounded, FsColors.badgeQueuedFg),
+        _statDivider(),
+        _stat('Done', s.doneCount, Icons.check_circle_outline, FsColors.green),
+        _statDivider(),
+        _stat('Error', s.errorCount, Icons.error_outline, FsColors.red),
+      ]),
+    );
+  }
+
+  Widget _statDivider() => Container(
+        width: 1,
+        height: 40,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        color: FsColors.border,
+      );
+
+  Widget _stat(String label, int value, IconData icon, Color color) {
+    return Expanded(
+      child: Row(children: [
+        Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Color.lerp(color, FsColors.bgSurface, 0.82),
+            borderRadius: BorderRadius.circular(10),
           ),
+          child: Icon(icon, size: 18, color: color),
         ),
-        const SizedBox(width: 8),
-        TbButton('⏸ Pause all', onTap: n.pauseAll),
-        TbButton('▶ Resume all', onTap: n.resumeAll),
-        TbButton('⊗ Clear done', onTap: n.clearDone),
-        const SizedBox(width: 8),
-        const FsTextField(hint: 'Filter transfers…', mono: false, width: 180, height: 28),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$value', style: FsType.sans(size: 22, weight: FontWeight.w800, color: FsColors.text1)),
+            Text(label, style: FsType.sans(size: 12, color: FsColors.text2)),
+          ],
+        ),
+      ]),
+    );
+  }
+
+  // ── Transfer table card ──
+  Widget _queueCard(TransfersState s, TransfersNotifier n) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: FsColors.bgSurface,
+        borderRadius: BorderRadius.circular(FsColors.rCard),
+        border: Border.all(color: FsColors.border),
+        boxShadow: FsColors.cardShadow,
+      ),
+      child: Column(children: [
+        Expanded(child: _table(s, n)),
+        _statsBar(s, n),
       ]),
     );
   }
@@ -57,31 +149,36 @@ class TransferQueueScreen extends ConsumerWidget {
   Widget _table(TransfersState s, TransfersNotifier n) {
     if (s.transfers.isEmpty) {
       return Container(
-        color: FsColors.bgSurface,
         alignment: Alignment.center,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.swap_vert_rounded, size: 36, color: FsColors.text3),
-          const SizedBox(height: 10),
+          Container(
+            width: 56,
+            height: 56,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Color.lerp(FsColors.accent, FsColors.bgSurface, 0.82),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.swap_vert_rounded, size: 28, color: FsColors.accent),
+          ),
+          const SizedBox(height: 14),
           Text('No transfers yet',
-              style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-          const SizedBox(height: 4),
+              style: FsType.sans(size: 16, weight: FontWeight.w700, color: FsColors.text1)),
+          const SizedBox(height: 6),
           Text('Drag a file between panes in the Browser to start one.',
               style: FsType.sans(size: 12, color: FsColors.text2)),
         ]),
       );
     }
-    return Container(
-      color: FsColors.bgSurface,
-      child: Column(children: [
-        _head(),
-        Expanded(
-          child: ListView.builder(
-            itemCount: s.transfers.length,
-            itemBuilder: (context, i) => _row(n, s.transfers[i]),
-          ),
+    return Column(children: [
+      _head(),
+      Expanded(
+        child: ListView.builder(
+          itemCount: s.transfers.length,
+          itemBuilder: (context, i) => _row(n, s.transfers[i]),
         ),
-      ]),
-    );
+      ),
+    ]);
   }
 
   Widget _head() {
@@ -91,7 +188,7 @@ class TransferQueueScreen extends ConsumerWidget {
               style: FsType.sans(size: 10, weight: FontWeight.w700, color: FsColors.text3, letterSpacing: 0.7)),
         );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(bottom: BorderSide(color: FsColors.border)),
@@ -144,10 +241,10 @@ class TransferQueueScreen extends ConsumerWidget {
         return Opacity(
           opacity: t.status == TransferStatus.done ? 0.55 : 1,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
             color: hover ? FsColors.bgHover : Colors.transparent,
-            border: const Border(bottom: BorderSide(color: Color(0x661C3A57))),
+            border: Border(bottom: BorderSide(color: FsColors.border)),
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
             SizedBox(
@@ -172,11 +269,11 @@ class TransferQueueScreen extends ConsumerWidget {
                       SizedBox(
                         width: 120,
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(3),
+                          borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
                             value: t.progress,
                             minHeight: 6,
-                            backgroundColor: FsColors.bgPanel,
+                            backgroundColor: FsColors.bgHover,
                             valueColor: AlwaysStoppedAnimation(fillColor),
                           ),
                         ),
@@ -243,7 +340,7 @@ class TransferQueueScreen extends ConsumerWidget {
         ]);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(top: BorderSide(color: FsColors.border)),
