@@ -31,11 +31,16 @@ class TransfersNotifier extends Notifier<TransfersState> {
   final TransferService _service = TransferService();
   bool _disposed = false;
 
+  /// Mirror of the current transfers, kept in a plain field so [onDispose] can
+  /// release each transfer's `liveTick` without touching `state` — Riverpod 3
+  /// forbids reading providers/state inside lifecycle callbacks.
+  List<Transfer> _current = const [];
+
   @override
   TransfersState build() {
     ref.onDispose(() {
       _disposed = true;
-      for (final t in state.transfers) {
+      for (final t in _current) {
         t.dispose();
       }
     });
@@ -46,6 +51,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
 
   void _emit(List<Transfer> transfers, {int? maxThreads}) {
     if (_disposed) return;
+    _current = transfers;
     state = TransfersState(transfers: transfers, maxThreads: maxThreads ?? state.maxThreads);
   }
 
