@@ -140,6 +140,15 @@ void main() {
       expect(AppFont.monoFonts.every((f) => f.mono), isTrue);
     });
 
+    test('buildDragTheme tolerates a bundled (non-catalogue) UI font', () {
+      // Roboto Condensed ships as an asset, not via google_fonts — building the
+      // theme (which calls GoogleFonts.getTextTheme) must not throw for it.
+      FsType.uiFontFamily = 'Roboto Condensed';
+      expect(buildDragTheme, returnsNormally);
+      expect(FsType.sans, returnsNormally);
+      FsType.uiFontFamily = 'Inter';
+    });
+
     test('setShowHiddenFiles propagates to every pane', () {
       final c = makeContainer();
       // Build sessions so the show-hidden listener is wired up.

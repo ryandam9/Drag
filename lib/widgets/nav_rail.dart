@@ -33,31 +33,42 @@ class NavRail extends ConsumerWidget {
           onTap: () => nav.go(screen),
         );
 
+    final targetWidth = collapsed ? _collapsedWidth : _expandedWidth;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
-      width: collapsed ? _collapsedWidth : _expandedWidth,
+      width: targetWidth,
       decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(right: BorderSide(color: FsColors.border)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _header(collapsed),
-          const SizedBox(height: 8),
-          destination(Icons.folder_copy_outlined, 'Browser', AppScreen.browser),
-          destination(Icons.lan_outlined, 'Connections', AppScreen.connections),
-          destination(Icons.swap_vert_rounded, 'Transfer Queue', AppScreen.queue, badge: queueBadge),
-          destination(Icons.insights_outlined, 'History', AppScreen.dashboard),
-          const Spacer(),
-          Divider(height: 1, color: FsColors.border),
-          const SizedBox(height: 6),
-          destination(Icons.settings_outlined, 'Settings', AppScreen.settings),
-          _sessionCard(ref, collapsed),
-          _collapseToggle(ref, collapsed),
-          const SizedBox(height: 8),
-        ],
+      // While the width animates, lay the content out at the stable target
+      // width and clip — otherwise the rows momentarily overflow the shrinking
+      // constraint.
+      child: ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.topLeft,
+          minWidth: targetWidth,
+          maxWidth: targetWidth,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(collapsed),
+              const SizedBox(height: 8),
+              destination(Icons.folder_copy_outlined, 'Browser', AppScreen.browser),
+              destination(Icons.lan_outlined, 'Connections', AppScreen.connections),
+              destination(Icons.swap_vert_rounded, 'Transfer Queue', AppScreen.queue, badge: queueBadge),
+              destination(Icons.insights_outlined, 'History', AppScreen.dashboard),
+              const Spacer(),
+              Divider(height: 1, color: FsColors.border),
+              const SizedBox(height: 6),
+              destination(Icons.settings_outlined, 'Settings', AppScreen.settings),
+              _sessionCard(ref, collapsed),
+              _collapseToggle(ref, collapsed),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
       ),
     );
   }
