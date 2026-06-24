@@ -46,6 +46,8 @@ class TitleBar extends StatelessWidget {
           Expanded(
             child: Center(
               child: Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: FsType.sans(size: 12, weight: FontWeight.w500, color: FsColors.text2)),
             ),
           ),

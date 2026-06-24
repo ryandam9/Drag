@@ -311,21 +311,30 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
-        ToolButton('← Back', onTap: pane.canGoBack ? pane.goBack : null),
-        ToolButton('→ Fwd', onTap: pane.canGoForward ? pane.goForward : null),
-        ToolButton('↑ Up', onTap: pane.goUp),
-        const ToolSep(),
-        const ToolButton('⇄ Sync', active: true),
-        ToolButton('↯ Queue', onTap: () => _go(AppScreen.queue)),
-        ToolButton('📋 Log',
-            active: _showLogOverride ?? showLogOnStartup,
-            onTap: () => setState(
-                () => _showLogOverride = !(_showLogOverride ?? showLogOnStartup))),
-        const ToolSep(),
-        ToolButton('⊕ New Folder', onTap: () => _newFolder(_focusedPane)),
-        ToolButton('✎ Rename', onTap: () => _renameSelected(_focusedPane)),
-        ToolButton('⊗ Delete', color: FsColors.red, onTap: () => _deleteSelected(_focusedPane)),
-        const Spacer(),
+        // The button cluster scrolls horizontally on narrow windows instead of
+        // overflowing; the filter stays pinned on the right.
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              ToolButton('← Back', onTap: pane.canGoBack ? pane.goBack : null),
+              ToolButton('→ Fwd', onTap: pane.canGoForward ? pane.goForward : null),
+              ToolButton('↑ Up', onTap: pane.goUp),
+              const ToolSep(),
+              const ToolButton('⇄ Sync', active: true),
+              ToolButton('↯ Queue', onTap: () => _go(AppScreen.queue)),
+              ToolButton('📋 Log',
+                  active: _showLogOverride ?? showLogOnStartup,
+                  onTap: () => setState(
+                      () => _showLogOverride = !(_showLogOverride ?? showLogOnStartup))),
+              const ToolSep(),
+              ToolButton('⊕ New Folder', onTap: () => _newFolder(_focusedPane)),
+              ToolButton('✎ Rename', onTap: () => _renameSelected(_focusedPane)),
+              ToolButton('⊗ Delete', color: FsColors.red, onTap: () => _deleteSelected(_focusedPane)),
+            ]),
+          ),
+        ),
+        const SizedBox(width: 8),
         Text('Filter:', style: FsType.sans(size: 10, color: FsColors.text3)),
         const SizedBox(width: 6),
         const FsTextField(hint: '*.log, *.conf…', width: 130, height: 26),
@@ -774,8 +783,12 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       child: Row(children: [
         StatusDot(current != null ? FsColors.green : FsColors.text3, glow: current != null),
         const SizedBox(width: 8),
-        Text(current != null ? 'Transferring — ${current.name}' : 'Idle',
-            style: FsType.sans(size: 11, color: FsColors.text2)),
+        Flexible(
+          child: Text(current != null ? 'Transferring — ${current.name}' : 'Idle',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 11, color: FsColors.text2)),
+        ),
         const SizedBox(width: 10),
         if (current != null)
           // Live progress repaints here only — not the whole browser pane.
