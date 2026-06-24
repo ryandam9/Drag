@@ -53,9 +53,13 @@ class AppShell extends ConsumerWidget {
               Expanded(
                 child: Container(
                   color: FsColors.bgScaffold,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 160),
-                    child: KeyedSubtree(key: ValueKey(screen), child: body),
+                  child: _MinSize(
+                    minWidth: 820,
+                    minHeight: 520,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 160),
+                      child: KeyedSubtree(key: ValueKey(screen), child: body),
+                    ),
                   ),
                 ),
               ),
@@ -73,5 +77,33 @@ class AppShell extends ConsumerWidget {
     final count = state.sessions.length;
     return 'Drag — ${ref.read(sessionsProvider.notifier).activeSession.title}'
         '${count > 1 ? '  ($count sessions)' : ''}';
+  }
+}
+
+/// Keeps [child] at a usable minimum size: when the window shrinks below the
+/// app's design minimum, the content stops squashing (which would overflow the
+/// dense dual-pane / table layouts) and becomes scroll-able in the cramped axis
+/// instead. At or above the minimum it just fills the space.
+class _MinSize extends StatelessWidget {
+  final double minWidth;
+  final double minHeight;
+  final Widget child;
+  const _MinSize({required this.minWidth, required this.minHeight, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, c) {
+      final tooNarrow = c.maxWidth < minWidth;
+      final tooShort = c.maxHeight < minHeight;
+      if (!tooNarrow && !tooShort) return child;
+      final w = tooNarrow ? minWidth : c.maxWidth;
+      final h = tooShort ? minHeight : c.maxHeight;
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SingleChildScrollView(
+          child: SizedBox(width: w, height: h, child: child),
+        ),
+      );
+    });
   }
 }
