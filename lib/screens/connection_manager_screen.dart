@@ -231,21 +231,26 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   Widget build(BuildContext context) {
     // Two-column detail layout: editable form on the left (scrolls), the
     // connection log pinned full-height on the right so it is always visible.
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(child: _formColumn()),
-        VerticalDivider(width: 1, color: FsColors.border),
-        SizedBox(
-          width: 360,
-          child: Container(
-            color: FsColors.bgScaffold,
-            padding: const EdgeInsets.all(20),
-            child: _connectionLog(),
+    return LayoutBuilder(builder: (context, cons) {
+      // The form doesn't need the whole width — cap it at a comfortable size so
+      // fields don't sprawl; the log gets all the remaining space (it was far
+      // too narrow before).
+      final formWidth = (cons.maxWidth * 0.5).clamp(300.0, 720.0);
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(width: formWidth, child: _formColumn()),
+          VerticalDivider(width: 1, color: FsColors.border),
+          Expanded(
+            child: Container(
+              color: FsColors.bgScaffold,
+              padding: const EdgeInsets.all(20),
+              child: _connectionLog(),
+            ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    });
   }
 
   Widget _formColumn() {
