@@ -214,9 +214,7 @@ class _HistoryTable extends StatelessWidget {
             flex: 26,
             child: Padding(
               padding: const EdgeInsets.only(right: 10),
-              child: Text(r.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+              child: SelectableText(r.name,
                   style: FsType.sans(size: 12, weight: FontWeight.w500, color: FsColors.text1)),
             ),
           ),
@@ -224,8 +222,7 @@ class _HistoryTable extends StatelessWidget {
             flex: 30,
             child: Padding(
               padding: const EdgeInsets.only(right: 10),
-              child: Text('${r.sourcePath} → ${r.destPath}',
-                  maxLines: 2, overflow: TextOverflow.ellipsis,
+              child: SelectableText('${r.sourcePath} → ${r.destPath}',
                   style: FsType.sans(size: 11, color: FsColors.text2)),
             ),
           ),
