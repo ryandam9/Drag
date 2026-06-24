@@ -1,81 +1,94 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Drag's palette, retuned to the Feathers **Rainbow Bee-eater** identity used
-/// in the attendance-register app: deep-navy surfaces with a bright-blue /
-/// cyan accent (primary #00346E, secondary #007CBF, tertiary #06ABDF).
+/// Drag's palette. Following the **attendance-register** style approach: a
+/// light Material 3 look generated with [ColorScheme.fromSeed] from the active
+/// bird theme's primary colour — warm off-white surfaces, white cards, soft
+/// tinted containers, dark legible text. [applyTheme] regenerates the whole
+/// ramp when the theme changes, so every bird palette gives a distinct light
+/// look (not just a different accent).
 class FsColors {
-  // ── Surface ramp ──
-  // These are NOT const: [applyTheme] recomputes the whole ramp from the active
-  // theme's hue, so switching themes retints every surface, border and text
-  // colour across the app — not just the accent. Defaults below mirror the
-  // Rainbow Bee-eater navy so the first frame (before settings load) looks right.
-  static Color bgScaffold = const Color(0xFF04101C);
-  static Color bgDeep = const Color(0xFF061522);
-  static Color bgSurface = const Color(0xFF0B2236);
-  static Color bgPanel = const Color(0xFF0F2A41);
-  static Color bgHover = const Color(0xFF163651);
-  static Color bgActive = const Color(0xFF16487B);
+  // ── Surface ramp (light) ──
+  // NOT const: [applyTheme] recomputes these from the active ColorScheme.
+  // Defaults are a neutral light scheme for the first frame before settings load.
+  static Color bgScaffold = const Color(0xFFF4F6F1); // page background (warm off-white)
+  static Color bgDeep = const Color(0xFFEFF2EC); // sidebar / title bar
+  static Color bgSurface = const Color(0xFFFFFFFF); // cards
+  static Color bgPanel = const Color(0xFFFFFFFF); // panels / dialogs
+  static Color bgHover = const Color(0xFFE9ECE4); // subtle hover
+  static Color bgActive = const Color(0xFFD7E8D2); // soft selected pill (secondaryContainer)
 
-  static Color border = const Color(0xFF1C3A57);
-  static Color borderHi = const Color(0xFF2E5A8A);
+  static Color border = const Color(0xFFDDE2D6); // hairline (outlineVariant)
+  static Color borderHi = const Color(0xFFB9BFB0); // stronger (outline)
 
-  /// The accent's factory default — the Bee-eater "secondary" bright blue.
-  static const accentDefault = Color(0xFF007CBF);
+  /// The accent's factory default.
+  static const accentDefault = Color(0xFF1E6B2F);
 
-  /// Accent + its lighter highlight variant. Recolored by [applyTheme] /
-  /// `SettingsNotifier.setTheme`. The default highlight is the Bee-eater
-  /// "tertiary" cyan.
+  /// The UI accent ([ColorScheme.primary]) and a darker "highlight" used for
+  /// selected text/icons sitting on [bgActive] ([ColorScheme.onSecondaryContainer]).
   static Color accent = accentDefault;
-  static Color accentHi = const Color(0xFF06ABDF);
+  static Color accentHi = const Color(0xFF0B5323);
 
-  /// Derives the lighter "accentHi" highlight from a base accent color.
+  /// The full active scheme — buildDragTheme builds Material widgets from this.
+  static ColorScheme scheme = const ColorScheme.light(primary: accentDefault);
+
+  /// Derives a lighter tint of [base] (kept for callers that want a soft fill).
   static Color highlightFor(Color base) => Color.lerp(base, Colors.white, 0.28)!;
 
-  // Status colours stay fixed — they carry semantic meaning (success / warn /
-  // error) that shouldn't shift with the decorative theme.
-  static const green = Color(0xFFAFD135); // lifted olive
-  static const amber = Color(0xFFFFC04D); // lifted orange
-  static const red = Color(0xFFFF6B6B);
-  static const purple = Color(0xFFE673BD); // lifted magenta
+  /// Darkens [c] toward black by [amt] — used for pressed/hover button states.
+  static Color darken(Color c, [double amt = 0.10]) => Color.lerp(c, Colors.black, amt)!;
 
-  static Color text1 = const Color(0xFFE3E9F2);
-  static Color text2 = const Color(0xFF9FB2C9);
-  static Color text3 = const Color(0xFF5A7088);
+  // Status colours — semantic, fixed, tuned for legibility on light surfaces.
+  static const green = Color(0xFF2E7D32);
+  static const amber = Color(0xFFB26A00);
+  static const red = Color(0xFFC62828);
+  static const purple = Color(0xFFA13B7E);
 
-  /// Retints the entire surface/border/text ramp from [t]'s primary hue and
-  /// sets the accent from its secondary/tertiary. Keeps the dark aesthetic but
-  /// gives every theme a distinct tinted-dark look.
+  static Color text1 = const Color(0xFF1A1C19); // headings / primary text
+  static Color text2 = const Color(0xFF44483F); // secondary text
+  static Color text3 = const Color(0xFF767D70); // muted / hints
+
+  /// Soft drop shadow used by cards and the window frame.
+  static List<BoxShadow> get cardShadow => const [
+        BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6)),
+      ];
+
+  /// Regenerates the whole light palette from [t]'s primary colour via M3.
   static void applyTheme(BirdTheme t) {
-    accent = t.accent;
-    accentHi = t.accentHi;
-    final hue = HSLColor.fromColor(t.primary).hue;
-    Color s(double sat, double light) => HSLColor.fromAHSL(1.0, hue, sat, light).toColor();
-    bgScaffold = s(0.45, 0.05);
-    bgDeep = s(0.45, 0.07);
-    bgSurface = s(0.42, 0.10);
-    bgPanel = s(0.40, 0.13);
-    bgHover = s(0.36, 0.17);
-    bgActive = Color.lerp(s(0.40, 0.15), t.secondary, 0.45)!;
-    border = s(0.30, 0.22);
-    borderHi = s(0.32, 0.30);
-    text1 = s(0.18, 0.93);
-    text2 = s(0.20, 0.72);
-    text3 = s(0.22, 0.50);
+    final cs = ColorScheme.fromSeed(seedColor: t.primary, brightness: Brightness.light);
+    scheme = cs;
+    accent = cs.primary;
+    accentHi = cs.onSecondaryContainer;
+    bgScaffold = cs.surfaceContainerLow;
+    bgDeep = cs.surfaceContainer;
+    bgSurface = cs.surfaceContainerLowest;
+    bgPanel = cs.surfaceContainerLowest;
+    bgHover = cs.surfaceContainerHigh;
+    bgActive = cs.secondaryContainer;
+    border = cs.outlineVariant;
+    borderHi = cs.outline;
+    text1 = cs.onSurface;
+    text2 = cs.onSurfaceVariant;
+    text3 = Color.lerp(cs.onSurfaceVariant, cs.surface, 0.30)!;
   }
 
-  // Badge fills, aligned to the status palette.
-  static const badgeLocalBg = Color(0xFF0E3A57);
-  static const badgeRemoteBg = Color(0xFF0C3B3A);
-  static const badgeRemoteFg = Color(0xFF5FD6CF);
-  static const badgeDoneBg = Color(0xFF294D11);
-  static const badgeDoneFg = Color(0xFFAFD135);
-  static const badgeQueuedBg = Color(0xFF25303F);
-  static const badgeQueuedFg = Color(0xFF9AA3BC);
-  static const badgeErrorBg = Color(0xFF4A1618);
-  static const badgeErrorFg = Color(0xFFFF8A8A);
-  static const badgePausedBg = Color(0xFF4A3410);
-  static const badgePausedFg = Color(0xFFFFC04D);
+  // Soft semantic pills (light tint bg + dark fg), matching the reference style.
+  static const badgeLocalBg = Color(0xFFE1ECF7);
+  static const badgeRemoteBg = Color(0xFFF4DBEA);
+  static const badgeRemoteFg = Color(0xFFA13B7E);
+  static const badgeDoneBg = Color(0xFFDCE7DA);
+  static const badgeDoneFg = Color(0xFF2E6B33);
+  static const badgeQueuedBg = Color(0xFFE8EAE3);
+  static const badgeQueuedFg = Color(0xFF5C6157);
+  static const badgeErrorBg = Color(0xFFF7DAD7);
+  static const badgeErrorFg = Color(0xFFC62828);
+  static const badgePausedBg = Color(0xFFFBEBD2);
+  static const badgePausedFg = Color(0xFFB26A00);
+
+  /// Card / button / field corner radii.
+  static const rCard = 16.0;
+  static const rField = 12.0;
+  static const rPill = 24.0;
 }
 
 /// One of the Feathers bird-inspired palettes used in the attendance-register
@@ -173,7 +186,7 @@ class FsType {
 }
 
 ThemeData buildDragTheme() {
-  final base = ThemeData.dark(useMaterial3: true);
+  final base = ThemeData(useMaterial3: true, colorScheme: FsColors.scheme);
   // Build the text theme from the user's selected UI font.
   final uiText = GoogleFonts.getTextTheme(FsType.uiFontFamily, base.textTheme).apply(
     bodyColor: FsColors.text1,
@@ -182,14 +195,8 @@ ThemeData buildDragTheme() {
   return base.copyWith(
     scaffoldBackgroundColor: FsColors.bgScaffold,
     canvasColor: FsColors.bgSurface,
-    colorScheme: base.colorScheme.copyWith(
-      primary: FsColors.accent,
-      secondary: FsColors.accentHi,
-      surface: FsColors.bgSurface,
-      error: FsColors.red,
-    ),
-    // The Feathers type direction: big display/headline numbers are heavier,
-    // tighter-tracked and use tabular figures so animated counts don't jiggle.
+    // Big display/headline numbers are heavier, tighter-tracked and use tabular
+    // figures so animated counts don't jiggle.
     textTheme: uiText.copyWith(
       displaySmall: uiText.displaySmall?.copyWith(
         fontWeight: FontWeight.w800,
@@ -205,7 +212,7 @@ ThemeData buildDragTheme() {
     dividerColor: FsColors.border,
     splashFactory: NoSplash.splashFactory,
     scrollbarTheme: ScrollbarThemeData(
-      thumbColor: WidgetStateProperty.all(FsColors.border),
+      thumbColor: WidgetStateProperty.all(FsColors.borderHi),
       thickness: WidgetStateProperty.all(8),
       radius: const Radius.circular(4),
     ),

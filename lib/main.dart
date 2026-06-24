@@ -61,8 +61,6 @@ Future<void> main() async {
   // Apply the persisted theme + fonts to the global palette before the first frame.
   if (settings != null) {
     FsColors.applyTheme(birdThemeByName(settings.themeName));
-    FsColors.accent = Color(settings.accentValue);
-    FsColors.accentHi = Color(settings.accentHiValue);
     FsType.uiFontFamily = AppFont.resolve(settings.uiFont, mono: false);
     FsType.monoFontFamily = AppFont.resolve(settings.monospaceFont, mono: true);
   }

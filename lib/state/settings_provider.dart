@@ -27,11 +27,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   void _applyGlobals(AppSettings s) {
-    // Retint the whole surface ramp from the active theme, then apply the
-    // (possibly custom) persisted accent on top.
+    // Generate the whole light palette from the active theme's seed colour.
     FsColors.applyTheme(birdThemeByName(s.themeName));
-    FsColors.accent = Color(s.accentValue);
-    FsColors.accentHi = Color(s.accentHiValue);
     // Apply the chosen fonts (sanitised against the known families).
     FsType.uiFontFamily = AppFont.resolve(s.uiFont, mono: false);
     FsType.monoFontFamily = AppFont.resolve(s.monospaceFont, mono: true);
@@ -45,19 +42,17 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setThemeName(String v) => _update(state.copyWith(themeName: v));
 
-  /// Apply a named bird theme: its [BirdTheme.accent] becomes the UI accent and
-  /// [BirdTheme.accentHi] the highlight, all persisted together.
-  void setTheme(BirdTheme t) => _update(state.copyWith(
-        themeName: t.name,
-        accentValue: t.accent.toARGB32(),
-        accentHiValue: t.accentHi.toARGB32(),
-      ));
+  /// Apply a named bird theme. Its primary seeds the light Material 3 palette;
+  /// the resolved accent is persisted too (for the pre-frame paint in main).
+  void setTheme(BirdTheme t) {
+    final cs = ColorScheme.fromSeed(seedColor: t.primary, brightness: Brightness.light);
+    _update(state.copyWith(
+      themeName: t.name,
+      accentValue: cs.primary.toARGB32(),
+      accentHiValue: cs.onSecondaryContainer.toARGB32(),
+    ));
+  }
 
-  /// Override just the accent with a custom colour, deriving its highlight.
-  void setAccent(Color c) => _update(state.copyWith(
-        accentValue: c.toARGB32(),
-        accentHiValue: FsColors.highlightFor(c).toARGB32(),
-      ));
   void setUiFontSize(double v) => _update(state.copyWith(uiFontSize: v));
   void setUiFont(String v) => _update(state.copyWith(uiFont: v));
   void setMonospaceFont(String v) => _update(state.copyWith(monospaceFont: v));

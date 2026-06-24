@@ -92,34 +92,26 @@ void main() {
 
     test('applies persisted settings on construction', () {
       final c = makeContainer(
-          settings: AppSettings(accentValue: 0xFF22C55E, uiFontSize: 14, showHiddenFiles: false));
+          settings: AppSettings(uiFontSize: 14, showHiddenFiles: false));
       final settings = c.read(settingsProvider);
       expect(settings.uiFontSize, 14);
       expect(settings.showHiddenFiles, isFalse);
-      expect(FsColors.accent, const Color(0xFF22C55E));
       // Panes built from the setting start with hidden files off.
       expect(c.read(sessionsProvider.notifier).leftPane.showHidden, isFalse);
     });
 
-    test('setAccent recolors the global palette + derives highlight', () {
-      final c = makeContainer();
-      c.read(settingsProvider.notifier).setAccent(const Color(0xFFA855F7));
-      expect(FsColors.accent, const Color(0xFFA855F7));
-      // Highlight is derived, then persisted as a 32-bit ARGB value.
-      expect(FsColors.accentHi,
-          Color(FsColors.highlightFor(const Color(0xFFA855F7)).toARGB32()));
-    });
-
-    test('setTheme applies a bird palette (accent + highlight) and persists it', () {
+    test('setTheme seeds the light Material 3 palette from a bird primary', () {
       final c = makeContainer();
       final galah = birdThemeByName('Galah');
+      final cs = ColorScheme.fromSeed(seedColor: galah.primary, brightness: Brightness.light);
       c.read(settingsProvider.notifier).setTheme(galah);
       final settings = c.read(settingsProvider);
       expect(settings.themeName, 'Galah');
-      expect(settings.accentValue, galah.accent.toARGB32());
-      expect(settings.accentHiValue, galah.accentHi.toARGB32());
-      expect(FsColors.accent, galah.accent);
-      expect(FsColors.accentHi, galah.accentHi);
+      expect(settings.accentValue, cs.primary.toARGB32());
+      // The whole light ramp is derived from the seed, not just the accent.
+      expect(FsColors.accent, cs.primary);
+      expect(FsColors.bgScaffold, cs.surfaceContainerLow);
+      expect(FsColors.text1, cs.onSurface);
     });
 
     test('birdThemeByName falls back to the default for an unknown name', () {
@@ -163,11 +155,14 @@ void main() {
     test('resetSettings restores defaults', () {
       final c = makeContainer();
       final n = c.read(settingsProvider.notifier);
-      n.setAccent(const Color(0xFFEF4444));
+      n.setTheme(birdThemeByName('Galah'));
       n.setUiFontSize(14);
       n.resetSettings();
       expect(c.read(settingsProvider).uiFontSize, 13);
-      expect(FsColors.accent, FsColors.accentDefault);
+      expect(c.read(settingsProvider).themeName, kDefaultThemeName);
+      final def = ColorScheme.fromSeed(
+          seedColor: birdThemeByName(kDefaultThemeName).primary, brightness: Brightness.light);
+      expect(FsColors.accent, def.primary);
     });
   });
 }

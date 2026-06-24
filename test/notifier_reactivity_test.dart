@@ -1,6 +1,7 @@
 import 'package:drag/data/history_db.dart';
 import 'package:drag/models/transfer.dart';
 import 'package:drag/state/app.dart';
+import 'package:drag/theme.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,7 +86,7 @@ void main() {
 
     fired = 0;
     c.listen(settingsProvider, (_, _) => fired++);
-    c.read(settingsProvider.notifier).setAccent(const Color(0xFF010203));
+    c.read(settingsProvider.notifier).setTheme(birdThemeByName('Galah'));
     expect(fired, 1, reason: 'settingsProvider did not emit');
 
     fired = 0;

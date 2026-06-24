@@ -144,7 +144,26 @@ class HistoryRepository {
         },
       ),
     );
-    return HistoryRepository._(db);
+    final repo = HistoryRepository._(db);
+    await repo._purgeLegacySeed();
+    return repo;
+  }
+
+  /// One-time cleanup: very early builds of the app shipped demo/seed transfer
+  /// rows (e.g. uploads to the fictional `prod-server-01`). Those were removed
+  /// from the code long ago, but they linger in databases created by those
+  /// builds. This deletes ONLY rows matching that exact legacy signature, so it
+  /// can never touch a real transfer the user actually ran.
+  Future<void> _purgeLegacySeed() async {
+    try {
+      await _db.delete(
+        _table,
+        where: "dest_path LIKE '%prod-server-01%' "
+            "AND name IN ('backup_2025-06-19.tar.gz', 'deploy.sh', 'config.yaml')",
+      );
+    } catch (_) {
+      // Best-effort — never block startup on cleanup.
+    }
   }
 
   static Future<String> _defaultPath(DatabaseFactory factory) async {

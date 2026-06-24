@@ -77,11 +77,11 @@ class TbButton extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: hover ? FsColors.bgHover : FsColors.bgPanel,
-              borderRadius: BorderRadius.circular(4),
+              color: hover ? FsColors.bgHover : FsColors.bgSurface,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: FsColors.border),
             ),
-            child: Text(label, style: FsType.sans(size: 10, color: FsColors.text2)),
+            child: Text(label, style: FsType.sans(size: 10, weight: FontWeight.w600, color: FsColors.text2)),
           ),
         ),
       ),
@@ -112,17 +112,20 @@ class FsButton extends StatelessWidget {
     return _Hoverable(builder: (hover) {
       late Color bg, fg;
       Border? border;
+      List<BoxShadow>? shadow;
       switch (kind) {
         case FsButtonKind.primary:
-          bg = hover ? FsColors.accentHi : FsColors.accent;
-          fg = Colors.white;
+          bg = hover ? FsColors.darken(FsColors.accent) : FsColors.accent;
+          fg = FsColors.scheme.onPrimary;
+          shadow = FsColors.cardShadow;
         case FsButtonKind.ghost:
-          bg = hover ? FsColors.bgHover : Colors.transparent;
+          bg = hover ? FsColors.bgHover : FsColors.bgSurface;
           fg = hover ? FsColors.text1 : FsColors.text2;
           border = Border.all(color: FsColors.border);
         case FsButtonKind.danger:
-          bg = const Color(0xFF7F1D1D);
-          fg = const Color(0xFFFCA5A5);
+          bg = hover ? const Color(0xFFF7DAD7) : FsColors.bgSurface;
+          fg = FsColors.red;
+          border = Border.all(color: const Color(0xFFE6B4B0));
       }
       return GestureDetector(
         onTap: onTap,
@@ -132,8 +135,9 @@ class FsButton extends StatelessWidget {
             padding: padding,
             decoration: BoxDecoration(
               color: bg,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(FsColors.rPill),
               border: border,
+              boxShadow: shadow,
             ),
             child: Text(label,
                 style: FsType.sans(size: fontSize, weight: FontWeight.w600, color: fg)),
@@ -281,16 +285,16 @@ class FsTextField extends StatelessWidget {
           isDense: true,
           hintText: hint,
           hintStyle: style.copyWith(color: FsColors.text3),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           filled: true,
-          fillColor: FsColors.bgDeep,
+          fillColor: FsColors.bgSurface,
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(FsColors.rField),
             borderSide: BorderSide(color: FsColors.border),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(6),
-            borderSide: BorderSide(color: FsColors.accent),
+            borderRadius: BorderRadius.circular(FsColors.rField),
+            borderSide: BorderSide(color: FsColors.accent, width: 1.5),
           ),
         ),
       ),
@@ -359,7 +363,7 @@ class WindowFrame extends StatelessWidget {
         color: FsColors.bgSurface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: FsColors.border),
-        boxShadow: const [BoxShadow(color: Color(0x99000000), blurRadius: 80, offset: Offset(0, 32))],
+        boxShadow: const [BoxShadow(color: Color(0x1F000000), blurRadius: 48, offset: Offset(0, 18))],
       ),
       child: ClipRRect(borderRadius: BorderRadius.circular(12), child: child),
     );
