@@ -183,18 +183,16 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
         if (c.isS3) ..._s3Fields() else ..._sshFields(),
 
         const SizedBox(height: 18),
-        Row(children: [
+        // Wrap so the buttons flow onto a second line on narrow windows.
+        Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
           FsButton('⚡ Connect',
               kind: FsButtonKind.primary,
               onTap: () => ref.read(sessionsProvider.notifier).connect(c)),
-          const SizedBox(width: 10),
           FsButton('💾 Save', onTap: () {
             ref.read(connectionsProvider.notifier).save(c);
             _toast('Saved', '${c.name} configuration stored', ToastKind.success);
           }),
-          const SizedBox(width: 10),
           FsButton('⧉ Duplicate', onTap: () => ref.read(connectionsProvider.notifier).duplicate(c)),
-          const Spacer(),
           FsButton('⊗ Delete',
               kind: FsButtonKind.danger,
               fontSize: 11,

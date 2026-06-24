@@ -72,8 +72,9 @@ Future<void> main() async {
           ? Size(s!.windowWidth!, s.windowHeight!)
           : const Size(1320, 860);
       await windowManager.waitUntilReadyToShow(
-        WindowOptions(size: size, title: 'Drag'),
+        WindowOptions(size: size, minimumSize: const Size(880, 600), title: 'Drag'),
         () async {
+          await windowManager.setMinimumSize(const Size(880, 600));
           if (s?.windowX != null && s?.windowY != null) {
             await windowManager.setPosition(Offset(s!.windowX!, s.windowY!));
           } else {

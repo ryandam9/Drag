@@ -29,11 +29,15 @@ class DashboardScreen extends ConsumerWidget {
             Text('Transfer History',
                 style: FsType.sans(size: 15, weight: FontWeight.w600, color: FsColors.text1)),
             const SizedBox(width: 10),
-            Text(
-                history.hasDb
-                    ? 'SQLite · ${s.total} record${s.total == 1 ? '' : 's'}'
-                    : 'SQLite unavailable',
-                style: FsType.mono(size: 11, color: history.hasDb ? FsColors.text3 : FsColors.amber)),
+            Flexible(
+              child: Text(
+                  history.hasDb
+                      ? 'SQLite · ${s.total} record${s.total == 1 ? '' : 's'}'
+                      : 'SQLite unavailable',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: FsType.mono(size: 11, color: history.hasDb ? FsColors.text3 : FsColors.amber)),
+            ),
             const Spacer(),
             FsButton('↺ Refresh',
                 fontSize: 11,
@@ -98,7 +102,12 @@ class _StatCard extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 10),
-          Text(value, style: FsType.sans(size: 20, weight: FontWeight.w700, color: FsColors.text1)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value,
+                maxLines: 1, style: FsType.sans(size: 20, weight: FontWeight.w700, color: FsColors.text1)),
+          ),
         ]),
       ),
     );
