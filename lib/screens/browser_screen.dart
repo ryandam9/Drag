@@ -736,7 +736,11 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                   Text(f.icon, style: const TextStyle(fontSize: 14)),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(f.name, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 12, color: nameColor)),
+                    child: Tooltip(
+                      message: f.name,
+                      waitDuration: const Duration(milliseconds: 500),
+                      child: Text(f.name, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 12, color: nameColor)),
+                    ),
                   ),
                 ]),
               ),
