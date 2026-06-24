@@ -65,7 +65,7 @@ class _ToastCard extends StatelessWidget {
                       style: FsType.sans(size: 11, color: t.kind.fg.withValues(alpha: 0.85))),
                   if (t.detail != null) ...[
                     const SizedBox(height: 3),
-                    Text(t.detail!, style: FsType.mono(size: 10, color: t.kind.fg.withValues(alpha: 0.7))),
+                    Text(t.detail!, style: FsType.sans(size: 10, color: t.kind.fg.withValues(alpha: 0.7))),
                   ],
                 ],
               ),

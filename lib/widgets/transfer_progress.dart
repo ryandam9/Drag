@@ -98,7 +98,7 @@ class _Card extends StatelessWidget {
                   Text(t.route,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: FsType.mono(size: 10, color: FsColors.text3)),
+                      style: FsType.sans(size: 10, color: FsColors.text3)),
                 ],
               ),
             ),
@@ -122,10 +122,10 @@ class _Card extends StatelessWidget {
           Row(children: [
             _chip(big ? '⬆ Big file' : (t.direction == TransferDirection.upload ? 'Uploading' : 'Downloading')),
             const Spacer(),
-            Text(t.speed, style: FsType.mono(size: 11, color: FsColors.accentHi)),
+            Text(t.speed, style: FsType.sans(size: 11, color: FsColors.accentHi, tabular: true)),
             if (t.eta != '—' && t.eta != 'Done') ...[
               const SizedBox(width: 10),
-              Text('ETA ${t.eta}', style: FsType.mono(size: 11, color: FsColors.text3)),
+              Text('ETA ${t.eta}', style: FsType.sans(size: 11, color: FsColors.text3, tabular: true)),
             ],
           ]),
           if (othersActive > 0) ...[

@@ -31,3 +31,9 @@ flutter:
     - assets/icons/drag.png
     - assets/icons/drag_256.png
     - assets/icons/drag_512.png
+  fonts:
+    # Roboto Condensed isn't in the google_fonts catalogue, so it ships as a
+    # bundled asset and is resolved by family name (see FsType._resolve).
+    - family: Roboto Condensed
+      fonts:
+        - asset: assets/fonts/RobotoCondensed.ttf

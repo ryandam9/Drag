@@ -257,7 +257,7 @@ class TransferQueueScreen extends ConsumerWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(t.name, style: FsType.sans(size: 12, weight: FontWeight.w500, color: FsColors.text1)),
                 const SizedBox(height: 2),
-                Text(t.route, overflow: TextOverflow.ellipsis, style: FsType.mono(size: 10, color: FsColors.text3)),
+                Text(t.route, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 10, color: FsColors.text3)),
               ]),
             ),
             // Progress.
@@ -282,18 +282,18 @@ class TransferQueueScreen extends ConsumerWidget {
                         const SizedBox(height: 3),
                         Text(
                           '${(t.progress * 100).round()}% · ${formatBytes(t.sizeBytes * t.progress)} / ${formatBytes(t.sizeBytes)}',
-                          style: FsType.mono(size: 10, color: FsColors.text3),
+                          style: FsType.sans(size: 10, color: FsColors.text3, tabular: true),
                         ),
                       ],
                     ]),
             ),
-            Expanded(flex: 10, child: Text(formatBytes(t.sizeBytes), style: FsType.mono(size: 10, color: FsColors.text3))),
+            Expanded(flex: 10, child: Text(formatBytes(t.sizeBytes), style: FsType.sans(size: 10, color: FsColors.text3, tabular: true))),
             Expanded(
               flex: 11,
               child: Text(t.speed,
-                  style: FsType.mono(size: 10, color: t.speed == '—' ? FsColors.text3 : FsColors.accentHi)),
+                  style: FsType.sans(size: 10, color: t.speed == '—' ? FsColors.text3 : FsColors.accentHi, tabular: true)),
             ),
-            Expanded(flex: 9, child: Text(t.eta, style: FsType.mono(size: 10, color: FsColors.text3))),
+            Expanded(flex: 9, child: Text(t.eta, style: FsType.sans(size: 10, color: FsColors.text3, tabular: true))),
             Expanded(flex: 14, child: Text(t.session, style: FsType.sans(size: 11, color: FsColors.text2))),
             Expanded(
               flex: 12,
@@ -336,7 +336,7 @@ class TransferQueueScreen extends ConsumerWidget {
     Widget stat(String label, String value, {Color? color}) => Row(mainAxisSize: MainAxisSize.min, children: [
           Text(label, style: FsType.sans(size: 11, color: FsColors.text3)),
           const SizedBox(width: 6),
-          Text(value, style: FsType.mono(size: 11, weight: FontWeight.w500, color: color ?? FsColors.text1)),
+          Text(value, style: FsType.sans(size: 11, weight: FontWeight.w500, color: color ?? FsColors.text1, tabular: true)),
         ]);
 
     return Container(

@@ -441,7 +441,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                     border: Border.all(color: FsColors.border),
                   ),
                   child: Text(pane.displayPath,
-                      overflow: TextOverflow.ellipsis, style: FsType.mono(size: 11, color: FsColors.text2)),
+                      overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: FsColors.text2)),
                 ),
               ),
             ),
@@ -534,7 +534,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       children.add(Flexible(
         child: Text(segs[i],
             overflow: TextOverflow.ellipsis,
-            style: FsType.mono(
+            style: FsType.sans(
                 size: 11,
                 color: active ? FsColors.text1 : FsColors.text2,
                 weight: active ? FontWeight.w600 : FontWeight.w400)),
@@ -542,7 +542,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       if (i < segs.length - 1) {
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text('›', style: FsType.mono(size: 11, color: FsColors.text3)),
+          child: Text('›', style: FsType.sans(size: 11, color: FsColors.text3)),
         ));
       }
     }
@@ -744,14 +744,14 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                 flex: 15,
                 child: Padding(
                   padding: const EdgeInsets.only(right: 14),
-                  child: Text(f.sizeLabel, textAlign: TextAlign.right, style: FsType.mono(size: 11, color: FsColors.text2)),
+                  child: Text(f.sizeLabel, textAlign: TextAlign.right, style: FsType.sans(size: 11, color: FsColors.text2, tabular: true)),
                 ),
               ),
-              Expanded(flex: 25, child: Text(f.modified, style: FsType.mono(size: 11, color: FsColors.text2))),
+              Expanded(flex: 25, child: Text(f.modified, style: FsType.sans(size: 11, color: FsColors.text2, tabular: true))),
               if (showPerms)
                 Expanded(
                   flex: 20,
-                  child: Text(f.perms, textAlign: TextAlign.right, style: FsType.mono(size: 10, color: FsColors.text3)),
+                  child: Text(f.perms, textAlign: TextAlign.right, style: FsType.sans(size: 10, color: FsColors.text3)),
                 ),
             ]),
           ),
@@ -829,7 +829,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
               ),
               const SizedBox(width: 10),
               Text('${(current.progress * 100).round()}% · ${current.speed}',
-                  style: FsType.mono(size: 10, color: FsColors.accentHi)),
+                  style: FsType.sans(size: 10, color: FsColors.accentHi, tabular: true)),
             ]),
           ),
         const Spacer(),
