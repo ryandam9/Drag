@@ -57,9 +57,11 @@ class ConnectionManagerScreen extends ConsumerWidget {
           Text('Add a real SFTP or Amazon S3 endpoint to get started.',
               textAlign: TextAlign.center, style: FsType.sans(size: 13, color: FsColors.text2, height: 1.5)),
           const SizedBox(height: 24),
-          FsButton('＋ New Connection',
-              kind: FsButtonKind.primary,
-              onTap: () => ref.read(connectionsProvider.notifier).create()),
+          FilledButton.icon(
+            onPressed: () => ref.read(connectionsProvider.notifier).create(),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New Connection'),
+          ),
         ]),
       ),
     );
@@ -146,10 +148,11 @@ class ConnectionManagerScreen extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           child: SizedBox(
             width: double.infinity,
-            child: FsButton('＋ New Connection',
-                fontSize: 11,
-                padding: const EdgeInsets.symmetric(vertical: 7),
-                onTap: () => ref.read(connectionsProvider.notifier).create()),
+            child: FilledButton.icon(
+              onPressed: () => ref.read(connectionsProvider.notifier).create(),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('New Connection'),
+            ),
           ),
         ),
       ]),
@@ -189,10 +192,22 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   late final _token = TextEditingController(text: c.sessionToken);
   late final _awsProfile = TextEditingController(text: c.awsProfile);
 
+  // Clears the placeholder name when the field is focused, so the user can type
+  // straight away instead of deleting "New connection" first.
+  late final FocusNode _nameFocus = FocusNode()
+    ..addListener(() {
+      if (_nameFocus.hasFocus && _name.text.trim() == 'New connection') {
+        _name.clear();
+        c.name = '';
+        ref.read(connectionsProvider.notifier).touch();
+      }
+    });
+
   void _toast(String t, String s, ToastKind k) => ref.read(toastsProvider.notifier).push(t, s, k);
 
   @override
   void dispose() {
+    _nameFocus.dispose();
     for (final ctl in [_name, _host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token, _awsProfile]) {
       ctl.dispose();
     }
@@ -278,7 +293,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
                   c.name = v;
                   // Refresh the header here and the sidebar list (same name shown).
                   ref.read(connectionsProvider.notifier).touch();
-                }, hint: 'e.g. Prod SFTP, Data bucket', icon: Icons.badge_outlined)),
+                }, hint: 'e.g. Prod SFTP, Data bucket', icon: Icons.badge_outlined, focusNode: _nameFocus)),
             const SizedBox(height: 16),
             FormField2('Protocol', _protocolSelect()),
           ]),
@@ -527,12 +542,13 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   /// match the app, with a leading [prefixIcon]. ([FsTextField] has no prefix
   /// icon, so the field is built inline here.)
   Widget _field(TextEditingController ctl, ValueChanged<String> onChanged,
-      {bool obscure = false, String? hint, IconData? icon}) {
+      {bool obscure = false, String? hint, IconData? icon, FocusNode? focusNode}) {
     final style = FsType.sans(size: 13, color: FsColors.text1);
     return SizedBox(
       height: 46,
       child: TextField(
         controller: ctl,
+        focusNode: focusNode,
         obscureText: obscure,
         onChanged: onChanged,
         style: style,
