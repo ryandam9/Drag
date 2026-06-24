@@ -164,8 +164,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     }
   }
 
-  Widget _menuText(String t, {Color color = FsColors.text1}) =>
-      Text(t, style: FsType.sans(size: 12, color: color));
+  Widget _menuText(String t, {Color? color}) =>
+      Text(t, style: FsType.sans(size: 12, color: color ?? FsColors.text1));
 
   // ── Dialogs ──
   Future<String?> _promptText({
@@ -192,7 +192,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: FsType.sans(size: 13, color: FsColors.text3),
-              enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: FsColors.border)),
+              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: FsColors.border)),
               focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: FsColors.accent)),
             ),
           ),
@@ -224,7 +224,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   // ── Session tabs — one open server per tab, switchable & closable ──
   Widget _sessionTabs(SessionsState state) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
@@ -314,7 +314,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     final pane = _focusedPane;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgPanel,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
@@ -416,7 +416,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgPanel,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
@@ -548,7 +548,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
@@ -619,7 +619,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(top: BorderSide(color: FsColors.border)),
       ),
@@ -677,7 +677,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
@@ -796,7 +796,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   Widget _queueStripBody(TransfersState state, Transfer? current) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(top: BorderSide(color: FsColors.border)),
       ),
@@ -856,7 +856,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       height: 96,
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(top: BorderSide(color: FsColors.border)),
       ),

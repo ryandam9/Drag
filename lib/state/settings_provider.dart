@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/settings_store.dart';
+import '../models/app_font.dart';
 import '../theme.dart';
 import 'providers.dart';
 
@@ -26,8 +27,14 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   void _applyGlobals(AppSettings s) {
+    // Retint the whole surface ramp from the active theme, then apply the
+    // (possibly custom) persisted accent on top.
+    FsColors.applyTheme(birdThemeByName(s.themeName));
     FsColors.accent = Color(s.accentValue);
     FsColors.accentHi = Color(s.accentHiValue);
+    // Apply the chosen fonts (sanitised against the known families).
+    FsType.uiFontFamily = AppFont.resolve(s.uiFont, mono: false);
+    FsType.monoFontFamily = AppFont.resolve(s.monospaceFont, mono: true);
   }
 
   void _update(AppSettings next) {
@@ -52,6 +59,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
         accentHiValue: FsColors.highlightFor(c).toARGB32(),
       ));
   void setUiFontSize(double v) => _update(state.copyWith(uiFontSize: v));
+  void setUiFont(String v) => _update(state.copyWith(uiFont: v));
   void setMonospaceFont(String v) => _update(state.copyWith(monospaceFont: v));
   void setShowHiddenFiles(bool v) => _update(state.copyWith(showHiddenFiles: v));
   void setShowPermsColumn(bool v) => _update(state.copyWith(showPermsColumn: v));

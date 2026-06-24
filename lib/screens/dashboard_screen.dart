@@ -21,7 +21,7 @@ class DashboardScreen extends ConsumerWidget {
         // ── Header ──
         Container(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: FsColors.bgDeep,
             border: Border(bottom: BorderSide(color: FsColors.border)),
           ),
@@ -123,7 +123,7 @@ class _HistoryTable extends StatelessWidget {
     if (records.isEmpty) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.history, size: 36, color: FsColors.text3),
+          Icon(Icons.history, size: 36, color: FsColors.text3),
           const SizedBox(height: 10),
           Text('No transfers yet', style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
           const SizedBox(height: 4),
@@ -156,7 +156,7 @@ class _HistoryTable extends StatelessWidget {
         );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(bottom: BorderSide(color: FsColors.border), top: BorderSide(color: FsColors.border)),
       ),

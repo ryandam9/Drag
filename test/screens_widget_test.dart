@@ -156,6 +156,7 @@ void main() {
       await pumpScreen(tester, c, const SettingsScreen());
       expect(find.text('Appearance'), findsWidgets);
       expect(find.text('Theme'), findsOneWidget);
+      expect(find.text('UI font'), findsOneWidget);
       expect(find.text('Monospace font'), findsOneWidget);
     });
 

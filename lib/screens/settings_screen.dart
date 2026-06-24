@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/app_font.dart';
 import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -33,7 +34,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final toast = ref.read(toastsProvider.notifier);
     return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SizedBox(width: 170, child: _sidebar()),
-      const VerticalDivider(width: 1, color: FsColors.border),
+      VerticalDivider(width: 1, color: FsColors.border),
       Expanded(child: _content(settings, notifier, toast)),
     ]);
   }
@@ -65,8 +66,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return Container(
       color: FsColors.bgDeep,
       child: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(14, 8, 14, 4),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
           child: Text('PREFERENCES',
               style: TextStyle(
                   fontSize: 10, fontWeight: FontWeight.w700, color: FsColors.text3, letterSpacing: 1)),
@@ -124,15 +125,60 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
       const SizedBox(height: 18),
       FormField2(
+          'UI font',
+          _fontSelect(settings.uiFont, AppFont.sansFonts, (v) => notifier.setUiFont(v))),
+      const SizedBox(height: 14),
+      FormField2(
           'UI font size',
           _select('${settings.uiFontSize.toInt()}px', const ['12px', '13px', '14px'],
               (v) => notifier.setUiFontSize(double.parse(v.replaceAll('px', ''))))),
       const SizedBox(height: 14),
       FormField2(
           'Monospace font',
-          _select(settings.monospaceFont, const ['JetBrains Mono', 'Fira Code', 'Menlo'],
-              (v) => notifier.setMonospaceFont(v))),
+          _fontSelect(settings.monospaceFont, AppFont.monoFonts, (v) => notifier.setMonospaceFont(v))),
+      const SizedBox(height: 8),
+      Text('The quick brown fox jumps over the lazy dog · 0123456789',
+          style: FsType.mono(size: 12, color: FsColors.text3)),
     ];
+  }
+
+  /// A dropdown of [fonts] where each option is rendered in its own typeface, so
+  /// the user previews the font before picking it. The current [family] is
+  /// resolved to a known font (falling back to the slot default).
+  Widget _fontSelect(String family, List<AppFont> fonts, ValueChanged<String> onChanged) {
+    final mono = fonts.isNotEmpty && fonts.first.mono;
+    final current = AppFont.byFamily(family, mono: mono).family;
+    return Container(
+      height: 32,
+      width: 260,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: FsColors.bgDeep,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: FsColors.border),
+      ),
+      alignment: Alignment.centerLeft,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: current,
+          isDense: true,
+          isExpanded: true,
+          dropdownColor: FsColors.bgPanel,
+          icon: Icon(Icons.expand_more, size: 16, color: FsColors.text2),
+          style: FsType.sans(size: 12, color: FsColors.text1),
+          items: [
+            for (final f in fonts)
+              DropdownMenuItem(
+                value: f.family,
+                child: Text(f.label, style: FsType.family(f.family, size: 12, color: FsColors.text1)),
+              ),
+          ],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      ),
+    );
   }
 
   /// A clickable theme card: the three signature colours as a swatch plus the
@@ -220,7 +266,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           isDense: true,
           isExpanded: true,
           dropdownColor: FsColors.bgPanel,
-          icon: const Icon(Icons.expand_more, size: 16, color: FsColors.text2),
+          icon: Icon(Icons.expand_more, size: 16, color: FsColors.text2),
           style: FsType.sans(size: 12, color: FsColors.text1),
           items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
           onChanged: (v) {
@@ -246,7 +292,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 value: value,
                 onChanged: (v) => set(v ?? false),
                 activeColor: FsColors.accent,
-                side: const BorderSide(color: FsColors.border),
+                side: BorderSide(color: FsColors.border),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),

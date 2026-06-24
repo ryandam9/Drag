@@ -24,7 +24,7 @@ class TransferQueueScreen extends ConsumerWidget {
   Widget _filterBar(TransfersState s, TransfersNotifier n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgPanel,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
@@ -60,7 +60,7 @@ class TransferQueueScreen extends ConsumerWidget {
         color: FsColors.bgSurface,
         alignment: Alignment.center,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.swap_vert_rounded, size: 36, color: FsColors.text3),
+          Icon(Icons.swap_vert_rounded, size: 36, color: FsColors.text3),
           const SizedBox(height: 10),
           Text('No transfers yet',
               style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
@@ -92,7 +92,7 @@ class TransferQueueScreen extends ConsumerWidget {
         );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
@@ -244,7 +244,7 @@ class TransferQueueScreen extends ConsumerWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: FsColors.bgDeep,
         border: Border(top: BorderSide(color: FsColors.border)),
       ),
