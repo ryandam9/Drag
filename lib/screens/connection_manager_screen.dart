@@ -153,12 +153,13 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   late final _akid = TextEditingController(text: c.accessKeyId);
   late final _secret = TextEditingController(text: c.secretAccessKey);
   late final _token = TextEditingController(text: c.sessionToken);
+  late final _awsProfile = TextEditingController(text: c.awsProfile);
 
   void _toast(String t, String s, ToastKind k) => ref.read(toastsProvider.notifier).push(t, s, k);
 
   @override
   void dispose() {
-    for (final ctl in [_host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token]) {
+    for (final ctl in [_host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token, _awsProfile]) {
       ctl.dispose();
     }
     super.dispose();
@@ -218,12 +219,29 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
       const SizedBox(height: 12),
       FormField2('Endpoint (optional — for S3-compatible / MinIO)',
           _field(_endpoint, (v) => c.endpoint = v, hint: 's3.amazonaws.com')),
+      const SizedBox(height: 14),
+
+      // Credentials source: typed, or read live from ~/.aws/credentials.
+      _checkRow('Load credentials from ~/.aws/credentials (auto-refreshed)', c.useAwsProfile,
+          (v) => setState(() => c.useAwsProfile = v)),
       const SizedBox(height: 12),
-      FormField2('Access Key ID', _field(_akid, (v) => c.accessKeyId = v, hint: 'AKIA…')),
-      const SizedBox(height: 12),
-      FormField2('Secret Access Key', _field(_secret, (v) => c.secretAccessKey = v, obscure: true, hint: '••••••••')),
-      const SizedBox(height: 12),
-      FormField2('Session Token (optional)', _field(_token, (v) => c.sessionToken = v, obscure: true, hint: 'For temporary STS credentials')),
+      if (c.useAwsProfile) ...[
+        FormField2('AWS profile',
+            _field(_awsProfile, (v) => c.awsProfile = v, hint: 'default (or \$AWS_PROFILE)')),
+        const SizedBox(height: 6),
+        Text(
+          'Access key, secret and session token are read from the profile on '
+          'every request, so refreshed temporary credentials are picked up '
+          'automatically.',
+          style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
+        ),
+      ] else ...[
+        FormField2('Access Key ID', _field(_akid, (v) => c.accessKeyId = v, hint: 'AKIA…')),
+        const SizedBox(height: 12),
+        FormField2('Secret Access Key', _field(_secret, (v) => c.secretAccessKey = v, obscure: true, hint: '••••••••')),
+        const SizedBox(height: 12),
+        FormField2('Session Token (optional)', _field(_token, (v) => c.sessionToken = v, obscure: true, hint: 'For temporary STS credentials')),
+      ],
       const SizedBox(height: 14),
       _checkRow('Use SSL (HTTPS)', c.useSsl, (v) => setState(() => c.useSsl = v)),
       const SizedBox(height: 6),

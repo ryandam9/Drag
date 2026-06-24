@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:drag/fs/aws/aws_profile.dart';
 import 'package:drag/fs/aws/s3_client.dart';
 import 'package:drag/fs/aws/sigv4.dart';
 import 'package:drag/fs/storage_backend.dart';
@@ -77,12 +78,12 @@ String listingXml({
       '<IsTruncated>$truncated</IsTruncated>$next$c$p</ListBucketResult>';
 }
 
-S3Client client(MockS3 mock) => S3Client(
+S3Client client(MockS3 mock, {AwsCredentials Function()? credentials}) => S3Client(
       bucket: 'bk',
       region: 'us-east-1',
       endpoint: mock.endpoint,
       useSsl: false,
-      credentials: const AwsCredentials('AKIA', 'secret'),
+      credentials: credentials ?? () => const AwsCredentials('AKIA', 'secret'),
     );
 
 void main() {
@@ -230,6 +231,80 @@ void main() {
       expect(
         () => c.putObject('x', Stream.value(Uint8List(1)), 1),
         throwsA(isA<S3Exception>().having((e) => e.message, 'message', 'denied')),
+      );
+    });
+  });
+
+  group('S3Client — credential refresh', () {
+    test('re-resolves credentials on every request', () async {
+      var current = const AwsCredentials('AKIAONE', 'secret');
+      final mock = await MockS3.start((req, res) => xml(res, listingXml(contents: [])));
+      addTearDown(mock.stop);
+      final c = client(mock, credentials: () => current);
+      addTearDown(c.close);
+
+      await c.listObjects();
+      expect(mock.last.headers.value('authorization'), contains('Credential=AKIAONE/'));
+
+      // Simulate a refreshed credentials file between requests.
+      current = const AwsCredentials('AKIATWO', 'secret');
+      await c.listObjects();
+      expect(mock.last.headers.value('authorization'), contains('Credential=AKIATWO/'));
+    });
+  });
+
+  group('S3Backend — AWS profile mode', () {
+    test('reads ~/.aws credentials and picks up a refresh per request', () async {
+      final dir = await Directory.systemTemp.createTemp('awsprof');
+      addTearDown(() => dir.delete(recursive: true));
+      final credFile = File('${dir.path}/credentials');
+      credFile.writeAsStringSync('[default]\naws_access_key_id=AKIAONE\naws_secret_access_key=s1\n');
+      debugAwsCredentialsPath = credFile.path;
+      addTearDown(() => debugAwsCredentialsPath = null);
+
+      final mock = await MockS3.start((req, res) => xml(res, listingXml(contents: [])));
+      addTearDown(mock.stop);
+      final b = S3Backend(Connection(
+        name: 's3',
+        protocol: Protocol.s3,
+        bucket: 'bk',
+        region: 'us-east-1',
+        endpoint: mock.endpoint,
+        useSsl: false,
+        useAwsProfile: true,
+      ));
+      addTearDown(b.dispose);
+      expect(b.isReady, isTrue); // profile + bucket is enough
+
+      await b.list('');
+      expect(mock.last.headers.value('authorization'), contains('Credential=AKIAONE/'));
+
+      // External process refreshes the temporary credentials on disk.
+      credFile.writeAsStringSync('[default]\naws_access_key_id=AKIATWO\naws_secret_access_key=s2\n');
+      await b.list('');
+      expect(mock.last.headers.value('authorization'), contains('Credential=AKIATWO/'));
+    });
+
+    test('a missing profile surfaces a clear error', () async {
+      final dir = await Directory.systemTemp.createTemp('awsprof2');
+      addTearDown(() => dir.delete(recursive: true));
+      debugAwsCredentialsPath = '${dir.path}/credentials'; // does not exist
+      addTearDown(() => debugAwsCredentialsPath = null);
+
+      final b = S3Backend(Connection(
+        name: 's3',
+        protocol: Protocol.s3,
+        bucket: 'bk',
+        region: 'us-east-1',
+        endpoint: '127.0.0.1:1',
+        useSsl: false,
+        useAwsProfile: true,
+        awsProfile: 'missing',
+      ));
+      addTearDown(b.dispose);
+      await expectLater(
+        b.list(''),
+        throwsA(isA<S3Exception>().having((e) => e.message, 'message', contains('missing'))),
       );
     });
   });

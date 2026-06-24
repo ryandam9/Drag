@@ -29,15 +29,32 @@ official AWS SDK for Dart, so Drag ships its own AWS **Signature V4** signer
 (`lib/fs/aws/sigv4.dart`) and a minimal S3 REST client (`lib/fs/aws/s3_client.dart`)
 built on `dart:io` `HttpClient` (streamed `ListObjectsV2` / `GetObject` /
 `PutObject`). No third-party S3 SDK is used. Configure an S3 connection in the
-**Connection Manager** (Access Key, Secret, optional Session Token, Region,
-Bucket, optional custom endpoint for S3-compatible services), hit **Connect**,
-then pick it in a pane. The **Local** endpoint browses your real filesystem.
+**Connection Manager** (Region, Bucket, optional custom endpoint for
+S3-compatible services), choose a **credential source**, hit **Connect** (or
+**🔌 Test**), then pick it in a pane. The **Local** endpoint browses your real
+filesystem.
+
+**Credentials — two sources:**
+
+- **Typed** — Access Key, Secret and optional Session Token entered in the form
+  (held in memory only, never written to disk).
+- **AWS profile** — tick *"Load credentials from `~/.aws/credentials`"* and give
+  a profile name (default `default`, or `$AWS_PROFILE`). The access key, secret
+  and **session token** are read from the shared credentials file
+  (`lib/fs/aws/aws_profile.dart`) **fresh on every request**, so when an external
+  process refreshes your temporary STS credentials on disk, Drag picks them up
+  automatically — no re-pasting. Region falls back to `~/.aws/config` if the form
+  field is blank.
+
+A connection is **verified** by a real, SigV4-signed `ListObjectsV2` against the
+bucket; the **🔌 Test** button reports success or AWS's actual error
+(`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
 
 > The SigV4 implementation is verified against AWS's published signing-key test
 > vector, and the full client is exercised end-to-end (upload/list/download +
 > cross-bucket copy) in `test/s3_integration_test.dart`.
 
-> Credentials are held in memory for the session and are not persisted to disk.
+> Typed secrets are held in memory for the session and are not persisted to disk.
 
 ## Screens
 

@@ -57,12 +57,21 @@ class Connection {
   String endpoint;
   bool useSsl;
 
+  /// When true, credentials are read from `~/.aws/credentials` ([awsProfile])
+  /// fresh on every request, instead of the typed access key/secret/token.
+  bool useAwsProfile;
+
+  /// AWS shared-credentials profile name (empty → `$AWS_PROFILE` / `default`).
+  String awsProfile;
+
   EndpointKind get kind => protocol == Protocol.s3 ? EndpointKind.s3 : EndpointKind.sftp;
   bool get isS3 => protocol == Protocol.s3;
 
-  /// Enough S3 settings present to attempt a real connection.
+  /// Enough S3 settings present to attempt a real connection: a bucket, plus
+  /// either a typed key/secret or the "use AWS profile" toggle.
   bool get hasS3Credentials =>
-      accessKeyId.isNotEmpty && secretAccessKey.isNotEmpty && bucket.isNotEmpty;
+      bucket.isNotEmpty &&
+      (useAwsProfile || (accessKeyId.isNotEmpty && secretAccessKey.isNotEmpty));
 
   Connection({
     this.id = '',
@@ -91,6 +100,8 @@ class Connection {
     this.bucket = '',
     this.endpoint = '',
     this.useSsl = true,
+    this.useAwsProfile = false,
+    this.awsProfile = '',
   });
 
   /// Generates a process-unique id for a new connection.
@@ -121,6 +132,8 @@ class Connection {
         'bucket': bucket,
         'endpoint': endpoint,
         'useSsl': useSsl,
+        'useAwsProfile': useAwsProfile,
+        'awsProfile': awsProfile,
       };
 
   factory Connection.fromJson(Map<String, Object?> m) {
@@ -148,6 +161,8 @@ class Connection {
       bucket: (m['bucket'] as String?) ?? '',
       endpoint: (m['endpoint'] as String?) ?? '',
       useSsl: (m['useSsl'] as bool?) ?? true,
+      useAwsProfile: (m['useAwsProfile'] as bool?) ?? false,
+      awsProfile: (m['awsProfile'] as String?) ?? '',
     );
   }
 }
