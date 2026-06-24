@@ -225,13 +225,13 @@ class _HistoryTable extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.only(right: 10),
               child: Text('${r.sourcePath} → ${r.destPath}',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: FsType.mono(size: 10, color: FsColors.text3)),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 10, color: FsColors.text3)),
             ),
           ),
           _mono(formatBytes(r.sizeBytes), 11, TextAlign.right),
           _mono(formatDurationMs(r.durationMs), 10, TextAlign.right),
           _mono(r.bytesPerSecond > 0 ? '${formatBytes(r.bytesPerSecond.round())}/s' : '—', 12, TextAlign.right),
-          Expanded(flex: 16, child: Text(_relative(r.finishedAt), style: FsType.mono(size: 10, color: FsColors.text2))),
+          Expanded(flex: 16, child: Text(_relative(r.finishedAt), style: FsType.sans(size: 10, color: FsColors.text2, tabular: true))),
           Expanded(
             flex: 12,
             child: Align(
@@ -250,7 +250,7 @@ class _HistoryTable extends StatelessWidget {
         flex: flex,
         child: Padding(
           padding: const EdgeInsets.only(right: 10),
-          child: Text(t, textAlign: align, style: FsType.mono(size: 10, color: FsColors.text2)),
+          child: Text(t, textAlign: align, style: FsType.sans(size: 10, color: FsColors.text2, tabular: true)),
         ),
       );
 

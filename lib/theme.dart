@@ -147,13 +147,15 @@ class FsType {
     Color? color,
     double? letterSpacing,
     double? height,
+    bool tabular = false,
   }) =>
       _resolve(uiFontFamily,
           size: size,
           weight: weight,
           color: color ?? FsColors.text1,
           letterSpacing: letterSpacing,
-          height: height);
+          height: height,
+          tabular: tabular);
 
   static TextStyle mono({
     double size = 11,
@@ -190,14 +192,16 @@ class FsType {
     required Color color,
     double? letterSpacing,
     double? height,
+    bool tabular = false,
   }) {
+    final features = tabular ? const [FontFeature.tabularFigures()] : null;
     try {
       return GoogleFonts.getFont(family,
           fontSize: size,
           fontWeight: weight,
           color: color,
           letterSpacing: letterSpacing,
-          height: height);
+          height: height).copyWith(fontFeatures: features);
     } catch (_) {
       return TextStyle(
         fontFamily: family,
@@ -206,6 +210,7 @@ class FsType {
         color: color,
         letterSpacing: letterSpacing,
         height: height,
+        fontFeatures: features,
       );
     }
   }
