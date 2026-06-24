@@ -214,7 +214,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: FormField2('Region', _field(_region, (v) => c.region = v, hint: 'us-east-1'))),
         const SizedBox(width: 12),
-        Expanded(flex: 2, child: FormField2('Bucket', _field(_bucket, (v) => c.bucket = v, hint: 'my-bucket'))),
+        Expanded(flex: 2, child: FormField2('Bucket', _field(_bucket, (v) => c.bucket = v, hint: 'blank = browse all buckets'))),
       ]),
       const SizedBox(height: 12),
       FormField2('Endpoint (optional — for S3-compatible / MinIO)',

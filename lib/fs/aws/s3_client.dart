@@ -98,6 +98,55 @@ class S3Client {
   String _objectPath(String key) =>
       '/${awsUriEncode(bucket, encodeSlash: true)}/${awsUriEncode(key)}';
 
+  // ── ListBuckets (service-level; ignores [bucket]) ──
+  Future<List<String>> listBuckets() async {
+    const canonicalUri = '/';
+    final headers = _signer.sign(
+      method: 'GET',
+      host: _hostHeader,
+      canonicalUri: canonicalUri,
+      query: const {},
+      headers: const {},
+      payloadHash: emptyBodySha256,
+    );
+    final req = await _http.getUrl(_uri(canonicalUri, const {}));
+    headers.forEach(req.headers.set);
+    final resp = await req.close();
+    final body = await resp.transform(utf8.decoder).join();
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body);
+
+    return XmlDocument.parse(body)
+        .rootElement
+        .findAllElements('Bucket')
+        .map((b) => b.getElement('Name')?.innerText ?? '')
+        .where((n) => n.isNotEmpty)
+        .toList();
+  }
+
+  /// The region a bucket lives in (via GetBucketLocation). Empty location
+  /// constraint → us-east-1; the legacy `EU` value → eu-west-1.
+  Future<String> getBucketLocation(String bucket) async {
+    final canonicalUri = '/${awsUriEncode(bucket, encodeSlash: true)}';
+    const query = {'location': ''};
+    final headers = _signer.sign(
+      method: 'GET',
+      host: _hostHeader,
+      canonicalUri: canonicalUri,
+      query: query,
+      headers: const {},
+      payloadHash: emptyBodySha256,
+    );
+    final req = await _http.getUrl(_uri(canonicalUri, query));
+    headers.forEach(req.headers.set);
+    final resp = await req.close();
+    final body = await resp.transform(utf8.decoder).join();
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body);
+    final loc = XmlDocument.parse(body).rootElement.innerText.trim();
+    if (loc.isEmpty) return 'us-east-1';
+    if (loc == 'EU') return 'eu-west-1';
+    return loc;
+  }
+
   // ── ListObjectsV2 (one page) ──
   Future<S3Listing> listObjects({
     String prefix = '',

@@ -309,6 +309,84 @@ void main() {
     });
   });
 
+  group('S3Client — service ops', () {
+    test('listBuckets parses bucket names (GET /)', () async {
+      final mock = await MockS3.start((req, res) => xml(res,
+          '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets>'
+          '<Bucket><Name>alpha</Name></Bucket><Bucket><Name>beta</Name></Bucket>'
+          '</Buckets></ListAllMyBucketsResult>'));
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+      expect(await c.listBuckets(), ['alpha', 'beta']);
+      expect(mock.last.path, '/');
+    });
+
+    test('getBucketLocation maps the region', () async {
+      for (final pair in [('eu-west-1', 'eu-west-1'), ('', 'us-east-1'), ('EU', 'eu-west-1')]) {
+        final mock = await MockS3.start(
+            (req, res) => xml(res, '<LocationConstraint>${pair.$1}</LocationConstraint>'));
+        final c = client(mock);
+        expect(await c.getBucketLocation('b'), pair.$2, reason: 'for "${pair.$1}"');
+        c.close();
+        await mock.stop();
+      }
+    });
+  });
+
+  group('S3Backend — bucket discovery (no bucket configured)', () {
+    test('lists the account buckets, then a bucket\'s objects', () async {
+      final mock = await MockS3.start((req, res) {
+        if (req.path == '/') {
+          xml(res,
+              '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets>'
+              '<Bucket><Name>alpha</Name></Bucket><Bucket><Name>beta</Name></Bucket>'
+              '</Buckets></ListAllMyBucketsResult>');
+        } else if (req.query['list-type'] == '2') {
+          xml(res, listingXml(contents: [(key: 'report.csv', size: 9)], prefixes: ['logs/']));
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+      final b = S3Backend(Connection(
+        name: 's3',
+        protocol: Protocol.s3,
+        bucket: '', // ← discovery
+        region: 'us-east-1',
+        endpoint: mock.endpoint,
+        useSsl: false,
+        accessKeyId: 'AKIA',
+        secretAccessKey: 's',
+      ));
+      addTearDown(b.dispose);
+      expect(b.isReady, isTrue); // creds present, bucket optional
+
+      // Root → the account's buckets, as folders.
+      final root = await b.list('');
+      expect(root.map((e) => e.name), containsAll(['alpha', 'beta']));
+      expect(root.every((e) => e.isDir && !e.isParent), isTrue);
+
+      // Enter a bucket → its objects/prefixes, with a '..' back to the list.
+      final inside = await b.list(b.childPath('', 'alpha', true)); // 'alpha/'
+      expect(inside.any((e) => e.isParent), isTrue);
+      expect(inside.any((e) => e.name == 'logs' && e.isDir), isTrue);
+      expect(inside.any((e) => e.name == 'report.csv'), isTrue);
+      expect(b.displayPath('alpha/'), 's3://alpha/');
+      expect(b.parentPath('alpha/'), ''); // back to the bucket list
+    });
+
+    test('refuses to delete a bucket from the root listing', () async {
+      final mock = await MockS3.start((req, res) => res.statusCode = 200);
+      addTearDown(mock.stop);
+      final b = S3Backend(Connection(
+        name: 's3', protocol: Protocol.s3, bucket: '', region: 'us-east-1',
+        endpoint: mock.endpoint, useSsl: false, accessKeyId: 'AKIA', secretAccessKey: 's'));
+      addTearDown(b.dispose);
+      await expectLater(b.delete('alpha/', isDir: true), throwsUnsupportedError);
+    });
+  });
+
   group('S3Client — addressing', () {
     test('omits the default port and uses the http scheme when useSsl is false', () async {
       // Bind a server, but assert on the Host header it receives.
