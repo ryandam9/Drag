@@ -103,9 +103,8 @@ class ConnectionManagerScreen extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(c.name,
-                      overflow: TextOverflow.ellipsis,
                       style: FsType.sans(
-                          size: 12,
+                          size: 12.5,
                           weight: active ? FontWeight.w600 : FontWeight.w400,
                           color: active ? FsColors.accentHi : (hover ? FsColors.text1 : FsColors.text2))),
                 ),
@@ -244,34 +243,67 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
 
   @override
   Widget build(BuildContext context) {
-    // Two-column detail layout: editable form on the left (scrolls), the
-    // connection log pinned full-height on the right so it is always visible.
+    // Detail layout: form + connection log. Side-by-side when there's room,
+    // stacked (log under the form) when the area is too narrow for two columns.
     return LayoutBuilder(builder: (context, cons) {
-      // The form doesn't need the whole width — cap it at a comfortable size so
-      // fields don't sprawl; the log gets all the remaining space (it was far
-      // too narrow before).
-      final formWidth = (cons.maxWidth * 0.5).clamp(300.0, 720.0);
+      final log = Container(
+        color: FsColors.bgScaffold,
+        padding: const EdgeInsets.all(20),
+        child: _connectionLog(),
+      );
+
+      if (cons.maxWidth < 640) {
+        return Column(
+          children: [
+            Expanded(child: _formColumn()),
+            Divider(height: 1, color: FsColors.border),
+            SizedBox(height: 220, child: log),
+          ],
+        );
+      }
+
+      // Cap the form so fields don't sprawl; the log gets the rest.
+      final formWidth = (cons.maxWidth * 0.5).clamp(320.0, 720.0);
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(width: formWidth, child: _formColumn()),
           VerticalDivider(width: 1, color: FsColors.border),
-          Expanded(
-            child: Container(
-              color: FsColors.bgScaffold,
-              padding: const EdgeInsets.all(20),
-              child: _connectionLog(),
-            ),
-          ),
+          Expanded(child: log),
         ],
       );
     });
   }
 
+  /// True when the form is too narrow for side-by-side fields (set per build
+  /// from the form's actual width); multi-field rows then stack vertically.
+  bool _narrow = false;
+
+  /// Lays [fields] in a Row of Expandeds when there's room, or stacks them in a
+  /// Column when [_narrow] — so field rows never overflow on small windows.
+  Widget _fieldRow(List<Widget> fields, {List<int>? flex}) {
+    if (_narrow) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (var i = 0; i < fields.length; i++) ...[
+          if (i > 0) const SizedBox(height: 12),
+          fields[i],
+        ],
+      ]);
+    }
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (var i = 0; i < fields.length; i++) ...[
+        if (i > 0) const SizedBox(width: 12),
+        Expanded(flex: flex == null ? 1 : flex[i], child: fields[i]),
+      ],
+    ]);
+  }
+
   Widget _formColumn() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(28),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return LayoutBuilder(builder: (context, cons) {
+      _narrow = cons.maxWidth < 380;
+      return SingleChildScrollView(
+        padding: EdgeInsets.all(_narrow ? 16 : 28),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(c.name.trim().isEmpty ? 'Unnamed connection' : c.name,
             style: FsType.sans(size: 22, weight: FontWeight.w700, color: FsColors.text1)),
         if (c.lastConnected.isNotEmpty || c.details.isNotEmpty) ...[
@@ -343,7 +375,8 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
           ),
         ]),
       ]),
-    );
+      );
+    });
   }
 
   // ── Connection log ──
@@ -425,11 +458,10 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
     return [
       _sectionTitle('Connection', Icons.cloud_outlined),
       const SizedBox(height: 16),
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: FormField2('Region', _field(_region, (v) => c.region = v, hint: 'us-east-1', icon: Icons.public))),
-        const SizedBox(width: 12),
-        Expanded(flex: 2, child: FormField2('Bucket', _field(_bucket, (v) => c.bucket = v, hint: 'blank = browse all buckets', icon: Icons.inventory_2_outlined))),
-      ]),
+      _fieldRow([
+        FormField2('Region', _field(_region, (v) => c.region = v, hint: 'us-east-1', icon: Icons.public)),
+        FormField2('Bucket', _field(_bucket, (v) => c.bucket = v, hint: 'blank = browse all buckets', icon: Icons.inventory_2_outlined)),
+      ], flex: [1, 2]),
       const SizedBox(height: 12),
       FormField2('Endpoint (optional — for S3-compatible / MinIO)',
           _field(_endpoint, (v) => c.endpoint = v, hint: 's3.amazonaws.com', icon: Icons.dns_outlined)),
@@ -489,16 +521,12 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
     return [
       _sectionTitle('Connection', Icons.cloud_outlined),
       const SizedBox(height: 16),
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(flex: 2, child: FormField2('Hostname / IP', _field(_host, (v) => c.host = v, icon: Icons.dns_outlined))),
-      ]),
+      FormField2('Hostname / IP', _field(_host, (v) => c.host = v, icon: Icons.dns_outlined)),
       const SizedBox(height: 16),
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: FormField2('Port', _field(_port, (v) => c.port = int.tryParse(v) ?? c.port, icon: Icons.numbers))),
-        const SizedBox(width: 12),
-        Expanded(child: FormField2('Username', _field(_user, (v) => c.username = v, icon: Icons.person_outline))),
-        const SizedBox(width: 12),
-        Expanded(child: FormField2('Timeout (s)', _field(_timeout, (v) => c.timeout = int.tryParse(v) ?? c.timeout, icon: Icons.timer_outlined))),
+      _fieldRow([
+        FormField2('Port', _field(_port, (v) => c.port = int.tryParse(v) ?? c.port, icon: Icons.numbers)),
+        FormField2('Username', _field(_user, (v) => c.username = v, icon: Icons.person_outline)),
+        FormField2('Timeout (s)', _field(_timeout, (v) => c.timeout = int.tryParse(v) ?? c.timeout, icon: Icons.timer_outlined)),
       ]),
       const SizedBox(height: 20),
       _sectionTitle('Authentication', Icons.shield_outlined),
