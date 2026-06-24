@@ -110,24 +110,128 @@ lib/
                                dashboard / settings
 ```
 
-## Running
+## Building from source
+
+Drag is a Flutter **desktop** app. It is developed and CI-tested against
+**Flutter 3.44.2** (Dart 3.12) — match that version (e.g. with `fvm`) for a
+reproducible build. macOS and Linux are both first-class targets.
+
+### Common steps
 
 ```bash
+git clone https://github.com/ryandam9/Drag.git
+cd Drag
+flutter --version            # should report 3.44.2 (channel stable)
 flutter pub get
-
-# Pick your desktop platform:
-flutter run -d linux
-flutter run -d macos
-flutter run -d windows
 ```
 
-## Building a release bundle
+Make sure desktop support is enabled (on by default in recent Flutter):
 
 ```bash
-flutter build linux --release     # build/linux/x64/release/bundle/
-flutter build macos --release
-flutter build windows --release
+flutter config --enable-macos-desktop --enable-linux-desktop
+flutter devices              # macOS / Linux should be listed
 ```
+
+### 🐧 Linux
+
+**Toolchain prerequisites** (Debian/Ubuntu — adjust for your distro):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  clang cmake ninja-build pkg-config \
+  libgtk-3-dev liblzma-dev \
+  libsqlite3-0 libsqlite3-dev      # SQLite is used for history/connections/settings/sessions
+```
+
+**Run from source:**
+
+```bash
+flutter run -d linux
+```
+
+**Build a release binary:**
+
+```bash
+flutter build linux --release
+```
+
+Output bundle (self-contained — ships its Flutter engine, plugins and
+`libsqlite3.so`):
+
+```
+build/linux/x64/release/bundle/
+├── drag                     ← the executable
+├── data/                    ← Flutter assets + ICU
+└── lib/                     ← engine + plugin .so files (incl. libsqlite3.so)
+```
+
+Run it directly or zip/tar the whole `bundle/` directory to distribute:
+
+```bash
+./build/linux/x64/release/bundle/drag
+```
+
+### 🍎 macOS
+
+**Toolchain prerequisites:**
+
+- **Xcode** (full install from the App Store) + command-line tools:
+  `xcode-select --install`
+- **CocoaPods**: `sudo gem install cocoapods` (Flutter regenerates
+  `macos/Podfile` and runs `pod install` automatically on first build)
+- Minimum deployment target: **macOS 10.15**
+
+**Run from source:**
+
+```bash
+flutter run -d macos
+```
+
+**Build a release `.app`:**
+
+```bash
+flutter build macos --release
+```
+
+Output:
+
+```
+build/macos/Build/Products/Release/Drag.app
+```
+
+Launch it with `open build/macos/Build/Products/Release/Drag.app`.
+
+> **App Sandbox is intentionally disabled** (`macos/Runner/*.entitlements`).
+> Drag is a file manager that browses the *whole* filesystem from the Local
+> pane and opens outbound **S3 / SFTP** connections — neither is possible under
+> the sandbox without security-scoped bookmarks, so the sandbox is turned off
+> and `com.apple.security.network.client` is granted. This suits **direct
+> distribution**; a Mac App Store build would need the sandbox re-enabled with
+> a different file-access model.
+
+**Distribution (optional):** sign and notarize for Gatekeeper-friendly
+delivery:
+
+```bash
+codesign --deep --force --options runtime \
+  --sign "Developer ID Application: <YOUR NAME> (<TEAMID>)" \
+  build/macos/Build/Products/Release/Drag.app
+xcrun notarytool submit Drag.zip --apple-id <id> --team-id <TEAMID> --wait
+xcrun stapler staple build/macos/Build/Products/Release/Drag.app
+```
+
+### Windows
+
+```bash
+flutter build windows --release   # build/windows/x64/runner/Release/
+```
+
+### CI
+
+`.github/workflows/ci.yml` runs `flutter analyze` + `flutter test` and then
+builds release bundles for **Linux, macOS and Windows** on every push/PR, so
+all three targets are verified to compile on each change.
 
 ## Tests & analysis
 
