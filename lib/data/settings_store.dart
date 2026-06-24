@@ -10,6 +10,7 @@ class AppSettings {
     this.accentValue = 0xFF007CBF,
     this.accentHiValue = 0xFF06ABDF,
     this.uiFontSize = 13,
+    this.uiFont = 'Inter',
     this.monospaceFont = 'JetBrains Mono',
     this.showHiddenFiles = true,
     this.showPermsColumn = true,
@@ -31,6 +32,11 @@ class AppSettings {
 
   /// Base UI font size in logical pixels (12 / 13 / 14).
   double uiFontSize;
+
+  /// The proportional UI font family (a Google Fonts name).
+  String uiFont;
+
+  /// The monospace font family used for paths, logs and the file list.
   String monospaceFont;
 
   bool showHiddenFiles;
@@ -49,6 +55,7 @@ class AppSettings {
     int? accentValue,
     int? accentHiValue,
     double? uiFontSize,
+    String? uiFont,
     String? monospaceFont,
     bool? showHiddenFiles,
     bool? showPermsColumn,
@@ -64,6 +71,7 @@ class AppSettings {
         accentValue: accentValue ?? this.accentValue,
         accentHiValue: accentHiValue ?? this.accentHiValue,
         uiFontSize: uiFontSize ?? this.uiFontSize,
+        uiFont: uiFont ?? this.uiFont,
         monospaceFont: monospaceFont ?? this.monospaceFont,
         showHiddenFiles: showHiddenFiles ?? this.showHiddenFiles,
         showPermsColumn: showPermsColumn ?? this.showPermsColumn,
@@ -80,6 +88,7 @@ class AppSettings {
         'accentValue': accentValue,
         'accentHiValue': accentHiValue,
         'uiFontSize': uiFontSize,
+        'uiFont': uiFont,
         'monospaceFont': monospaceFont,
         'showHiddenFiles': showHiddenFiles,
         'showPermsColumn': showPermsColumn,
@@ -98,6 +107,7 @@ class AppSettings {
       accentValue: (j['accentValue'] as num?)?.toInt() ?? 0xFF007CBF,
       accentHiValue: (j['accentHiValue'] as num?)?.toInt() ?? 0xFF06ABDF,
       uiFontSize: d(j['uiFontSize']) ?? 13,
+      uiFont: (j['uiFont'] as String?) ?? 'Inter',
       monospaceFont: (j['monospaceFont'] as String?) ?? 'JetBrains Mono',
       showHiddenFiles: (j['showHiddenFiles'] as bool?) ?? true,
       showPermsColumn: (j['showPermsColumn'] as bool?) ?? true,

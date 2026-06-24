@@ -121,6 +121,13 @@ BirdTheme birdThemeByName(String name) =>
         orElse: () => kBirdThemes.first);
 
 class FsType {
+  /// The active UI (proportional) and monospace font families. Mutable so the
+  /// Appearance settings can swap the whole app's typography at runtime; set by
+  /// `SettingsNotifier` from the persisted [AppSettings]. Always a valid Google
+  /// Fonts family (sanitised via `AppFont.resolve`).
+  static String uiFontFamily = 'Inter';
+  static String monoFontFamily = 'JetBrains Mono';
+
   static TextStyle sans({
     double size = 12,
     FontWeight weight = FontWeight.w400,
@@ -128,7 +135,8 @@ class FsType {
     double? letterSpacing,
     double? height,
   }) =>
-      GoogleFonts.inter(
+      GoogleFonts.getFont(
+        uiFontFamily,
         fontSize: size,
         fontWeight: weight,
         color: color ?? FsColors.text1,
@@ -143,18 +151,31 @@ class FsType {
     double? letterSpacing,
     double? height,
   }) =>
-      GoogleFonts.jetBrainsMono(
+      GoogleFonts.getFont(
+        monoFontFamily,
         fontSize: size,
         fontWeight: weight,
         color: color ?? FsColors.text2,
         letterSpacing: letterSpacing,
         height: height,
       );
+
+  /// A style in a specific Google Fonts [family] — used to preview each font in
+  /// its own typeface inside the font pickers.
+  static TextStyle family(
+    String family, {
+    double size = 12,
+    FontWeight weight = FontWeight.w400,
+    Color? color,
+  }) =>
+      GoogleFonts.getFont(family,
+          fontSize: size, fontWeight: weight, color: color ?? FsColors.text1);
 }
 
 ThemeData buildDragTheme() {
   final base = ThemeData.dark(useMaterial3: true);
-  final interText = GoogleFonts.interTextTheme(base.textTheme).apply(
+  // Build the text theme from the user's selected UI font.
+  final uiText = GoogleFonts.getTextTheme(FsType.uiFontFamily, base.textTheme).apply(
     bodyColor: FsColors.text1,
     displayColor: FsColors.text1,
   );
@@ -169,13 +190,13 @@ ThemeData buildDragTheme() {
     ),
     // The Feathers type direction: big display/headline numbers are heavier,
     // tighter-tracked and use tabular figures so animated counts don't jiggle.
-    textTheme: interText.copyWith(
-      displaySmall: interText.displaySmall?.copyWith(
+    textTheme: uiText.copyWith(
+      displaySmall: uiText.displaySmall?.copyWith(
         fontWeight: FontWeight.w800,
         letterSpacing: -1.0,
         fontFeatures: const [FontFeature.tabularFigures()],
       ),
-      headlineLarge: interText.headlineLarge?.copyWith(
+      headlineLarge: uiText.headlineLarge?.copyWith(
         fontWeight: FontWeight.w800,
         letterSpacing: -0.5,
         fontFeatures: const [FontFeature.tabularFigures()],

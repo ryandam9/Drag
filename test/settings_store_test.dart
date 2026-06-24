@@ -1,4 +1,5 @@
 import 'package:drag/data/settings_store.dart';
+import 'package:drag/models/app_font.dart';
 import 'package:drag/state/app.dart';
 import 'package:drag/theme.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ void main() {
         themeName: 'Light',
         accentValue: 0xFF22C55E,
         uiFontSize: 14,
+        uiFont: 'Poppins',
         monospaceFont: 'Fira Code',
         showHiddenFiles: false,
         showPermsColumn: false,
@@ -31,6 +33,7 @@ void main() {
       expect(back.accentValue, 0xFF22C55E);
       expect(back.accentHiValue, 0xFF06ABDF);
       expect(back.uiFontSize, 14);
+      expect(back.uiFont, 'Poppins');
       expect(back.monospaceFont, 'Fira Code');
       expect(back.showHiddenFiles, isFalse);
       expect(back.showPermsColumn, isFalse);
@@ -122,6 +125,27 @@ void main() {
     test('birdThemeByName falls back to the default for an unknown name', () {
       expect(birdThemeByName('Nope').name, kDefaultThemeName);
       expect(kBirdThemes, hasLength(12));
+    });
+
+    test('setUiFont / setMonospaceFont apply the global font families', () {
+      final c = makeContainer();
+      final n = c.read(settingsProvider.notifier);
+      n.setUiFont('Poppins');
+      n.setMonospaceFont('Fira Code');
+      expect(c.read(settingsProvider).uiFont, 'Poppins');
+      expect(c.read(settingsProvider).monospaceFont, 'Fira Code');
+      expect(FsType.uiFontFamily, 'Poppins');
+      expect(FsType.monoFontFamily, 'Fira Code');
+    });
+
+    test('AppFont sanitises unknown / mismatched families to slot defaults', () {
+      // A bogus name, or a mono font in the UI slot, falls back sensibly.
+      expect(AppFont.resolve('Comic Sans', mono: false), 'Inter');
+      expect(AppFont.resolve('Fira Code', mono: false), 'Inter');
+      expect(AppFont.resolve('Menlo', mono: true), 'JetBrains Mono');
+      expect(AppFont.resolve('Fira Code', mono: true), 'Fira Code');
+      expect(AppFont.sansFonts.every((f) => !f.mono), isTrue);
+      expect(AppFont.monoFonts.every((f) => f.mono), isTrue);
     });
 
     test('setShowHiddenFiles propagates to every pane', () {

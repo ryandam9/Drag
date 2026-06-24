@@ -9,6 +9,7 @@ import 'data/connection_store.dart';
 import 'data/history_db.dart';
 import 'data/session_store.dart';
 import 'data/settings_store.dart';
+import 'models/app_font.dart';
 import 'models/connection.dart';
 import 'state/app.dart';
 import 'theme.dart';
@@ -57,11 +58,13 @@ Future<void> main() async {
     sessionLayout = null;
   }
 
-  // Apply the persisted theme to the global palette before the first frame.
+  // Apply the persisted theme + fonts to the global palette before the first frame.
   if (settings != null) {
     FsColors.applyTheme(birdThemeByName(settings.themeName));
     FsColors.accent = Color(settings.accentValue);
     FsColors.accentHi = Color(settings.accentHiValue);
+    FsType.uiFontFamily = AppFont.resolve(settings.uiFont, mono: false);
+    FsType.monoFontFamily = AppFont.resolve(settings.monospaceFont, mono: true);
   }
 
   // Restore window size/position (desktop only — no-op on other platforms).
@@ -152,6 +155,8 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener {
     // when either changes.
     final accentValue = ref.watch(settingsProvider.select((s) => s.accentValue));
     final themeName = ref.watch(settingsProvider.select((s) => s.themeName));
+    final uiFont = ref.watch(settingsProvider.select((s) => s.uiFont));
+    final monoFont = ref.watch(settingsProvider.select((s) => s.monospaceFont));
 
     return MaterialApp(
       title: 'Drag',
@@ -169,7 +174,7 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener {
       // whole tree, forcing every widget to re-read the global FsColors ramp.
       // Session/tab state lives in Riverpod providers, so it survives the
       // remount — only ephemeral widget state (scroll offsets) resets.
-      home: AppShell(key: ValueKey('$themeName:$accentValue')),
+      home: AppShell(key: ValueKey('$themeName:$accentValue:$uiFont:$monoFont')),
     );
   }
 }
