@@ -1,13 +1,42 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../fs/storage_backend.dart';
 import '../fs/transfer_service.dart';
 import '../models/connection.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
 import 'history_provider.dart';
 import 'pane_controller.dart';
+import 'settings_provider.dart';
 import 'toasts_provider.dart';
+
+/// What to do when a transfer's destination already has a file of that name.
+enum ConflictAction { skip, overwrite, rename }
+
+/// A request for the user to resolve one name clash.
+class ConflictPrompt {
+  final String name;
+  final String destLabel;
+  const ConflictPrompt({required this.name, required this.destLabel});
+}
+
+/// The user's answer to a [ConflictPrompt]; [applyToAll] reuses it for the rest
+/// of the current drop.
+class ConflictResolution {
+  final ConflictAction action;
+  final bool applyToAll;
+  const ConflictResolution(this.action, {this.applyToAll = false});
+}
+
+/// Shows a conflict prompt and returns the choice (null = cancel → skip).
+typedef ConflictResolver = Future<ConflictResolution?> Function(ConflictPrompt prompt);
+
+/// Per-drop memory of an "apply to all" choice.
+class _Batch {
+  ConflictAction? applyToAll;
+}
+
 
 /// The transfer queue plus the parallel-thread budget.
 class TransfersState {
@@ -128,7 +157,43 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// directory tree on the destination and enqueue every nested file. Returns
   /// the number of files enqueued. Listing/mkdir errors on one subtree are
   /// reported but don't abort the rest.
-  Future<int> enqueueTree(PaneController src, PaneController dst, FileItem folder) async {
+  Future<int> enqueueTree(PaneController src, PaneController dst, FileItem folder) =>
+      _transferFolder(src, dst, folder, _Batch(), false);
+
+  // ── Conflict resolution ──
+
+  /// The UI registers a resolver (a dialog) here; null = no prompting.
+  ConflictResolver? _resolver;
+  void setConflictResolver(ConflictResolver? r) => _resolver = r;
+
+  /// Transfer a dropped selection of [entries] (files and/or folders) from
+  /// [src] to [dst], resolving destination name clashes when "confirm before
+  /// overwriting" is on and a resolver is registered. Folders are walked
+  /// recursively; one "apply to all" decision spans the whole drop.
+  Future<void> transferSelection(
+      PaneController src, PaneController dst, List<FileItem> entries) async {
+    final files = entries.where((e) => !e.isDir).toList();
+    final folders = entries.where((e) => e.isDir).toList();
+    final confirm = ref.read(settingsProvider).confirmOverwrite && _resolver != null;
+    final batch = _Batch();
+    final single = entries.length == 1 && folders.isEmpty;
+
+    final topNames = confirm ? await _namesAt(dst.backend, dst.path) : <String>{};
+    for (final f in files) {
+      await _maybeEnqueue(
+          src, dst, src.path, dst.path, f.name, f.sizeBytes ?? 0, topNames, batch, confirm,
+          announce: single);
+    }
+    if (files.length > 1 && folders.isEmpty) {
+      _toast('Transferring', '${files.length} files → ${dst.endpointLabel}', ToastKind.info);
+    }
+    for (final folder in folders) {
+      await _transferFolder(src, dst, folder, batch, confirm);
+    }
+  }
+
+  Future<int> _transferFolder(
+      PaneController src, PaneController dst, FileItem folder, _Batch batch, bool confirm) async {
     if (!dst.backend.supportsMutation) {
       _toast('Not supported', "Can't create folders on ${dst.endpointLabel}", ToastKind.error);
       return 0;
@@ -139,38 +204,93 @@ class TransfersNotifier extends Notifier<TransfersState> {
     var count = 0;
     try {
       await dst.backend.makeDir(dstRoot);
-      count = await _walkTree(src, dst, srcRoot, dstRoot);
+      count = await _walk(src, dst, srcRoot, dstRoot, batch, confirm);
     } catch (e) {
       _toast("Couldn't read folder", _short(e), ToastKind.error);
     }
-    if (count == 0) {
-      _toast('Nothing to transfer', '${folder.name} has no files', ToastKind.info);
-    } else {
-      _toast('Folder queued', '$count ${count == 1 ? 'file' : 'files'} from ${folder.name}', ToastKind.info);
-    }
+    _toast(count == 0 ? 'Nothing to transfer' : 'Folder queued',
+        count == 0 ? '${folder.name} has no new files' : '$count ${count == 1 ? 'file' : 'files'} from ${folder.name}',
+        ToastKind.info);
     return count;
   }
 
-  Future<int> _walkTree(PaneController src, PaneController dst, String srcDir, String dstDir) async {
+  Future<int> _walk(PaneController src, PaneController dst, String srcDir, String dstDir,
+      _Batch batch, bool confirm) async {
     final items = await src.backend.list(srcDir);
+    final destNames = confirm ? await _namesAt(dst.backend, dstDir) : <String>{};
     var count = 0;
     for (final it in items) {
       if (it.isParent) continue;
-      final s = src.backend.childPath(srcDir, it.name, it.isDir);
-      final d = dst.backend.childPath(dstDir, it.name, it.isDir);
       if (it.isDir) {
+        final d = dst.backend.childPath(dstDir, it.name, true);
         try {
           await dst.backend.makeDir(d);
-          count += await _walkTree(src, dst, s, d);
+          count += await _walk(
+              src, dst, src.backend.childPath(srcDir, it.name, true), d, batch, confirm);
         } catch (e) {
           _toast("Couldn't copy folder", '${it.name}: ${_short(e)}', ToastKind.error);
         }
       } else {
-        enqueueFile(src, dst, s, d, it.name, it.sizeBytes ?? 0, announce: false);
-        count++;
+        if (await _maybeEnqueue(
+            src, dst, srcDir, dstDir, it.name, it.sizeBytes ?? 0, destNames, batch, confirm)) {
+          count++;
+        }
       }
     }
     return count;
+  }
+
+  /// Enqueue one file, first resolving a name clash if the destination already
+  /// has [name]. Returns true if a transfer was enqueued (false = skipped).
+  Future<bool> _maybeEnqueue(PaneController src, PaneController dst, String srcDir, String dstDir,
+      String name, int size, Set<String> destNames, _Batch batch, bool confirm,
+      {bool announce = false}) async {
+    var outName = name;
+    if (confirm && destNames.contains(name)) {
+      final action = batch.applyToAll ?? await _ask(name, dst, batch);
+      switch (action) {
+        case ConflictAction.skip:
+          return false;
+        case ConflictAction.overwrite:
+          break;
+        case ConflictAction.rename:
+          outName = _uniqueName(name, destNames);
+      }
+    }
+    destNames.add(outName); // so later renames in the same dir don't collide
+    final s = src.backend.childPath(srcDir, name, false);
+    final d = dst.backend.childPath(dstDir, outName, false);
+    enqueueFile(src, dst, s, d, outName, size, announce: announce);
+    return true;
+  }
+
+  Future<ConflictAction> _ask(String name, PaneController dst, _Batch batch) async {
+    final res = await _resolver!(ConflictPrompt(name: name, destLabel: dst.endpointLabel));
+    if (res == null) return ConflictAction.skip;
+    if (res.applyToAll) batch.applyToAll = res.action;
+    return res.action;
+  }
+
+  Future<Set<String>> _namesAt(StorageBackend backend, String dir) async {
+    try {
+      final items = await backend.list(dir);
+      return {for (final it in items) if (!it.isParent) it.name};
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  String _uniqueName(String name, Set<String> existing) {
+    final dot = name.lastIndexOf('.');
+    final base = dot > 0 ? name.substring(0, dot) : name;
+    final ext = dot > 0 ? name.substring(dot) : '';
+    var n = 1;
+    String candidate;
+    do {
+      candidate = '$base ($n)$ext';
+      n++;
+    } while (existing.contains(candidate));
+    return candidate;
   }
 
   String _short(Object e) {

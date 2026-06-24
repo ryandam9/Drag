@@ -33,6 +33,68 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   void _toast(String t, String s, ToastKind k) => ref.read(toastsProvider.notifier).push(t, s, k);
   void _go(AppScreen s) => ref.read(navProvider.notifier).go(s);
 
+  TransfersNotifier? _transfersRef;
+
+  @override
+  void initState() {
+    super.initState();
+    // Transfers ask us to resolve destination name clashes via a dialog.
+    _transfersRef = ref.read(transfersProvider.notifier);
+    _transfersRef!.setConflictResolver(_resolveConflict);
+  }
+
+  @override
+  void dispose() {
+    // Use the cached notifier — `ref` is unsafe in dispose().
+    _transfersRef?.setConflictResolver(null);
+    super.dispose();
+  }
+
+  /// Shows the Skip / Overwrite / Rename dialog for a name clash, with an
+  /// "apply to all" option. Returns null if dismissed (treated as skip).
+  Future<ConflictResolution?> _resolveConflict(ConflictPrompt p) async {
+    if (!mounted) return const ConflictResolution(ConflictAction.overwrite);
+    var all = false;
+    return showDialog<ConflictResolution>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: FsColors.bgPanel,
+          title: Text('File already exists',
+              style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('"${p.name}" already exists in ${p.destLabel}. What would you like to do?',
+                style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: () => setLocal(() => all = !all),
+              child: Row(children: [
+                SizedBox(
+                  width: 18, height: 18,
+                  child: Checkbox(
+                    value: all,
+                    onChanged: (v) => setLocal(() => all = v ?? false),
+                    activeColor: FsColors.accent,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text('Apply to all remaining', style: FsType.sans(size: 12, color: FsColors.text2)),
+              ]),
+            ),
+          ]),
+          actions: [
+            FsButton('Skip', onTap: () => Navigator.pop(ctx, ConflictResolution(ConflictAction.skip, applyToAll: all))),
+            FsButton('Rename', onTap: () => Navigator.pop(ctx, ConflictResolution(ConflictAction.rename, applyToAll: all))),
+            FsButton('Overwrite',
+                kind: FsButtonKind.primary,
+                onTap: () => Navigator.pop(ctx, ConflictResolution(ConflictAction.overwrite, applyToAll: all))),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Copy a full endpoint location (s3://… , sftp://… , or a local absolute
   /// path) to the clipboard and confirm with a toast.
   Future<void> _copyLocation(String location) async {
