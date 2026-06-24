@@ -278,12 +278,45 @@ void main() {
       expect(c.read(transfersProvider).transfers, isEmpty);
     });
 
-    test('rejects directory drops with an info toast', () {
+    test('directory drops transfer the whole tree recursively (Local→Local)', () async {
       final c = makeContainer();
       final s = c.read(sessionsProvider.notifier);
-      s.dropTransfer(const DragPayload(_dir, true), false);
-      expect(c.read(transfersProvider).transfers, isEmpty);
-      expect(c.read(toastsProvider).last.kind, ToastKind.info);
+      final src = await Directory.systemTemp.createTemp('drop_tree_src');
+      final dst = await Directory.systemTemp.createTemp('drop_tree_dst');
+      addTearDown(() => src.delete(recursive: true));
+      addTearDown(() => dst.delete(recursive: true));
+      // folder/a.txt, folder/sub/b.txt, folder/empty/
+      final folder = Directory(p.join(src.path, 'folder'))..createSync();
+      await File(p.join(folder.path, 'a.txt')).writeAsString('aaa');
+      final sub = Directory(p.join(folder.path, 'sub'))..createSync();
+      await File(p.join(sub.path, 'b.txt')).writeAsString('bbb');
+      Directory(p.join(folder.path, 'empty')).createSync();
+
+      s.leftPane
+        ..backend = LocalBackend()
+        ..path = src.path;
+      await s.leftPane.refresh();
+      s.rightPane
+        ..backend = LocalBackend()
+        ..connection = null
+        ..path = dst.path;
+      await s.rightPane.refresh();
+
+      final item = s.leftPane.items.firstWhere((e) => e.name == 'folder');
+      s.dropTransfer(DragPayload(item, true), false);
+
+      // enqueueTree walks asynchronously, then the file transfers run.
+      final aFile = File(p.join(dst.path, 'folder', 'a.txt'));
+      final bFile = File(p.join(dst.path, 'folder', 'sub', 'b.txt'));
+      for (var i = 0; i < 200 && !(aFile.existsSync() && bFile.existsSync()); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await aFile.readAsString(), 'aaa');
+      expect(await bFile.readAsString(), 'bbb');
+      // Empty subdirectories are recreated too.
+      expect(Directory(p.join(dst.path, 'folder', 'empty')).existsSync(), isTrue);
+      // Two files were enqueued.
+      expect(c.read(transfersProvider).transfers.length, 2);
     });
 
     test('rejects when destination endpoint is not ready', () async {
@@ -424,4 +457,3 @@ void main() {
 
 /// Minimal const FileItems for drop-decision tests.
 const _file = FileItem(name: 'note.txt', sizeBytes: 10);
-const _dir = FileItem(name: 'folder', isDir: true);

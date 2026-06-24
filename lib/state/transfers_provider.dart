@@ -68,31 +68,39 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// Queue and start a real transfer of [item] from [src] to [dst].
   /// [announce] controls the per-file "started" toast.
   void enqueue(PaneController src, PaneController dst, FileItem item, {bool announce = true}) {
+    final srcPath = src.backend.childPath(src.path, item.name, false);
+    final dstPath = dst.backend.childPath(dst.path, item.name, false);
+    enqueueFile(src, dst, srcPath, dstPath, item.name, item.sizeBytes ?? 0, announce: announce);
+  }
+
+  /// Queue and start a transfer of a single file given its full [srcPath] /
+  /// [dstPath] on each backend. Used directly by recursive folder transfers,
+  /// where the paths include sub-directories under the dragged folder.
+  void enqueueFile(PaneController src, PaneController dst, String srcPath, String dstPath,
+      String name, int sizeBytes, {bool announce = true}) {
     if (!src.backend.supportsTransfer || !dst.backend.supportsTransfer) {
       _toast('Not supported',
           '${src.endpointLabel} → ${dst.endpointLabel} transfers are not available', ToastKind.error);
       return;
     }
-    final srcPath = src.backend.childPath(src.path, item.name, false);
-    final dstPath = dst.backend.childPath(dst.path, item.name, false);
     final direction =
         dst.kind == EndpointKind.local ? TransferDirection.download : TransferDirection.upload;
 
     final t = Transfer(
-      name: item.name,
+      name: name,
       route: '${src.endpointLabel} → ${dst.displayPath}',
       direction: direction,
-      sizeBytes: item.sizeBytes ?? 0,
+      sizeBytes: sizeBytes,
       session: dst.endpointLabel,
       status: TransferStatus.queued,
       live: true,
       sourcePath: '${src.endpointLabel}:$srcPath',
-      destPath: dst.displayPath,
+      destPath: dst.backend.displayPath(dstPath),
     );
     _emit([t, ..._list]);
 
     if (announce) {
-      _toast('Transfer started', '${item.name} → ${dst.endpointLabel}', ToastKind.info);
+      _toast('Transfer started', '$name → ${dst.endpointLabel}', ToastKind.info);
     }
     _service
         .run(
@@ -111,9 +119,63 @@ class TransfersNotifier extends Notifier<TransfersState> {
         _completionToast(t);
         dst.refresh();
       } else if (t.status == TransferStatus.error) {
-        _toast('Transfer failed', '${item.name}: ${t.errorMessage ?? 'error'}', ToastKind.error);
+        _toast('Transfer failed', '$name: ${t.errorMessage ?? 'error'}', ToastKind.error);
       }
     });
+  }
+
+  /// Recursively transfer a [folder] from [src] to [dst]: recreate the
+  /// directory tree on the destination and enqueue every nested file. Returns
+  /// the number of files enqueued. Listing/mkdir errors on one subtree are
+  /// reported but don't abort the rest.
+  Future<int> enqueueTree(PaneController src, PaneController dst, FileItem folder) async {
+    if (!dst.backend.supportsMutation) {
+      _toast('Not supported', "Can't create folders on ${dst.endpointLabel}", ToastKind.error);
+      return 0;
+    }
+    final srcRoot = src.backend.childPath(src.path, folder.name, true);
+    final dstRoot = dst.backend.childPath(dst.path, folder.name, true);
+    _toast('Expanding folder', '${folder.name} → ${dst.endpointLabel}', ToastKind.info);
+    var count = 0;
+    try {
+      await dst.backend.makeDir(dstRoot);
+      count = await _walkTree(src, dst, srcRoot, dstRoot);
+    } catch (e) {
+      _toast("Couldn't read folder", _short(e), ToastKind.error);
+    }
+    if (count == 0) {
+      _toast('Nothing to transfer', '${folder.name} has no files', ToastKind.info);
+    } else {
+      _toast('Folder queued', '$count ${count == 1 ? 'file' : 'files'} from ${folder.name}', ToastKind.info);
+    }
+    return count;
+  }
+
+  Future<int> _walkTree(PaneController src, PaneController dst, String srcDir, String dstDir) async {
+    final items = await src.backend.list(srcDir);
+    var count = 0;
+    for (final it in items) {
+      if (it.isParent) continue;
+      final s = src.backend.childPath(srcDir, it.name, it.isDir);
+      final d = dst.backend.childPath(dstDir, it.name, it.isDir);
+      if (it.isDir) {
+        try {
+          await dst.backend.makeDir(d);
+          count += await _walkTree(src, dst, s, d);
+        } catch (e) {
+          _toast("Couldn't copy folder", '${it.name}: ${_short(e)}', ToastKind.error);
+        }
+      } else {
+        enqueueFile(src, dst, s, d, it.name, it.sizeBytes ?? 0, announce: false);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  String _short(Object e) {
+    final m = e.toString().replaceFirst('Exception: ', '');
+    return m.length > 80 ? '${m.substring(0, 80)}…' : m;
   }
 
   void pauseAll() {

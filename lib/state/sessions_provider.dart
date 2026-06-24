@@ -228,6 +228,7 @@ class SessionsNotifier extends Notifier<SessionsState> {
 
   /// Handle a drag from one pane dropped onto another → start transfer(s).
   /// Transfers the source pane's whole selection (the dragged row is included).
+  /// Folders are walked recursively; their tree is recreated on the destination.
   void dropTransfer(DragPayload payload, bool ontoLeft) {
     if (payload.fromLeft == ontoLeft) return; // dropped on its own pane
     final src = payload.fromLeft ? leftPane : rightPane;
@@ -235,23 +236,27 @@ class SessionsNotifier extends Notifier<SessionsState> {
 
     final selected = src.selectedItems();
     final candidates = selected.isNotEmpty ? selected : [payload.item];
-    final files = candidates.where((f) => !f.isDir && !f.isParent).toList();
+    final entries = candidates.where((f) => !f.isParent).toList();
 
     final toasts = ref.read(toastsProvider.notifier);
-    if (files.isEmpty) {
-      toasts.push('Not supported', 'Folder transfers aren\'t supported yet — drag files', ToastKind.info);
-      return;
-    }
+    if (entries.isEmpty) return;
     if (!src.isReady || !dst.isReady) {
       toasts.push('Not connected', 'Connect the S3 endpoint (add credentials) first', ToastKind.error);
       return;
     }
 
+    final files = entries.where((f) => !f.isDir).toList();
+    final folders = entries.where((f) => f.isDir).toList();
+
     final transfers = ref.read(transfersProvider.notifier);
+    final single = entries.length == 1 && folders.isEmpty;
     for (final item in files) {
-      transfers.enqueue(src, dst, item, announce: files.length == 1);
+      transfers.enqueue(src, dst, item, announce: single);
     }
-    if (files.length > 1) {
+    for (final folder in folders) {
+      transfers.enqueueTree(src, dst, folder); // async — files appear as they're walked
+    }
+    if (files.length > 1 && folders.isEmpty) {
       toasts.push('Transferring', '${files.length} files → ${dst.endpointLabel}', ToastKind.info);
     }
   }
