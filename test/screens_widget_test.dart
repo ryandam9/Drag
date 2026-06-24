@@ -114,6 +114,19 @@ void main() {
       await pumpScreen(tester, c, const ConnectionManagerScreen());
       expect(find.text('No connections yet'), findsOneWidget);
     });
+
+    testWidgets('lays out without overflow on a narrow window', (tester) async {
+      final binding = TestWidgetsFlutterBinding.ensureInitialized();
+      binding.platformDispatcher.views.first.physicalSize = const Size(520, 820);
+      binding.platformDispatcher.views.first.devicePixelRatio = 1.0;
+      addTearDown(() => binding.platformDispatcher.views.first.resetPhysicalSize());
+      final c = makeContainer(connections: sampleConnections());
+      c.read(connectionsProvider.notifier)
+          .select(c.read(connectionsProvider).connections.firstWhere((x) => x.isS3));
+      await pumpScreen(tester, c, const ConnectionManagerScreen());
+      // A RenderFlex overflow would throw and fail the test.
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('Transfer Queue', () {
