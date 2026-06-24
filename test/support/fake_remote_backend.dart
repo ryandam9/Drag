@@ -1,15 +1,15 @@
 import 'dart:typed_data';
 
-import '../data/mock_data.dart';
-import '../models/connection.dart';
-import '../models/file_item.dart';
-import 'storage_backend.dart';
+import 'package:drag/fs/storage_backend.dart';
+import 'package:drag/models/connection.dart';
+import 'package:drag/models/file_item.dart';
 
-/// Stand-in backend for SFTP sessions. Browsing returns the mock listing and
-/// transfers are simulated by the AppState ticker (no real network I/O) — this
-/// preserves the original demo behaviour now that Local/S3 are real.
-class SimulatedBackend extends StorageBackend {
-  SimulatedBackend(this.connection);
+/// A read-only, non-transferring [StorageBackend] used purely as a test
+/// stand-in for a remote endpoint (e.g. SFTP) where exercising the real
+/// network backend would be impractical. It is NOT shipped with the app —
+/// production SFTP always uses the real [SftpBackend].
+class FakeRemoteBackend extends StorageBackend {
+  FakeRemoteBackend(this.connection);
 
   final Connection connection;
 
@@ -34,18 +34,21 @@ class SimulatedBackend extends StorageBackend {
 
   @override
   Future<List<FileItem>> list(String path) async {
-    await Future.delayed(const Duration(milliseconds: 150));
-    return List.of(remoteFiles);
+    return const [
+      FileItem(name: '..', isDir: true),
+      FileItem(name: 'logs', isDir: true),
+      FileItem(name: 'readme.txt', sizeBytes: 120),
+    ];
   }
 
   @override
   Future<ReadHandle> openRead(String path) =>
-      throw UnsupportedError('SFTP transfers are simulated');
+      throw UnsupportedError('FakeRemoteBackend does not transfer bytes');
 
   @override
   Future<void> write(String path, Stream<Uint8List> data, int length,
           {void Function(int sent)? onProgress}) =>
-      throw UnsupportedError('SFTP transfers are simulated');
+      throw UnsupportedError('FakeRemoteBackend does not transfer bytes');
 
   @override
   String childPath(String path, String name, bool isDir) {

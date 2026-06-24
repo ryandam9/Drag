@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/connection.dart';
-import 'mock_data.dart';
 
 /// Persists saved connections in a local SQLite database (one JSON row per
 /// connection, plus an ordering index). Secrets are intentionally NOT stored
@@ -37,15 +36,6 @@ class ConnectionStore {
   static Future<String> _defaultPath(DatabaseFactory factory) async {
     final base = await factory.getDatabasesPath();
     return base.endsWith('/') ? '${base}drag_connections.db' : '$base/drag_connections.db';
-  }
-
-  /// Loads persisted connections, or seeds the store with defaults on first run.
-  Future<List<Connection>> loadOrSeed() async {
-    final existing = await load();
-    if (existing.isNotEmpty) return existing;
-    final seed = buildConnections();
-    await replaceAll(seed);
-    return seed;
   }
 
   Future<List<Connection>> load() async {

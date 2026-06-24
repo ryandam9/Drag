@@ -1,9 +1,11 @@
 import 'package:drag/data/settings_store.dart';
-import 'package:drag/state/app_state.dart';
+import 'package:drag/state/app.dart';
 import 'package:drag/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'support/harness.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -76,7 +78,7 @@ void main() {
     });
   });
 
-  group('AppState settings application', () {
+  group('settings application (Riverpod)', () {
     setUp(() {
       // Reset the global palette between tests.
       FsColors.accent = FsColors.accentDefault;
@@ -84,49 +86,42 @@ void main() {
     });
 
     test('applies persisted settings on construction', () {
-      final app = AppState(
-        tickEnabled: false,
-        autoRefreshPanes: false,
-        settings: AppSettings(
-          accentValue: 0xFF22C55E,
-          uiFontSize: 14,
-          showHiddenFiles: false,
-        ),
-      );
-      addTearDown(app.dispose);
-      expect(app.uiFontSize, 14);
-      expect(app.showHiddenFiles, isFalse);
+      final c = makeContainer(
+          settings: AppSettings(accentValue: 0xFF22C55E, uiFontSize: 14, showHiddenFiles: false));
+      final settings = c.read(settingsProvider);
+      expect(settings.uiFontSize, 14);
+      expect(settings.showHiddenFiles, isFalse);
       expect(FsColors.accent, const Color(0xFF22C55E));
       // Panes built from the setting start with hidden files off.
-      expect(app.leftPane.showHidden, isFalse);
+      expect(c.read(sessionsProvider.notifier).leftPane.showHidden, isFalse);
     });
 
     test('setAccent recolors the global palette + derives highlight', () {
-      final app = AppState(tickEnabled: false, autoRefreshPanes: false);
-      addTearDown(app.dispose);
-      app.setAccent(const Color(0xFFA855F7));
+      final c = makeContainer();
+      c.read(settingsProvider.notifier).setAccent(const Color(0xFFA855F7));
       expect(FsColors.accent, const Color(0xFFA855F7));
       expect(FsColors.accentHi, FsColors.highlightFor(const Color(0xFFA855F7)));
     });
 
     test('setShowHiddenFiles propagates to every pane', () {
-      final app = AppState(tickEnabled: false, autoRefreshPanes: false);
-      addTearDown(app.dispose);
-      expect(app.leftPane.showHidden, isTrue);
-      app.setShowHiddenFiles(false);
-      for (final s in app.sessions) {
+      final c = makeContainer();
+      // Build sessions so the show-hidden listener is wired up.
+      c.read(sessionsProvider);
+      expect(c.read(sessionsProvider.notifier).leftPane.showHidden, isTrue);
+      c.read(settingsProvider.notifier).setShowHiddenFiles(false);
+      for (final s in c.read(sessionsProvider).sessions) {
         expect(s.left.showHidden, isFalse);
         expect(s.right.showHidden, isFalse);
       }
     });
 
     test('resetSettings restores defaults', () {
-      final app = AppState(tickEnabled: false, autoRefreshPanes: false);
-      addTearDown(app.dispose);
-      app.setAccent(const Color(0xFFEF4444));
-      app.setUiFontSize(14);
-      app.resetSettings();
-      expect(app.uiFontSize, 13);
+      final c = makeContainer();
+      final n = c.read(settingsProvider.notifier);
+      n.setAccent(const Color(0xFFEF4444));
+      n.setUiFontSize(14);
+      n.resetSettings();
+      expect(c.read(settingsProvider).uiFontSize, 13);
       expect(FsColors.accent, FsColors.accentDefault);
     });
   });

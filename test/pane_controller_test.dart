@@ -1,12 +1,13 @@
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:drag/fs/simulated_backend.dart';
 import 'package:drag/fs/storage_backend.dart';
 import 'package:drag/models/connection.dart';
 import 'package:drag/state/pane_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+
+import 'support/fake_remote_backend.dart';
 
 void main() {
   late Directory dir;
@@ -170,7 +171,7 @@ void main() {
     expect(s3.breadcrumb.first, 'my-bucket');
 
     final sftpConn = Connection(name: 'h', protocol: Protocol.sftp, remotePath: '/srv');
-    final sftp = PaneController(backend: SimulatedBackend(sftpConn), connection: sftpConn, onChanged: () {});
+    final sftp = PaneController(backend: FakeRemoteBackend(sftpConn), connection: sftpConn, onChanged: () {});
     expect(sftp.breadcrumb.first, '/');
   });
 
@@ -178,7 +179,7 @@ void main() {
     final pane = localPane();
     await pane.refresh();
     final sftpConn = Connection(name: 'h', protocol: Protocol.sftp, remotePath: '/srv');
-    await pane.switchTo(SimulatedBackend(sftpConn), sftpConn);
+    await pane.switchTo(FakeRemoteBackend(sftpConn), sftpConn);
     expect(pane.kind, EndpointKind.sftp);
     expect(pane.path, '/srv');
     expect(pane.items, isNotEmpty);

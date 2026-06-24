@@ -1,47 +1,48 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'screens/browser_screen.dart';
 import 'screens/connection_manager_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/transfer_queue_screen.dart';
-import 'state/app_state.dart';
+import 'state/app.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/nav_rail.dart';
 import 'widgets/toast_overlay.dart';
 import 'widgets/transfer_progress.dart';
 
-class AppShell extends StatelessWidget {
+class AppShell extends ConsumerWidget {
   const AppShell({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final screen = ref.watch(navProvider);
+    final nav = ref.read(navProvider.notifier);
 
-    final (title, actions) = switch (app.screen) {
+    final (title, actions) = switch (screen) {
       AppScreen.browser => (
-          'Drag — ${app.activeSession.title}'
-              '${app.sessions.length > 1 ? '  (${app.sessions.length} sessions)' : ''}',
-          [TbButton('⊕ New Session', onTap: () => app.go(AppScreen.connections))],
+          _browserTitle(ref),
+          [TbButton('⊕ New Session', onTap: () => nav.go(AppScreen.connections))],
         ),
       AppScreen.connections => ('Connection Manager', <Widget>[]),
       AppScreen.queue => (
           'Transfer Queue',
           [
-            TbButton('⏸ Pause all', onTap: app.pauseAll),
-            TbButton('▶ Resume all', onTap: app.resumeAll),
-            TbButton('⊗ Clear done', onTap: app.clearDone),
+            TbButton('⏸ Pause all', onTap: () => ref.read(transfersProvider.notifier).pauseAll()),
+            TbButton('▶ Resume all', onTap: () => ref.read(transfersProvider.notifier).resumeAll()),
+            TbButton('⊗ Clear done', onTap: () => ref.read(transfersProvider.notifier).clearDone()),
           ],
         ),
       AppScreen.dashboard => (
           'History Dashboard',
-          [TbButton('↺ Refresh', onTap: app.refreshHistory)],
+          [TbButton('↺ Refresh', onTap: () => ref.read(historyProvider.notifier).refresh())],
         ),
       AppScreen.settings => ('Preferences', <Widget>[]),
     };
 
-    final body = switch (app.screen) {
+    final body = switch (screen) {
       AppScreen.browser => const BrowserScreen(),
       AppScreen.connections => const ConnectionManagerScreen(),
       AppScreen.queue => const TransferQueueScreen(),
@@ -62,7 +63,7 @@ class AppShell extends StatelessWidget {
                   color: FsColors.bgSurface,
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 160),
-                    child: KeyedSubtree(key: ValueKey(app.screen), child: body),
+                    child: KeyedSubtree(key: ValueKey(screen), child: body),
                   ),
                 ),
               ),
@@ -73,5 +74,12 @@ class AppShell extends StatelessWidget {
         const ToastOverlay(),
       ]),
     );
+  }
+
+  String _browserTitle(WidgetRef ref) {
+    final state = ref.watch(sessionsProvider);
+    final count = state.sessions.length;
+    return 'Drag — ${ref.read(sessionsProvider.notifier).activeSession.title}'
+        '${count > 1 ? '  ($count sessions)' : ''}';
   }
 }

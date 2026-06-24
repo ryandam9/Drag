@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import '../state/app_state.dart';
-import '../state/scopes.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   static const _accents = [
@@ -16,13 +16,14 @@ class SettingsScreen extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
-    // Subscribe to settings only; toasts are fired through AppScope.read.
-    final app = SettingsScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+    final toast = ref.read(toastsProvider.notifier);
     return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SizedBox(width: 170, child: _sidebar()),
       const VerticalDivider(width: 1, color: FsColors.border),
-      Expanded(child: _content(context, app)),
+      Expanded(child: _content(settings, notifier, toast)),
     ]);
   }
 
@@ -64,16 +65,16 @@ class SettingsScreen extends StatelessWidget {
   }
 
   // ── Appearance pane ──
-  Widget _content(BuildContext context, SettingsController app) {
-    final toast = AppScope.read(context).pushToast;
+  Widget _content(AppSettings settings, SettingsNotifier notifier, ToastsNotifier toasts) {
+    void toast(String t, String s, ToastKind k) => toasts.push(t, s, k);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Appearance', style: FsType.sans(size: 15, weight: FontWeight.w600, color: FsColors.text1)),
         const SizedBox(height: 16),
 
-        FormField2('Theme', _select(app.themeName, const ['Dark (default)', 'Light', 'System'],
-            (v) => app.setThemeName(v))),
+        FormField2('Theme', _select(settings.themeName, const ['Dark (default)', 'Light', 'System'],
+            (v) => notifier.setThemeName(v))),
         const SizedBox(height: 14),
 
         FormField2(
@@ -82,7 +83,7 @@ class SettingsScreen extends StatelessWidget {
             for (final c in _accents)
               GestureDetector(
                 onTap: () {
-                  app.setAccent(c);
+                  notifier.setAccent(c);
                   toast('Accent updated', 'Theme accent changed', ToastKind.info);
                 },
                 child: Container(
@@ -92,9 +93,9 @@ class SettingsScreen extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: c,
                     shape: BoxShape.circle,
-                    border: app.accent == c ? Border.all(color: c, width: 3) : null,
+                    border: settings.accent == c ? Border.all(color: c, width: 3) : null,
                   ),
-                  foregroundDecoration: app.accent == c
+                  foregroundDecoration: settings.accent == c
                       ? BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(color: FsColors.bgScaffold, width: 2),
@@ -108,19 +109,19 @@ class SettingsScreen extends StatelessWidget {
 
         FormField2(
             'UI font size',
-            _select('${app.uiFontSize.toInt()}px', const ['12px', '13px', '14px'],
-                (v) => app.setUiFontSize(double.parse(v.replaceAll('px', ''))))),
+            _select('${settings.uiFontSize.toInt()}px', const ['12px', '13px', '14px'],
+                (v) => notifier.setUiFontSize(double.parse(v.replaceAll('px', ''))))),
         const SizedBox(height: 14),
         FormField2(
             'Monospace font',
-            _select(app.monospaceFont, const ['JetBrains Mono', 'Fira Code', 'Menlo'],
-                (v) => app.setMonospaceFont(v))),
+            _select(settings.monospaceFont, const ['JetBrains Mono', 'Fira Code', 'Menlo'],
+                (v) => notifier.setMonospaceFont(v))),
         const SizedBox(height: 18),
 
-        _check('Show hidden files', app.showHiddenFiles, app.setShowHiddenFiles),
-        _check('Show file permissions column', app.showPermsColumn, app.setShowPermsColumn),
-        _check('Show transfer log on startup', app.showLogOnStartup, app.setShowLogOnStartup),
-        _check('Confirm before overwriting files', app.confirmOverwrite, app.setConfirmOverwrite),
+        _check('Show hidden files', settings.showHiddenFiles, notifier.setShowHiddenFiles),
+        _check('Show file permissions column', settings.showPermsColumn, notifier.setShowPermsColumn),
+        _check('Show transfer log on startup', settings.showLogOnStartup, notifier.setShowLogOnStartup),
+        _check('Confirm before overwriting files', settings.confirmOverwrite, notifier.setConfirmOverwrite),
         const SizedBox(height: 20),
 
         Row(children: [
@@ -129,7 +130,7 @@ class SettingsScreen extends StatelessWidget {
               onTap: () => toast('Preferences saved', 'Your settings were applied', ToastKind.success)),
           const SizedBox(width: 10),
           FsButton('Reset defaults', onTap: () {
-            app.resetSettings();
+            notifier.resetSettings();
             toast('Defaults restored', 'Settings reset to defaults', ToastKind.info);
           }),
         ]),
@@ -157,7 +158,6 @@ class SettingsScreen extends StatelessWidget {
           icon: const Icon(Icons.expand_more, size: 16, color: FsColors.text2),
           style: FsType.sans(size: 12, color: FsColors.text1),
           items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-          // The setter notifies SettingsScope, so the screen rebuilds itself.
           onChanged: (v) {
             if (v != null) onChanged(v);
           },

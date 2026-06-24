@@ -1,23 +1,28 @@
 import 'package:flutter/material.dart';
-import '../state/app_state.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../state/app.dart';
 import '../theme.dart';
 import 'common.dart';
 
-/// Far-left vertical navigation switching between the four screens.
-class NavRail extends StatelessWidget {
+/// Far-left vertical navigation switching between the five screens.
+class NavRail extends ConsumerWidget {
   const NavRail({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(navProvider);
+    final transfers = ref.watch(transfersProvider);
+    final queueBadge = transfers.activeCount + transfers.queuedCount;
+
     Widget item(IconData icon, String tip, AppScreen screen, {int? badge}) {
-      final selected = app.screen == screen;
+      final selected = current == screen;
       return Hoverable(builder: (hover) {
         return Tooltip(
           message: tip,
           waitDuration: const Duration(milliseconds: 400),
           child: GestureDetector(
-            onTap: () => app.go(screen),
+            onTap: () => ref.read(navProvider.notifier).go(screen),
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
               child: Container(
@@ -81,8 +86,7 @@ class NavRail extends StatelessWidget {
           const SizedBox(height: 18),
           item(Icons.folder_copy_outlined, 'Browser', AppScreen.browser),
           item(Icons.lan_outlined, 'Connections', AppScreen.connections),
-          item(Icons.swap_vert_rounded, 'Transfer Queue', AppScreen.queue,
-              badge: app.activeCount + app.queuedCount),
+          item(Icons.swap_vert_rounded, 'Transfer Queue', AppScreen.queue, badge: queueBadge),
           item(Icons.insights_outlined, 'History Dashboard', AppScreen.dashboard),
           const Spacer(),
           item(Icons.settings_outlined, 'Preferences', AppScreen.settings),

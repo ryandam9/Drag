@@ -1,29 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
-import '../state/app_state.dart';
-import '../state/scopes.dart';
-import '../state/transfers_controller.dart';
+import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-class TransferQueueScreen extends StatelessWidget {
+class TransferQueueScreen extends ConsumerWidget {
   const TransferQueueScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Subscribe to the transfer queue only — toasts, settings and session
-    // changes no longer rebuild this screen.
-    final app = TransfersScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(transfersProvider);
+    final notifier = ref.read(transfersProvider.notifier);
     return Column(children: [
-      _filterBar(app),
-      Expanded(child: _table(app)),
-      _statsBar(app),
+      _filterBar(state, notifier),
+      Expanded(child: _table(state, notifier)),
+      _statsBar(state, notifier),
     ]);
   }
 
   // ── Status filter chips + free text filter ──
-  Widget _filterBar(TransfersController app) {
+  Widget _filterBar(TransfersState s, TransfersNotifier n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(
@@ -31,17 +29,17 @@ class TransferQueueScreen extends StatelessWidget {
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
-        StatusBadge('● Active  ${app.activeCount}', bg: FsColors.badgeLocalBg, fg: FsColors.accentHi),
+        StatusBadge('● Active  ${s.activeCount}', bg: FsColors.badgeLocalBg, fg: FsColors.accentHi),
         const SizedBox(width: 6),
-        StatusBadge('⊡ Queued  ${app.queuedCount}', bg: FsColors.badgeQueuedBg, fg: FsColors.badgeQueuedFg),
+        StatusBadge('⊡ Queued  ${s.queuedCount}', bg: FsColors.badgeQueuedBg, fg: FsColors.badgeQueuedFg),
         const SizedBox(width: 6),
-        StatusBadge('✓ Done  ${app.doneCount}', bg: FsColors.badgeDoneBg, fg: FsColors.badgeDoneFg),
+        StatusBadge('✓ Done  ${s.doneCount}', bg: FsColors.badgeDoneBg, fg: FsColors.badgeDoneFg),
         const SizedBox(width: 6),
-        StatusBadge('✕ Error  ${app.errorCount}', bg: FsColors.badgeErrorBg, fg: FsColors.badgeErrorFg),
+        StatusBadge('✕ Error  ${s.errorCount}', bg: FsColors.badgeErrorBg, fg: FsColors.badgeErrorFg),
         const Spacer(),
-        TbButton('⏸ Pause all', onTap: app.pauseAll),
-        TbButton('▶ Resume all', onTap: app.resumeAll),
-        TbButton('⊗ Clear done', onTap: app.clearDone),
+        TbButton('⏸ Pause all', onTap: n.pauseAll),
+        TbButton('▶ Resume all', onTap: n.resumeAll),
+        TbButton('⊗ Clear done', onTap: n.clearDone),
         const SizedBox(width: 8),
         const FsTextField(hint: 'Filter transfers…', mono: false, width: 180, height: 28),
       ]),
@@ -49,15 +47,30 @@ class TransferQueueScreen extends StatelessWidget {
   }
 
   // ── Transfer table ──
-  Widget _table(TransfersController app) {
+  Widget _table(TransfersState s, TransfersNotifier n) {
+    if (s.transfers.isEmpty) {
+      return Container(
+        color: FsColors.bgSurface,
+        alignment: Alignment.center,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.swap_vert_rounded, size: 36, color: FsColors.text3),
+          const SizedBox(height: 10),
+          Text('No transfers yet',
+              style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+          const SizedBox(height: 4),
+          Text('Drag a file between panes in the Browser to start one.',
+              style: FsType.sans(size: 12, color: FsColors.text2)),
+        ]),
+      );
+    }
     return Container(
       color: FsColors.bgSurface,
       child: Column(children: [
         _head(),
         Expanded(
           child: ListView.builder(
-            itemCount: app.transfers.length,
-            itemBuilder: (context, i) => _row(app, app.transfers[i]),
+            itemCount: s.transfers.length,
+            itemBuilder: (context, i) => _row(n, s.transfers[i]),
           ),
         ),
       ]),
@@ -97,7 +110,7 @@ class TransferQueueScreen extends StatelessWidget {
         TransferStatus.paused => (bg: FsColors.badgePausedBg, fg: FsColors.badgePausedFg, label: '⏸ Paused'),
       };
 
-  Widget _row(TransfersController app, Transfer t) {
+  Widget _row(TransfersNotifier app, Transfer t) {
     final dirGlyph = switch (t.status) {
       TransferStatus.done => '✓',
       TransferStatus.error => '!',
@@ -195,18 +208,26 @@ class TransferQueueScreen extends StatelessWidget {
   }
 
   // ── Aggregate stats footer ──
-  Widget _statsBar(TransfersController app) {
+  Widget _statsBar(TransfersState s, TransfersNotifier n) {
     // "Transferred" aggregates live progress, so rebuild on any transfer's
-    // live tick (this footer is only mounted on the queue screen).
+    // live tick.
     return ListenableBuilder(
-      listenable: Listenable.merge([for (final t in app.transfers) t.liveTick]),
-      builder: (context, _) => _statsBarBody(app),
+      listenable: Listenable.merge([for (final t in s.transfers) t.liveTick]),
+      builder: (context, _) => _statsBarBody(s, n),
     );
   }
 
-  Widget _statsBarBody(TransfersController app) {
-    final total = app.transfers.fold<int>(0, (s, t) => s + t.sizeBytes);
-    final transferred = app.transfers.fold<double>(0, (s, t) => s + t.sizeBytes * t.progress);
+  Widget _statsBarBody(TransfersState s, TransfersNotifier n) {
+    final transfers = s.transfers;
+    final total = transfers.fold<int>(0, (sum, t) => sum + t.sizeBytes);
+    final transferred = transfers.fold<double>(0, (sum, t) => sum + t.sizeBytes * t.progress);
+
+    // Live aggregate speed / ETA come from the active transfers, not a mock.
+    final active = transfers.where((t) => t.status == TransferStatus.active).toList();
+    final speed = active.isEmpty
+        ? '—'
+        : (active.length == 1 ? active.first.speed : '${active.length} active');
+    final eta = active.length == 1 ? active.first.eta : '—';
 
     Widget stat(String label, String value, {Color? color}) => Row(mainAxisSize: MainAxisSize.min, children: [
           Text(label, style: FsType.sans(size: 11, color: FsColors.text3)),
@@ -225,23 +246,23 @@ class TransferQueueScreen extends StatelessWidget {
         const SizedBox(width: 24),
         stat('Transferred', formatBytes(transferred), color: FsColors.green),
         const SizedBox(width: 24),
-        stat('Speed', '1.6 MB/s'),
+        stat('Speed', speed),
         const SizedBox(width: 24),
-        stat('ETA', '1:02', color: FsColors.amber),
+        stat('ETA', eta, color: FsColors.amber),
         const SizedBox(width: 24),
-        stat('Parallel threads', '${app.activeCount} / ${app.maxThreads}'),
+        stat('Parallel threads', '${s.activeCount} / ${s.maxThreads}'),
         const Spacer(),
         Text('Threads:', style: FsType.sans(size: 11, color: FsColors.text2)),
         const SizedBox(width: 6),
         SizedBox(
           width: 44,
           child: FsTextField(
-            value: '${app.maxThreads}',
+            value: '${s.maxThreads}',
             align: TextAlign.center,
             height: 24,
             onChanged: (v) {
-              final n = int.tryParse(v);
-              if (n != null) app.setMaxThreads(n);
+              final num = int.tryParse(v);
+              if (num != null) n.setMaxThreads(num);
             },
           ),
         ),

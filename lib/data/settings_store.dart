@@ -40,6 +40,35 @@ class AppSettings {
   double? windowX;
   double? windowY;
 
+  AppSettings copyWith({
+    String? themeName,
+    int? accentValue,
+    double? uiFontSize,
+    String? monospaceFont,
+    bool? showHiddenFiles,
+    bool? showPermsColumn,
+    bool? showLogOnStartup,
+    bool? confirmOverwrite,
+    double? windowWidth,
+    double? windowHeight,
+    double? windowX,
+    double? windowY,
+  }) =>
+      AppSettings(
+        themeName: themeName ?? this.themeName,
+        accentValue: accentValue ?? this.accentValue,
+        uiFontSize: uiFontSize ?? this.uiFontSize,
+        monospaceFont: monospaceFont ?? this.monospaceFont,
+        showHiddenFiles: showHiddenFiles ?? this.showHiddenFiles,
+        showPermsColumn: showPermsColumn ?? this.showPermsColumn,
+        showLogOnStartup: showLogOnStartup ?? this.showLogOnStartup,
+        confirmOverwrite: confirmOverwrite ?? this.confirmOverwrite,
+        windowWidth: windowWidth ?? this.windowWidth,
+        windowHeight: windowHeight ?? this.windowHeight,
+        windowX: windowX ?? this.windowX,
+        windowY: windowY ?? this.windowY,
+      );
+
   Map<String, Object?> toJson() => {
         'themeName': themeName,
         'accentValue': accentValue,

@@ -1,8 +1,11 @@
 import 'package:drag/data/connection_store.dart';
 import 'package:drag/models/connection.dart';
-import 'package:drag/state/app_state.dart';
+import 'package:drag/state/app.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'support/harness.dart';
 
 void main() {
   group('Connection JSON', () {
@@ -61,12 +64,8 @@ void main() {
     setUp(() async => store = await ConnectionStore.open(inMemoryDatabasePath));
     tearDown(() => store.close());
 
-    test('loadOrSeed seeds on first run, then returns persisted', () async {
-      final seeded = await store.loadOrSeed();
-      expect(seeded, isNotEmpty);
-      final again = await store.loadOrSeed();
-      expect(again.length, seeded.length);
-      expect(again.first.name, seeded.first.name);
+    test('load returns empty on a fresh store (no seeding)', () async {
+      expect(await store.load(), isEmpty);
     });
 
     test('replaceAll + load preserves order', () async {
@@ -104,55 +103,51 @@ void main() {
     });
   });
 
-  group('AppState persistence', () {
+  group('ConnectionsNotifier persistence', () {
     late ConnectionStore store;
-    late AppState app;
+    late ProviderContainer c;
+    late ConnectionsNotifier conns;
 
     setUp(() async {
       store = await ConnectionStore.open(inMemoryDatabasePath);
-      app = AppState(
-        tickEnabled: false,
-        autoRefreshPanes: false,
-        connectionStore: store,
-        connections: [
-          Connection(id: 's3', name: 's3-prod (Account A)', protocol: Protocol.s3, bucket: 'b'),
-          Connection(id: 'srv', name: 'server', host: 'h', username: 'u'),
-        ],
-      );
+      c = makeContainer(connectionStore: store, connections: [
+        Connection(id: 's3', name: 's3-prod (Account A)', protocol: Protocol.s3, bucket: 'b'),
+        Connection(id: 'srv', name: 'server', host: 'h', username: 'u'),
+      ]);
+      conns = c.read(connectionsProvider.notifier);
     });
-    tearDown(() async {
-      app.dispose();
-      await store.close();
-    });
+    tearDown(() async => store.close());
 
-    test('newConnection adds and persists', () async {
-      final before = app.connections.length;
-      await app.newConnection();
-      expect(app.connections.length, before + 1);
-      expect(identical(app.selectedConnection, app.connections.last), isTrue);
+    List<Connection> list() => c.read(connectionsProvider).connections;
+
+    test('create adds and persists', () async {
+      final before = list().length;
+      await conns.create();
+      expect(list().length, before + 1);
+      expect(identical(c.read(connectionsProvider).selected, list().last), isTrue);
       expect((await store.load()).length, before + 1);
     });
 
-    test('duplicateConnection clones with a new id and persists', () async {
-      final original = app.connections.firstWhere((c) => c.isS3);
-      final copy = await app.duplicateConnection(original);
+    test('duplicate clones with a new id and persists', () async {
+      final original = list().firstWhere((x) => x.isS3);
+      final copy = await conns.duplicate(original);
       expect(copy.id == original.id, isFalse);
       expect(copy.name, contains('copy'));
       expect(copy.bucket, original.bucket);
-      expect((await store.load()).any((c) => c.id == copy.id), isTrue);
+      expect((await store.load()).any((x) => x.id == copy.id), isTrue);
     });
 
-    test('deleteConnection removes and persists', () async {
-      final victim = app.connections.last;
-      await app.deleteConnection(victim);
-      expect(app.connections.contains(victim), isFalse);
-      expect((await store.load()).any((c) => c.id == victim.id), isFalse);
+    test('delete removes and persists', () async {
+      final victim = list().last;
+      await conns.delete(victim);
+      expect(list().contains(victim), isFalse);
+      expect((await store.load()).any((x) => x.id == victim.id), isFalse);
     });
 
-    test('saveConnection upserts edits', () async {
-      final c = app.connections.first..name = 'renamed';
-      await app.saveConnection(c);
-      final stored = (await store.load()).firstWhere((x) => x.id == c.id);
+    test('save upserts edits', () async {
+      final conn = list().first..name = 'renamed';
+      await conns.save(conn);
+      final stored = (await store.load()).firstWhere((x) => x.id == conn.id);
       expect(stored.name, 'renamed');
     });
   });

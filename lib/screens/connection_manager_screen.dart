@@ -1,32 +1,54 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/connection.dart';
-import '../state/app_state.dart';
+import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-class ConnectionManagerScreen extends StatelessWidget {
+class ConnectionManagerScreen extends ConsumerWidget {
   const ConnectionManagerScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(connectionsProvider);
+    final selected = state.selected;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(width: 220, child: _sidebar(app)),
+        SizedBox(width: 220, child: _sidebar(ref, state)),
         const VerticalDivider(width: 1, color: FsColors.border),
         Expanded(
-          child: ConnectionForm(
-            key: ObjectKey(app.selectedConnection),
-            connection: app.selectedConnection,
-          ),
+          child: selected == null
+              ? _emptyState(ref)
+              : ConnectionForm(key: ObjectKey(selected), connection: selected),
         ),
       ],
     );
   }
 
+  Widget _emptyState(WidgetRef ref) {
+    return Container(
+      color: FsColors.bgSurface,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.lan_outlined, size: 36, color: FsColors.text3),
+        const SizedBox(height: 12),
+        Text('No connections yet',
+            style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+        const SizedBox(height: 6),
+        Text('Add a real SFTP or Amazon S3 endpoint to get started.',
+            textAlign: TextAlign.center, style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
+        const SizedBox(height: 16),
+        FsButton('＋ New Connection',
+            kind: FsButtonKind.primary,
+            onTap: () => ref.read(connectionsProvider.notifier).create()),
+      ]),
+    );
+  }
+
   // ── Saved sessions sidebar ──
-  Widget _sidebar(AppState app) {
+  Widget _sidebar(WidgetRef ref, ConnectionsState state) {
     Widget groupLabel(String t) => Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
           child: Text(t,
@@ -34,10 +56,10 @@ class ConnectionManagerScreen extends StatelessWidget {
         );
 
     Widget connItem(Connection c) {
-      final active = identical(c, app.selectedConnection);
+      final active = identical(c, state.selected);
       return Hoverable(builder: (hover) {
         return GestureDetector(
-          onTap: () => app.selectConnection(c),
+          onTap: () => ref.read(connectionsProvider.notifier).select(c),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             child: Container(
@@ -60,8 +82,8 @@ class ConnectionManagerScreen extends StatelessWidget {
       });
     }
 
-    final recent = app.connections.where((c) => c.group == ConnGroup.recent).toList();
-    final saved = app.connections.where((c) => c.group == ConnGroup.saved).toList();
+    final recent = state.connections.where((c) => c.group == ConnGroup.recent).toList();
+    final saved = state.connections.where((c) => c.group == ConnGroup.saved).toList();
 
     return Container(
       color: FsColors.bgDeep,
@@ -71,12 +93,21 @@ class ConnectionManagerScreen extends StatelessWidget {
           child: FsTextField(hint: 'Search sessions…', mono: false, height: 28),
         ),
         Expanded(
-          child: ListView(padding: EdgeInsets.zero, children: [
-            groupLabel('RECENT'),
-            ...recent.map(connItem),
-            groupLabel('SAVED'),
-            ...saved.map(connItem),
-          ]),
+          child: state.connections.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text('No saved connections',
+                        textAlign: TextAlign.center,
+                        style: FsType.sans(size: 11, color: FsColors.text3)),
+                  ),
+                )
+              : ListView(padding: EdgeInsets.zero, children: [
+                  if (recent.isNotEmpty) groupLabel('RECENT'),
+                  ...recent.map(connItem),
+                  if (saved.isNotEmpty) groupLabel('SAVED'),
+                  ...saved.map(connItem),
+                ]),
         ),
         Padding(
           padding: const EdgeInsets.all(12),
@@ -85,7 +116,7 @@ class ConnectionManagerScreen extends StatelessWidget {
             child: FsButton('＋ New Connection',
                 fontSize: 11,
                 padding: const EdgeInsets.symmetric(vertical: 7),
-                onTap: () => app.newConnection()),
+                onTap: () => ref.read(connectionsProvider.notifier).create()),
           ),
         ),
       ]),
@@ -94,16 +125,16 @@ class ConnectionManagerScreen extends StatelessWidget {
 }
 
 /// Editable detail form. Stateful so credential text survives rebuilds (toasts,
-/// ticker) — a fresh State is created per connection via the [ObjectKey].
-class ConnectionForm extends StatefulWidget {
+/// transfers) — a fresh State is created per connection via the [ObjectKey].
+class ConnectionForm extends ConsumerStatefulWidget {
   final Connection connection;
   const ConnectionForm({super.key, required this.connection});
 
   @override
-  State<ConnectionForm> createState() => _ConnectionFormState();
+  ConsumerState<ConnectionForm> createState() => _ConnectionFormState();
 }
 
-class _ConnectionFormState extends State<ConnectionForm> {
+class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   Connection get c => widget.connection;
 
   late final _host = TextEditingController(text: c.host);
@@ -123,6 +154,8 @@ class _ConnectionFormState extends State<ConnectionForm> {
   late final _secret = TextEditingController(text: c.secretAccessKey);
   late final _token = TextEditingController(text: c.sessionToken);
 
+  void _toast(String t, String s, ToastKind k) => ref.read(toastsProvider.notifier).push(t, s, k);
+
   @override
   void dispose() {
     for (final ctl in [_host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token]) {
@@ -133,7 +166,6 @@ class _ConnectionFormState extends State<ConnectionForm> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -145,7 +177,7 @@ class _ConnectionFormState extends State<ConnectionForm> {
         ),
         const SizedBox(height: 20),
 
-        FormField2('Protocol', _protocolSelect(app)),
+        FormField2('Protocol', _protocolSelect()),
         const SizedBox(height: 16),
 
         if (c.isS3) ..._s3Fields() else ..._sshFields(),
@@ -154,22 +186,22 @@ class _ConnectionFormState extends State<ConnectionForm> {
         Row(children: [
           FsButton('⚡ Connect',
               kind: FsButtonKind.primary,
-              onTap: () => app.connect(c)),
+              onTap: () => ref.read(sessionsProvider.notifier).connect(c)),
           const SizedBox(width: 10),
           FsButton('💾 Save', onTap: () {
-            app.saveConnection(c);
-            app.pushToast('Saved', '${c.name} configuration stored', ToastKind.success);
+            ref.read(connectionsProvider.notifier).save(c);
+            _toast('Saved', '${c.name} configuration stored', ToastKind.success);
           }),
           const SizedBox(width: 10),
-          FsButton('⧉ Duplicate', onTap: () => app.duplicateConnection(c)),
+          FsButton('⧉ Duplicate', onTap: () => ref.read(connectionsProvider.notifier).duplicate(c)),
           const Spacer(),
           FsButton('⊗ Delete',
               kind: FsButtonKind.danger,
               fontSize: 11,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               onTap: () {
-                app.deleteConnection(c);
-                app.pushToast('Deleted', '${c.name} removed', ToastKind.info);
+                ref.read(connectionsProvider.notifier).delete(c);
+                _toast('Deleted', '${c.name} removed', ToastKind.info);
               }),
         ]),
       ]),
@@ -265,7 +297,7 @@ class _ConnectionFormState extends State<ConnectionForm> {
     return FsTextField(controller: ctl, obscure: obscure, hint: hint, onChanged: onChanged);
   }
 
-  Widget _protocolSelect(AppState app) {
+  Widget _protocolSelect() {
     return Container(
       height: 32,
       width: 260,
@@ -291,7 +323,7 @@ class _ConnectionFormState extends State<ConnectionForm> {
           onChanged: (p) {
             if (p != null) {
               setState(() => c.protocol = p);
-              app.selectConnection(c);
+              ref.read(connectionsProvider.notifier).select(c);
             }
           },
         ),
