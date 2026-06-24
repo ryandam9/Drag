@@ -159,6 +159,17 @@ void main() {
       expect(find.text('Monospace font'), findsOneWidget);
     });
 
+    testWidgets('picking a bird theme recolors and persists', (tester) async {
+      final c = makeContainer();
+      await pumpScreen(tester, c, const SettingsScreen());
+      expect(c.read(settingsProvider).themeName, 'Rainbow Bee-eater');
+      await tester.tap(find.text('Galah'));
+      await tester.pump();
+      expect(c.read(settingsProvider).themeName, 'Galah');
+      expect(c.read(settingsProvider).accentValue, const Color(0xFFE9A7BB).toARGB32());
+      await tester.pump(const Duration(seconds: 6)); // drain the toast timer
+    });
+
     testWidgets('sidebar navigation switches the pane', (tester) async {
       final c = makeContainer();
       await pumpScreen(tester, c, const SettingsScreen());

@@ -27,7 +27,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void _applyGlobals(AppSettings s) {
     FsColors.accent = Color(s.accentValue);
-    FsColors.accentHi = FsColors.highlightFor(FsColors.accent);
+    FsColors.accentHi = Color(s.accentHiValue);
   }
 
   void _update(AppSettings next) {
@@ -37,7 +37,20 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   void setThemeName(String v) => _update(state.copyWith(themeName: v));
-  void setAccent(Color c) => _update(state.copyWith(accentValue: c.toARGB32()));
+
+  /// Apply a named bird theme: its [BirdTheme.accent] becomes the UI accent and
+  /// [BirdTheme.accentHi] the highlight, all persisted together.
+  void setTheme(BirdTheme t) => _update(state.copyWith(
+        themeName: t.name,
+        accentValue: t.accent.toARGB32(),
+        accentHiValue: t.accentHi.toARGB32(),
+      ));
+
+  /// Override just the accent with a custom colour, deriving its highlight.
+  void setAccent(Color c) => _update(state.copyWith(
+        accentValue: c.toARGB32(),
+        accentHiValue: FsColors.highlightFor(c).toARGB32(),
+      ));
   void setUiFontSize(double v) => _update(state.copyWith(uiFontSize: v));
   void setMonospaceFont(String v) => _update(state.copyWith(monospaceFont: v));
   void setShowHiddenFiles(bool v) => _update(state.copyWith(showHiddenFiles: v));

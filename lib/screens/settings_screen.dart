@@ -26,14 +26,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   SettingsSection _section = SettingsSection.appearance;
 
-  static const _accents = [
-    FsColors.accentDefault,
-    FsColors.green,
-    FsColors.purple,
-    FsColors.amber,
-    FsColors.red,
-  ];
-
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
@@ -114,41 +106,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   List<Widget> _appearance(AppSettings settings, SettingsNotifier notifier, void Function(String, String, ToastKind) toast) {
     return [
-      FormField2('Theme', _select(settings.themeName, const ['Dark (default)', 'Light', 'System'],
-          (v) => notifier.setThemeName(v))),
-      const SizedBox(height: 14),
-      FormField2(
-        'Accent color',
-        Row(children: [
-          for (final c in _accents)
-            GestureDetector(
-              onTap: () {
-                notifier.setAccent(c);
-                toast('Accent updated', 'Theme accent changed', ToastKind.info);
-              },
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: Container(
-                  margin: const EdgeInsets.only(right: 12),
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: c,
-                    shape: BoxShape.circle,
-                    border: settings.accent == c ? Border.all(color: c, width: 3) : null,
-                  ),
-                  foregroundDecoration: settings.accent == c
-                      ? BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: FsColors.bgScaffold, width: 2),
-                        )
-                      : null,
-                ),
-              ),
-            ),
-        ]),
+      Text('Theme', style: FsType.sans(size: 12, weight: FontWeight.w600, color: FsColors.text2)),
+      const SizedBox(height: 4),
+      Text('Bird-inspired palettes — the accent recolors the whole UI.',
+          style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4)),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          for (final t in kBirdThemes)
+            _themeSwatch(t, selected: settings.themeName == t.name, onTap: () {
+              notifier.setTheme(t);
+              toast('Theme applied', t.name, ToastKind.info);
+            }),
+        ],
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: 18),
       FormField2(
           'UI font size',
           _select('${settings.uiFontSize.toInt()}px', const ['12px', '13px', '14px'],
@@ -159,6 +133,60 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _select(settings.monospaceFont, const ['JetBrains Mono', 'Fira Code', 'Menlo'],
               (v) => notifier.setMonospaceFont(v))),
     ];
+  }
+
+  /// A clickable theme card: the three signature colours as a swatch plus the
+  /// bird name, ringed in the theme accent when selected.
+  Widget _themeSwatch(BirdTheme t, {required bool selected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          width: 184,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: FsColors.bgPanel,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: selected ? t.accentHi : FsColors.border, width: selected ? 2 : 1),
+          ),
+          child: Row(children: [
+            // Three stacked color chips representing the palette.
+            SizedBox(
+              width: 44,
+              height: 26,
+              child: Stack(children: [
+                for (final entry in [t.primary, t.secondary, t.tertiary].asMap().entries)
+                  Positioned(
+                    left: entry.key * 14.0,
+                    child: Container(
+                      width: 18,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: entry.value,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: FsColors.bgPanel, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(t.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: FsType.sans(
+                      size: 11.5,
+                      weight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? FsColors.text1 : FsColors.text2)),
+            ),
+            if (selected) Icon(Icons.check_circle, size: 16, color: t.accentHi),
+          ]),
+        ),
+      ),
+    );
   }
 
   List<Widget> _browser(AppSettings settings, SettingsNotifier notifier) {
