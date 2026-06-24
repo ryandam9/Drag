@@ -67,9 +67,12 @@ class FsColors {
     bgActive = cs.secondaryContainer;
     border = cs.outlineVariant;
     borderHi = cs.outline;
+    // Pull the secondary/muted text darker than M3's defaults — onSurfaceVariant
+    // and (especially) a surface-lerped tertiary read too light on these pale
+    // surfaces. Bias both toward onSurface for legible contrast.
     text1 = cs.onSurface;
-    text2 = cs.onSurfaceVariant;
-    text3 = Color.lerp(cs.onSurfaceVariant, cs.surface, 0.30)!;
+    text2 = Color.lerp(cs.onSurfaceVariant, cs.onSurface, 0.35)!;
+    text3 = cs.onSurfaceVariant;
   }
 
   // Soft semantic pills (light tint bg + dark fg), matching the reference style.

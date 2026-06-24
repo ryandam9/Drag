@@ -174,7 +174,7 @@ class _HistoryTable extends StatelessWidget {
             padding: const EdgeInsets.only(right: 10),
             child: Text(t,
                 textAlign: align,
-                style: FsType.sans(size: 10, weight: FontWeight.w700, color: FsColors.text3, letterSpacing: 0.6)),
+                style: FsType.sans(size: 10, weight: FontWeight.w700, color: FsColors.text2, letterSpacing: 0.6)),
           ),
         );
     return Container(
@@ -215,7 +215,7 @@ class _HistoryTable extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.only(right: 10),
               child: Text(r.name,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: FsType.sans(size: 12, weight: FontWeight.w500, color: FsColors.text1)),
             ),
@@ -225,7 +225,8 @@ class _HistoryTable extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.only(right: 10),
               child: Text('${r.sourcePath} → ${r.destPath}',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 10, color: FsColors.text3)),
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: FsType.sans(size: 11, color: FsColors.text2)),
             ),
           ),
           _mono(formatBytes(r.sizeBytes), 11, TextAlign.right),
