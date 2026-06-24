@@ -6,8 +6,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// a single JSON row by [SettingsStore]. Contains no secrets.
 class AppSettings {
   AppSettings({
-    this.themeName = 'Dark (default)',
-    this.accentValue = 0xFF3B82F6,
+    this.themeName = 'Rainbow Bee-eater',
+    this.accentValue = 0xFF007CBF,
+    this.accentHiValue = 0xFF06ABDF,
     this.uiFontSize = 13,
     this.monospaceFont = 'JetBrains Mono',
     this.showHiddenFiles = true,
@@ -24,6 +25,9 @@ class AppSettings {
 
   /// The accent color as a 32-bit ARGB value.
   int accentValue;
+
+  /// The lighter accent-highlight color as a 32-bit ARGB value.
+  int accentHiValue;
 
   /// Base UI font size in logical pixels (12 / 13 / 14).
   double uiFontSize;
@@ -43,6 +47,7 @@ class AppSettings {
   AppSettings copyWith({
     String? themeName,
     int? accentValue,
+    int? accentHiValue,
     double? uiFontSize,
     String? monospaceFont,
     bool? showHiddenFiles,
@@ -57,6 +62,7 @@ class AppSettings {
       AppSettings(
         themeName: themeName ?? this.themeName,
         accentValue: accentValue ?? this.accentValue,
+        accentHiValue: accentHiValue ?? this.accentHiValue,
         uiFontSize: uiFontSize ?? this.uiFontSize,
         monospaceFont: monospaceFont ?? this.monospaceFont,
         showHiddenFiles: showHiddenFiles ?? this.showHiddenFiles,
@@ -72,6 +78,7 @@ class AppSettings {
   Map<String, Object?> toJson() => {
         'themeName': themeName,
         'accentValue': accentValue,
+        'accentHiValue': accentHiValue,
         'uiFontSize': uiFontSize,
         'monospaceFont': monospaceFont,
         'showHiddenFiles': showHiddenFiles,
@@ -87,8 +94,9 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, Object?> j) {
     double? d(Object? v) => (v as num?)?.toDouble();
     return AppSettings(
-      themeName: (j['themeName'] as String?) ?? 'Dark (default)',
-      accentValue: (j['accentValue'] as num?)?.toInt() ?? 0xFF3B82F6,
+      themeName: (j['themeName'] as String?) ?? 'Rainbow Bee-eater',
+      accentValue: (j['accentValue'] as num?)?.toInt() ?? 0xFF007CBF,
+      accentHiValue: (j['accentHiValue'] as num?)?.toInt() ?? 0xFF06ABDF,
       uiFontSize: d(j['uiFontSize']) ?? 13,
       monospaceFont: (j['monospaceFont'] as String?) ?? 'JetBrains Mono',
       showHiddenFiles: (j['showHiddenFiles'] as bool?) ?? true,

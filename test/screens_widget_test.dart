@@ -78,6 +78,36 @@ void main() {
       expect(s3.bucket, 'new-bucket-name');
     });
 
+    testWidgets('editing the name field renames the connection', (tester) async {
+      final c = makeContainer(connections: sampleConnections());
+      final conn = c.read(connectionsProvider).connections.first;
+      c.read(connectionsProvider.notifier).select(conn);
+      await pumpScreen(tester, c, const ConnectionManagerScreen());
+
+      expect(find.text('Connection name'), findsOneWidget);
+      final nameField = find.widgetWithText(TextField, conn.name);
+      expect(nameField, findsWidgets);
+      await tester.enterText(nameField.first, 'My Prod Box');
+      await tester.pump();
+      expect(conn.name, 'My Prod Box');
+      // The sidebar list reflects the new name live.
+      expect(find.text('My Prod Box'), findsWidgets);
+    });
+
+    testWidgets('the connection log shows lines and Clear empties it', (tester) async {
+      final c = makeContainer(connections: sampleConnections());
+      c.read(connectionsProvider.notifier).select(c.read(connectionsProvider).connections.first);
+      c.read(connectionLogProvider.notifier).info('Testing "box" — sftp://u@h:22 · key');
+      await pumpScreen(tester, c, const ConnectionManagerScreen());
+
+      expect(find.text('Connection log'), findsOneWidget);
+      expect(find.textContaining('Testing "box"'), findsOneWidget);
+      await tester.tap(find.text('Clear'));
+      await tester.pump();
+      expect(find.textContaining('Testing "box"'), findsNothing);
+      expect(find.text('Test or connect to see diagnostics here.'), findsOneWidget);
+    });
+
     testWidgets('shows the empty state with no connections', (tester) async {
       final c = makeContainer();
       await pumpScreen(tester, c, const ConnectionManagerScreen());
@@ -121,11 +151,32 @@ void main() {
   });
 
   group('Settings', () {
-    testWidgets('renders appearance options', (tester) async {
+    testWidgets('renders appearance options by default', (tester) async {
       final c = makeContainer();
       await pumpScreen(tester, c, const SettingsScreen());
       expect(find.text('Appearance'), findsWidgets);
       expect(find.text('Theme'), findsOneWidget);
+      expect(find.text('Monospace font'), findsOneWidget);
+    });
+
+    testWidgets('picking a bird theme recolors and persists', (tester) async {
+      final c = makeContainer();
+      await pumpScreen(tester, c, const SettingsScreen());
+      expect(c.read(settingsProvider).themeName, 'Rainbow Bee-eater');
+      await tester.tap(find.text('Galah'));
+      await tester.pump();
+      expect(c.read(settingsProvider).themeName, 'Galah');
+      expect(c.read(settingsProvider).accentValue, const Color(0xFFE9A7BB).toARGB32());
+      await tester.pump(const Duration(seconds: 6)); // drain the toast timer
+    });
+
+    testWidgets('sidebar navigation switches the pane', (tester) async {
+      final c = makeContainer();
+      await pumpScreen(tester, c, const SettingsScreen());
+      // Browser settings live on their own pane, not the default Appearance one.
+      expect(find.text('Show hidden files'), findsNothing);
+      await tester.tap(find.text('Browser'));
+      await tester.pump();
       expect(find.text('Show hidden files'), findsOneWidget);
     });
 
@@ -133,7 +184,9 @@ void main() {
       final c = makeContainer();
       await pumpScreen(tester, c, const SettingsScreen());
       expect(c.read(settingsProvider).showLogOnStartup, isFalse);
-      // Exactly one checkbox is unchecked by default (Show transfer log on startup).
+      // Show-transfer-log lives on the Transfers pane.
+      await tester.tap(find.text('Transfers').first);
+      await tester.pump();
       final unchecked = find.byWidgetPredicate((w) => w is Checkbox && w.value == false);
       expect(unchecked, findsOneWidget);
       await tester.tap(unchecked);

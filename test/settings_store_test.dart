@@ -29,6 +29,7 @@ void main() {
       final back = AppSettings.fromJson(s.toJson());
       expect(back.themeName, 'Light');
       expect(back.accentValue, 0xFF22C55E);
+      expect(back.accentHiValue, 0xFF06ABDF);
       expect(back.uiFontSize, 14);
       expect(back.monospaceFont, 'Fira Code');
       expect(back.showHiddenFiles, isFalse);
@@ -43,7 +44,8 @@ void main() {
 
     test('fromJson tolerates missing keys with defaults', () {
       final s = AppSettings.fromJson(const {});
-      expect(s.themeName, 'Dark (default)');
+      expect(s.themeName, 'Rainbow Bee-eater');
+      expect(s.accentHiValue, 0xFF06ABDF);
       expect(s.showHiddenFiles, isTrue);
       expect(s.windowWidth, isNull);
     });
@@ -60,7 +62,7 @@ void main() {
 
     test('load returns defaults on first run', () async {
       final s = await store.load();
-      expect(s.themeName, 'Dark (default)');
+      expect(s.themeName, 'Rainbow Bee-eater');
       expect(s.showHiddenFiles, isTrue);
     });
 
@@ -74,7 +76,7 @@ void main() {
       await store.save(AppSettings(uiFontSize: 12));
       final s2 = await store.load();
       expect(s2.uiFontSize, 12);
-      expect(s2.accentValue, 0xFF3B82F6); // back to default in the new object
+      expect(s2.accentValue, 0xFF007CBF); // back to default in the new object
     });
   });
 
@@ -82,7 +84,7 @@ void main() {
     setUp(() {
       // Reset the global palette between tests.
       FsColors.accent = FsColors.accentDefault;
-      FsColors.accentHi = const Color(0xFF60A5FA);
+      FsColors.accentHi = const Color(0xFF06ABDF);
     });
 
     test('applies persisted settings on construction', () {
@@ -100,7 +102,26 @@ void main() {
       final c = makeContainer();
       c.read(settingsProvider.notifier).setAccent(const Color(0xFFA855F7));
       expect(FsColors.accent, const Color(0xFFA855F7));
-      expect(FsColors.accentHi, FsColors.highlightFor(const Color(0xFFA855F7)));
+      // Highlight is derived, then persisted as a 32-bit ARGB value.
+      expect(FsColors.accentHi,
+          Color(FsColors.highlightFor(const Color(0xFFA855F7)).toARGB32()));
+    });
+
+    test('setTheme applies a bird palette (accent + highlight) and persists it', () {
+      final c = makeContainer();
+      final galah = birdThemeByName('Galah');
+      c.read(settingsProvider.notifier).setTheme(galah);
+      final settings = c.read(settingsProvider);
+      expect(settings.themeName, 'Galah');
+      expect(settings.accentValue, galah.accent.toARGB32());
+      expect(settings.accentHiValue, galah.accentHi.toARGB32());
+      expect(FsColors.accent, galah.accent);
+      expect(FsColors.accentHi, galah.accentHi);
+    });
+
+    test('birdThemeByName falls back to the default for an unknown name', () {
+      expect(birdThemeByName('Nope').name, kDefaultThemeName);
+      expect(kBirdThemes, hasLength(12));
     });
 
     test('setShowHiddenFiles propagates to every pane', () {

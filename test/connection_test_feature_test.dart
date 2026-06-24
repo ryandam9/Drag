@@ -58,6 +58,12 @@ void main() {
       expect(c.read(toastsProvider).last.title, 'Connection OK');
       expect(c.read(toastsProvider).last.kind, ToastKind.success);
       expect(conn.online, isTrue);
+
+      // The connection log keeps a timestamped transcript that outlives toasts.
+      final log = c.read(connectionLogProvider);
+      expect(log.first.message, contains('Testing "s3-ok"'));
+      expect(log.last.kind, ToastKind.success);
+      expect(log.last.message, contains('connected'));
     });
 
     test('an unreachable S3 endpoint reports failure and marks it offline', () async {
@@ -76,6 +82,20 @@ void main() {
       expect(c.read(toastsProvider).last.title, 'Connection failed');
       expect(c.read(toastsProvider).last.kind, ToastKind.error);
       expect(conn.online, isFalse);
+
+      final log = c.read(connectionLogProvider);
+      expect(log.last.kind, ToastKind.error);
+      expect(log.last.message, contains('s3-bad'));
+    });
+
+    test('clear() empties the connection log', () async {
+      final c = makeContainer();
+      final log = c.read(connectionLogProvider.notifier);
+      log.info('one');
+      log.error('two');
+      expect(c.read(connectionLogProvider), hasLength(2));
+      log.clear();
+      expect(c.read(connectionLogProvider), isEmpty);
     });
   });
 }

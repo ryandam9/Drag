@@ -7,6 +7,7 @@ import '../fs/sftp_backend.dart';
 import '../fs/storage_backend.dart';
 import '../models/connection.dart';
 import '../models/file_item.dart';
+import 'connection_log_provider.dart';
 import 'connections_provider.dart';
 import 'navigation_provider.dart';
 import 'pane_controller.dart';
@@ -212,13 +213,16 @@ class SessionsNotifier extends Notifier<SessionsState> {
     evictBackend(c); // pick up freshly entered credentials
     ref.read(connectionsProvider.notifier).touch();
     final toast = ref.read(toastsProvider.notifier);
+    final log = ref.read(connectionLogProvider.notifier);
     if (c.isS3 && !c.hasS3Credentials) {
       toast.push('Missing credentials',
           'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
+      log.error('${c.name}: missing AWS credentials (set a profile or access key/secret)');
       return;
     }
     openSession(c);
     toast.push('Session connected', '${c.name} · ${c.protocol.label}', ToastKind.info);
+    log.success('Opened session for "${c.name}" — ${_target(c)}');
     ref.read(navProvider.notifier).go(AppScreen.browser);
   }
 
@@ -258,28 +262,49 @@ class SessionsNotifier extends Notifier<SessionsState> {
   /// connection's online flag accordingly. Does not open a tab.
   Future<void> testConnection(Connection c) async {
     final toasts = ref.read(toastsProvider.notifier);
+    final log = ref.read(connectionLogProvider.notifier);
     if (c.isS3 && !c.hasS3Credentials) {
       toasts.push('Missing credentials', 'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
+      log.error('${c.name}: missing AWS credentials (set a profile or access key/secret)');
       return;
     }
     if (!c.isS3 && (c.host.isEmpty || c.username.isEmpty)) {
       toasts.push('Missing details', 'Enter a host and username for ${c.name}', ToastKind.error);
+      log.error('${c.name}: missing host or username');
       return;
     }
     toasts.push('Testing connection…', 'Reaching ${c.name}', ToastKind.info);
+    log.info('Testing "${c.name}" — ${_target(c)}');
     final backend = c.isS3 ? S3Backend(c) : SftpBackend(c);
     try {
-      await backend.list(backend.initialPath);
+      final items = await backend.list(backend.initialPath);
       c.online = true;
       ref.read(connectionsProvider.notifier).touch();
       toasts.push('Connection OK', '${c.name} is reachable', ToastKind.success);
+      log.success('${c.name}: connected — listed ${items.length} '
+          '${items.length == 1 ? 'entry' : 'entries'} at "${backend.initialPath}"');
     } catch (e) {
       c.online = false;
       ref.read(connectionsProvider.notifier).touch();
       toasts.push('Connection failed', _short(e), ToastKind.error);
+      log.error('${c.name}: failed — ${_short(e)}');
     } finally {
       backend.dispose();
     }
+  }
+
+  /// A short human description of where a connection points, for the log.
+  String _target(Connection c) {
+    if (c.isS3) {
+      final where = c.bucket.isNotEmpty ? 's3://${c.bucket}' : 'all buckets';
+      final auth = c.useAwsProfile
+          ? 'AWS profile "${c.awsProfile.isEmpty ? 'default' : c.awsProfile}"'
+          : 'access key';
+      return '$where · $auth';
+    }
+    final port = c.port == 0 ? 22 : c.port;
+    final auth = c.auth == AuthMethod.privateKey ? 'key' : 'password';
+    return 'sftp://${c.username}@${c.host}:$port · $auth';
   }
 
   /// Re-filter every pane after the "show hidden files" setting changes.

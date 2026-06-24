@@ -87,8 +87,9 @@ written to the SQLite history database.
   the queue and the panes all start empty/real.
 - **Sessions persist** to SQLite: your open tabs and each pane's endpoint +
   path come back exactly as you left them on the next launch.
-- Pixel-faithful dark theme ported from the mockup's CSS variables
-  (`lib/theme.dart`), with Inter + JetBrains Mono via `google_fonts`.
+- Deep-navy dark theme using the **Feathers "Rainbow Bee-eater"** palette
+  (`lib/theme.dart`) — navy surfaces with bright-blue / cyan accents, matching
+  the `attendance-register` app, with Inter + JetBrains Mono via `google_fonts`.
 - Resizable split between the two file panes.
 - Pause / resume / clear-done queue controls and per-row pause/retry.
 

@@ -33,6 +33,13 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   void _toast(String t, String s, ToastKind k) => ref.read(toastsProvider.notifier).push(t, s, k);
   void _go(AppScreen s) => ref.read(navProvider.notifier).go(s);
 
+  /// Copy a full endpoint location (s3://… , sftp://… , or a local absolute
+  /// path) to the clipboard and confirm with a toast.
+  Future<void> _copyLocation(String location) async {
+    await Clipboard.setData(ClipboardData(text: location));
+    _toast('Copied', location, ToastKind.info);
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessionsState = ref.watch(sessionsProvider);
@@ -150,9 +157,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       case 'newFolder':
         await _newFolder(pane);
       case 'copyPath':
-        await Clipboard.setData(
-            ClipboardData(text: pane.backend.childPath(pane.path, item.name, item.isDir)));
-        _toast('Copied', 'Path copied to clipboard', ToastKind.info);
+        // The full location (s3://bucket/key, sftp://host/path, or the local
+        // absolute path) — not just the internal key.
+        final loc = pane.backend.displayPath(pane.backend.childPath(pane.path, item.name, item.isDir));
+        await _copyLocation(loc);
     }
   }
 
@@ -416,20 +424,32 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         _endpointPicker(pane, left: left, badgeBg: badgeBg, badgeFg: badgeFg),
         const SizedBox(width: 8),
         Expanded(
-          child: Container(
-            height: 24,
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: FsColors.bgDeep,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: FsColors.border),
+          child: Tooltip(
+            message: 'Click to copy this location',
+            waitDuration: const Duration(milliseconds: 500),
+            child: GestureDetector(
+              onTap: () => _copyLocation(pane.displayPath),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: Container(
+                  height: 24,
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: FsColors.bgDeep,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: FsColors.border),
+                  ),
+                  child: Text(pane.displayPath,
+                      overflow: TextOverflow.ellipsis, style: FsType.mono(size: 11, color: FsColors.text2)),
+                ),
+              ),
             ),
-            child: Text(pane.displayPath,
-                overflow: TextOverflow.ellipsis, style: FsType.mono(size: 11, color: FsColors.text2)),
           ),
         ),
         const SizedBox(width: 6),
+        _paneIconBtn('📋', onTap: () => _copyLocation(pane.displayPath)),
+        const SizedBox(width: 4),
         _paneIconBtn('↑', onTap: pane.goUp),
         const SizedBox(width: 4),
         _paneIconBtn('↺', onTap: pane.refresh),
@@ -707,7 +727,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: bg,
-              border: const Border(bottom: BorderSide(color: Color(0x802A3550))),
+              border: const Border(bottom: BorderSide(color: Color(0x801C3A57))),
             ),
             child: Row(children: [
               Expanded(

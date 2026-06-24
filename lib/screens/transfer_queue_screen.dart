@@ -147,7 +147,7 @@ class TransferQueueScreen extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: hover ? FsColors.bgHover : Colors.transparent,
-            border: const Border(bottom: BorderSide(color: Color(0x662A3550))),
+            border: const Border(bottom: BorderSide(color: Color(0x661C3A57))),
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
             SizedBox(
