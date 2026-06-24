@@ -69,15 +69,29 @@ class SftpBackend extends StorageBackend {
   }
 
   Future<List<SSHKeyPair>?> _identities() async {
-    if (connection.auth != AuthMethod.privateKey || connection.keyFile.isEmpty) {
-      return null;
+    if (connection.auth != AuthMethod.privateKey) return null;
+
+    String? path;
+    if (connection.keyFile.isNotEmpty) {
+      path = _expandHome(connection.keyFile);
+      if (!await File(path).exists()) {
+        throw Exception('Key file not found: $path');
+      }
+    } else {
+      // No explicit key → fall back to the user's default SSH keys, like the
+      // `ssh` command does. This lets a connection that works in the terminal
+      // work here too, without having to point at the key by hand.
+      for (final name in const ['id_ed25519', 'id_rsa', 'id_ecdsa']) {
+        final candidate = _expandHome('~/.ssh/$name');
+        if (await File(candidate).exists()) {
+          path = candidate;
+          break;
+        }
+      }
+      if (path == null) return null; // nothing to offer → password / none
     }
-    final path = _expandHome(connection.keyFile);
-    final file = File(path);
-    if (!await file.exists()) {
-      throw Exception('Key file not found: $path');
-    }
-    final pem = await file.readAsString();
+
+    final pem = await File(path).readAsString();
     return SSHKeyPair.fromPem(
       pem,
       connection.passphrase.isEmpty ? null : connection.passphrase,

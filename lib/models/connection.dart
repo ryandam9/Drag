@@ -1,11 +1,8 @@
-enum Protocol { sftp, ftp, ftps, scp, s3 }
+enum Protocol { sftp, s3 }
 
 extension ProtocolLabel on Protocol {
   String get label => switch (this) {
         Protocol.sftp => 'SFTP',
-        Protocol.ftp => 'FTP',
-        Protocol.ftps => 'FTPS',
-        Protocol.scp => 'SCP',
         Protocol.s3 => 'S3',
       };
 }
@@ -13,14 +10,12 @@ extension ProtocolLabel on Protocol {
 /// How a pane talks to its storage. Drives which backend is built.
 enum EndpointKind { local, sftp, s3 }
 
-enum AuthMethod { password, privateKey, sshAgent, gssapi }
+enum AuthMethod { password, privateKey }
 
 extension AuthMethodLabel on AuthMethod {
   String get label => switch (this) {
         AuthMethod.password => 'Password',
         AuthMethod.privateKey => 'Private Key',
-        AuthMethod.sshAgent => 'SSH Agent',
-        AuthMethod.gssapi => 'GSSAPI',
       };
 }
 

@@ -1,5 +1,5 @@
 name: drag
-description: "FileSync — a cross-platform SFTP/FTP file transfer client (UI implementation of the FileSync mockup)."
+description: "Drag — a cross-platform file-transfer client for Local, Amazon S3 and SFTP endpoints."
 publish_to: 'none'
 version: 1.0.0+1
 
