@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/connection.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
-import '../state/app_state.dart';
-import '../state/pane_controller.dart';
-import '../state/scopes.dart';
+import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-class BrowserScreen extends StatefulWidget {
+class BrowserScreen extends ConsumerStatefulWidget {
   const BrowserScreen({super.key});
   @override
-  State<BrowserScreen> createState() => _BrowserScreenState();
+  ConsumerState<BrowserScreen> createState() => _BrowserScreenState();
 }
 
-class _BrowserScreenState extends State<BrowserScreen> {
+class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   double _split = 0.5;
   bool _dropHoverLeft = false;
   bool _dropHoverRight = false;
@@ -25,53 +24,56 @@ class _BrowserScreenState extends State<BrowserScreen> {
   /// startup" setting.
   bool? _showLogOverride;
 
+  // ── Notifier shortcuts (actions only — reactive reads happen in build) ──
+  SessionsNotifier get _sessions => ref.read(sessionsProvider.notifier);
+  PaneController get _leftPane => _sessions.leftPane;
+  PaneController get _rightPane => _sessions.rightPane;
+  PaneController get _focusedPane => _sessions.focusedPane;
+
+  void _toast(String t, String s, ToastKind k) => ref.read(toastsProvider.notifier).push(t, s, k);
+  void _go(AppScreen s) => ref.read(navProvider.notifier).go(s);
+
   @override
   Widget build(BuildContext context) {
-    // Action-only handle (no global subscription). The panes, endpoint picker
-    // and settings-driven bits subscribe to their own scopes below, so the
-    // dense file tables no longer rebuild on toast/transfer/history churn.
-    final app = AppScope.read(context);
-    return Builder(builder: (context) {
-      SessionsScope.of(context); // tabs, panes, focus, navigation history
-      ConnectionsScope.of(context); // endpoint pickers
-      final settings = SettingsScope.of(context); // perms column, log default
-      final showLog = _showLogOverride ?? settings.showLogOnStartup;
-      return Focus(
-        autofocus: true,
-        onKeyEvent: (node, event) => _onKey(app, event),
-        child: Column(
-          children: [
-            _sessionTabs(app),
-            _toolbar(app),
-            Expanded(
-              child: LayoutBuilder(builder: (context, c) {
-                final leftW = (c.maxWidth - 5) * _split;
-                return Row(
-                  children: [
-                    SizedBox(width: leftW, child: _pane(app, app.leftPane, left: true)),
-                    _divider(c.maxWidth),
-                    Expanded(child: _pane(app, app.rightPane, left: false)),
-                  ],
-                );
-              }),
-            ),
-            _queueStrip(app),
-            if (showLog) _logPanel(),
-          ],
-        ),
-      );
-    });
+    final sessionsState = ref.watch(sessionsProvider);
+    ref.watch(connectionsProvider); // endpoint pickers
+    final settings = ref.watch(settingsProvider);
+    final showLog = _showLogOverride ?? settings.showLogOnStartup;
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (node, event) => _onKey(event),
+      child: Column(
+        children: [
+          _sessionTabs(sessionsState),
+          _toolbar(settings.showLogOnStartup),
+          Expanded(
+            child: LayoutBuilder(builder: (context, c) {
+              final leftW = (c.maxWidth - 5) * _split;
+              return Row(
+                children: [
+                  SizedBox(width: leftW, child: _pane(_leftPane, settings.showPermsColumn, left: true)),
+                  _divider(c.maxWidth),
+                  Expanded(child: _pane(_rightPane, settings.showPermsColumn, left: false)),
+                ],
+              );
+            }),
+          ),
+          _queueStrip(),
+          if (showLog) _logPanel(),
+        ],
+      ),
+    );
   }
 
-  KeyEventResult _onKey(AppState app, KeyEvent event) {
+  KeyEventResult _onKey(KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    final pane = app.focusedPane;
+    final pane = _focusedPane;
     switch (event.logicalKey) {
       case LogicalKeyboardKey.f2:
-        _renameSelected(app, pane);
+        _renameSelected(pane);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.delete:
-        _deleteSelected(app, pane);
+        _deleteSelected(pane);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.backspace:
         pane.goUp();
@@ -89,29 +91,29 @@ class _BrowserScreenState extends State<BrowserScreen> {
     return item.isParent ? null : item;
   }
 
-  Future<void> _newFolder(AppState app, PaneController pane) async {
+  Future<void> _newFolder(PaneController pane) async {
     if (!pane.backend.supportsMutation) {
-      app.pushToast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
+      _toast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
       return;
     }
     final name = await _promptText(title: 'New folder', hint: 'Folder name', confirm: 'Create');
-    if (name != null) await app.createFolder(pane, name);
+    if (name != null) await _sessions.createFolder(pane, name);
   }
 
-  Future<void> _renameSelected(AppState app, PaneController pane) async {
+  Future<void> _renameSelected(PaneController pane) async {
     final item = _selected(pane);
     if (item == null) {
-      app.pushToast('Nothing selected', 'Select an item to rename', ToastKind.info);
+      _toast('Nothing selected', 'Select an item to rename', ToastKind.info);
       return;
     }
     final name = await _promptText(title: 'Rename', initial: item.name, confirm: 'Rename');
-    if (name != null) await app.renameItem(pane, item, name);
+    if (name != null) await _sessions.renameItem(pane, item, name);
   }
 
-  Future<void> _deleteSelected(AppState app, PaneController pane) async {
+  Future<void> _deleteSelected(PaneController pane) async {
     final items = pane.selectedItems();
     if (items.isEmpty) {
-      app.pushToast('Nothing selected', 'Select an item to delete', ToastKind.info);
+      _toast('Nothing selected', 'Select an item to delete', ToastKind.info);
       return;
     }
     final ok = await _confirm(
@@ -119,11 +121,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
       message: 'This permanently deletes the selected '
           '${items.length == 1 ? (items.first.isDir ? 'folder and its contents' : 'file') : 'items'}.',
     );
-    if (ok) await app.deleteItems(pane, items);
+    if (ok) await _sessions.deleteItems(pane, items);
   }
 
-  Future<void> _showRowMenu(
-      AppState app, PaneController pane, bool left, FileItem item, Offset pos) async {
+  Future<void> _showRowMenu(PaneController pane, bool left, FileItem item, Offset pos) async {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final choice = await showMenu<String>(
       context: context,
@@ -140,18 +141,18 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
     switch (choice) {
       case 'transfer':
-        app.dropTransfer(DragPayload(item, left), !left);
+        _sessions.dropTransfer(DragPayload(item, left), !left);
       case 'rename':
         final name = await _promptText(title: 'Rename', initial: item.name, confirm: 'Rename');
-        if (name != null) await app.renameItem(pane, item, name);
+        if (name != null) await _sessions.renameItem(pane, item, name);
       case 'delete':
-        await _deleteSelected(app, pane);
+        await _deleteSelected(pane);
       case 'newFolder':
-        await _newFolder(app, pane);
+        await _newFolder(pane);
       case 'copyPath':
         await Clipboard.setData(
             ClipboardData(text: pane.backend.childPath(pane.path, item.name, item.isDir)));
-        app.pushToast('Copied', 'Path copied to clipboard', ToastKind.info);
+        _toast('Copied', 'Path copied to clipboard', ToastKind.info);
     }
   }
 
@@ -213,7 +214,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   // ── Session tabs — one open server per tab, switchable & closable ──
-  Widget _sessionTabs(AppState app) {
+  Widget _sessionTabs(SessionsState state) {
     return Container(
       decoration: const BoxDecoration(
         color: FsColors.bgDeep,
@@ -225,13 +226,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
         Expanded(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Row(children: [for (final s in app.sessions) _tab(app, s)]),
+            child: Row(children: [for (final s in state.sessions) _tab(state, s)]),
           ),
         ),
         // New tab → pick a server to connect.
         Hoverable(builder: (hover) {
           return GestureDetector(
-            onTap: () => app.go(AppScreen.connections),
+            onTap: () => _go(AppScreen.connections),
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
               child: Tooltip(
@@ -250,12 +251,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  Widget _tab(AppState app, Session s) {
-    final active = s.id == app.activeSessionId;
+  Widget _tab(SessionsState state, Session s) {
+    final active = s.id == state.activeSessionId;
     final dot = s.online ? FsColors.green : FsColors.amber;
     return Hoverable(builder: (hover) {
       return GestureDetector(
-        onTap: () => app.switchSession(s.id),
+        onTap: () => _sessions.switchSession(s.id),
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           child: Container(
@@ -278,7 +279,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
               ),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: () => app.closeSession(s.id),
+                onTap: () => _sessions.closeSession(s.id),
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
                   child: Hoverable(builder: (h) => Container(
@@ -301,7 +302,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   // ── Toolbar ──
-  Widget _toolbar(AppState app) {
+  Widget _toolbar(bool showLogOnStartup) {
+    final pane = _focusedPane;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: const BoxDecoration(
@@ -309,20 +311,20 @@ class _BrowserScreenState extends State<BrowserScreen> {
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
-        ToolButton('← Back', onTap: app.focusedPane.canGoBack ? app.focusedPane.goBack : null),
-        ToolButton('→ Fwd', onTap: app.focusedPane.canGoForward ? app.focusedPane.goForward : null),
-        ToolButton('↑ Up', onTap: app.focusedPane.goUp),
+        ToolButton('← Back', onTap: pane.canGoBack ? pane.goBack : null),
+        ToolButton('→ Fwd', onTap: pane.canGoForward ? pane.goForward : null),
+        ToolButton('↑ Up', onTap: pane.goUp),
         const ToolSep(),
         const ToolButton('⇄ Sync', active: true),
-        ToolButton('↯ Queue', onTap: () => app.go(AppScreen.queue)),
+        ToolButton('↯ Queue', onTap: () => _go(AppScreen.queue)),
         ToolButton('📋 Log',
-            active: _showLogOverride ?? app.showLogOnStartup,
+            active: _showLogOverride ?? showLogOnStartup,
             onTap: () => setState(
-                () => _showLogOverride = !(_showLogOverride ?? app.showLogOnStartup))),
+                () => _showLogOverride = !(_showLogOverride ?? showLogOnStartup))),
         const ToolSep(),
-        ToolButton('⊕ New Folder', onTap: () => _newFolder(app, app.focusedPane)),
-        ToolButton('✎ Rename', onTap: () => _renameSelected(app, app.focusedPane)),
-        ToolButton('⊗ Delete', color: FsColors.red, onTap: () => _deleteSelected(app, app.focusedPane)),
+        ToolButton('⊕ New Folder', onTap: () => _newFolder(_focusedPane)),
+        ToolButton('✎ Rename', onTap: () => _renameSelected(_focusedPane)),
+        ToolButton('⊗ Delete', color: FsColors.red, onTap: () => _deleteSelected(_focusedPane)),
         const Spacer(),
         Text('Filter:', style: FsType.sans(size: 10, color: FsColors.text3)),
         const SizedBox(width: 6),
@@ -342,7 +344,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   // ── A pane (drag source + drop target) ──
-  Widget _pane(AppState app, PaneController pane, {required bool left}) {
+  Widget _pane(PaneController pane, bool showPerms, {required bool left}) {
     final hover = left ? _dropHoverLeft : _dropHoverRight;
     return DragTarget<DragPayload>(
       onWillAcceptWithDetails: (d) {
@@ -353,12 +355,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
       onLeave: (_) => setState(() => left ? _dropHoverLeft = false : _dropHoverRight = false),
       onAcceptWithDetails: (d) {
         setState(() => left ? _dropHoverLeft = false : _dropHoverRight = false);
-        app.dropTransfer(d.data, left);
+        _sessions.dropTransfer(d.data, left);
       },
       builder: (context, candidate, rejected) {
-        final focused = app.focusedLeft == left;
+        final focused = ref.read(sessionsProvider).focusedLeft == left;
         return Listener(
-          onPointerDown: (_) => app.focusPane(left),
+          onPointerDown: (_) => _sessions.focusPane(left),
           child: Container(
             decoration: BoxDecoration(
               color: hover ? FsColors.accent.withValues(alpha: 0.06) : null,
@@ -370,10 +372,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
               ),
             ),
             child: Column(children: [
-              _paneHeader(app, pane, left: left),
+              _paneHeader(pane, left: left),
               _breadcrumb(pane.breadcrumb),
-              Expanded(child: _paneBody(app, pane, left: left)),
-              _paneFooter(app, pane),
+              Expanded(child: _paneBody(pane, showPerms, left: left)),
+              _paneFooter(pane),
             ]),
           ),
         );
@@ -381,7 +383,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  Widget _paneHeader(AppState app, PaneController pane, {required bool left}) {
+  Widget _paneHeader(PaneController pane, {required bool left}) {
     final isS3 = pane.kind == EndpointKind.s3;
     final isLocal = pane.kind == EndpointKind.local;
     final badgeBg = isLocal
@@ -402,7 +404,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
-        _endpointPicker(app, pane, left: left, badgeBg: badgeBg, badgeFg: badgeFg),
+        _endpointPicker(pane, left: left, badgeBg: badgeBg, badgeFg: badgeFg),
         const SizedBox(width: 8),
         Expanded(
           child: Container(
@@ -426,9 +428,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  Widget _endpointPicker(AppState app, PaneController pane,
+  Widget _endpointPicker(PaneController pane,
       {required bool left, required Color badgeBg, required Color badgeFg}) {
     final badge = pane.badge;
+    final connections = ref.read(connectionsProvider).connections;
     return Container(
       decoration: BoxDecoration(
         color: badgeBg,
@@ -444,16 +447,16 @@ class _BrowserScreenState extends State<BrowserScreen> {
           icon: Icon(Icons.expand_more, size: 14, color: badgeFg),
           selectedItemBuilder: (context) => [
             _pickerLabel(badge, pane.endpointLabel, badgeFg),
-            ...app.connections.map((c) => _pickerLabel(badge, c.name, badgeFg)),
+            ...connections.map((c) => _pickerLabel(badge, c.name, badgeFg)),
           ],
           items: [
             DropdownMenuItem<Connection?>(value: null, child: _menuRow('🖥', 'Local')),
-            ...app.connections.map((c) => DropdownMenuItem<Connection?>(
+            ...connections.map((c) => DropdownMenuItem<Connection?>(
                   value: c,
                   child: _menuRow(c.isS3 ? '🪣' : '🌐', c.name),
                 )),
           ],
-          onChanged: (c) => app.setPaneEndpoint(left, c),
+          onChanged: (c) => _sessions.setPaneEndpoint(left, c),
         ),
       ),
     );
@@ -525,7 +528,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   // ── Pane body: placeholder / loading / error / table ──
-  Widget _paneBody(AppState app, PaneController pane, {required bool left}) {
+  Widget _paneBody(PaneController pane, bool showPerms, {required bool left}) {
     if (!pane.isReady) {
       return _placeholder(
         icon: Icons.cloud_off_outlined,
@@ -533,8 +536,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
         message: 'Add Access Key, Secret & Bucket for\n${pane.endpointLabel} to browse this S3 endpoint.',
         actionLabel: 'Open Connection Manager',
         onAction: () {
-          if (pane.connection != null) app.selectConnection(pane.connection!);
-          app.go(AppScreen.connections);
+          if (pane.connection != null) {
+            ref.read(connectionsProvider.notifier).select(pane.connection!);
+          }
+          _go(AppScreen.connections);
         },
       );
     }
@@ -553,7 +558,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         onAction: pane.refresh,
       );
     }
-    return _fileTable(app, pane, left: left);
+    return _fileTable(pane, showPerms, left: left);
   }
 
   Widget _placeholder({
@@ -579,7 +584,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  Widget _paneFooter(AppState app, PaneController pane) {
+  Widget _paneFooter(PaneController pane) {
     final count = pane.items.where((f) => !f.isParent).length;
     final isLocal = pane.kind == EndpointKind.local;
     return Container(
@@ -597,25 +602,25 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   // ── File table ──
-  Widget _fileTable(AppState app, PaneController pane, {required bool left}) {
+  Widget _fileTable(PaneController pane, bool showPerms, {required bool left}) {
     return Container(
       color: FsColors.bgSurface,
       child: Column(children: [
-        _tableHead(app.showPermsColumn),
+        _tableHead(showPerms),
         Expanded(
           child: ListView.builder(
             itemCount: pane.items.length,
             itemBuilder: (context, i) {
               final f = pane.items[i];
               final selected = pane.isSelected(i);
-              final row = _fileRow(app, pane, f, i, left: left, selected: selected);
+              final row = _fileRow(pane, f, i, showPerms, left: left, selected: selected);
               if (!f.isDir) {
                 return Draggable<DragPayload>(
                   data: DragPayload(f, left),
                   dragAnchorStrategy: pointerDragAnchorStrategy,
                   feedback: _dragGhost(f, pane.isSelected(i) ? pane.selectedItems().length : 1),
                   onDragStarted: () {
-                    app.focusPane(left);
+                    _sessions.focusPane(left);
                     // Keep an existing multi-selection if this row is part of it.
                     if (!pane.isSelected(i)) pane.select(i);
                   },
@@ -656,7 +661,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     );
   }
 
-  Widget _fileRow(AppState app, PaneController pane, FileItem f, int index,
+  Widget _fileRow(PaneController pane, FileItem f, int index, bool showPerms,
       {required bool left, required bool selected}) {
     return Hoverable(builder: (hover) {
       Color bg = Colors.transparent;
@@ -668,7 +673,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
       final nameColor = f.isDir ? FsColors.accentHi : FsColors.text1;
       return GestureDetector(
         onTap: () {
-          app.focusPane(left);
+          _sessions.focusPane(left);
           final kb = HardwareKeyboard.instance;
           if (kb.isControlPressed || kb.isMetaPressed) {
             pane.toggleSelect(index);
@@ -682,10 +687,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
         onSecondaryTapDown: f.isParent
             ? null
             : (d) {
-                app.focusPane(left);
+                _sessions.focusPane(left);
                 // Preserve a multi-selection if right-clicking inside it.
                 if (!pane.isSelected(index)) pane.select(index);
-                _showRowMenu(app, pane, left, f, d.globalPosition);
+                _showRowMenu(pane, left, f, d.globalPosition);
               },
         child: MouseRegion(
           cursor: f.isDir ? SystemMouseCursors.click : SystemMouseCursors.grab,
@@ -714,7 +719,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
                 ),
               ),
               Expanded(flex: 25, child: Text(f.modified, style: FsType.mono(size: 11, color: FsColors.text2))),
-              if (app.showPermsColumn)
+              if (showPerms)
                 Expanded(
                   flex: 20,
                   child: Text(f.perms, textAlign: TextAlign.right, style: FsType.mono(size: 10, color: FsColors.text3)),
@@ -748,18 +753,18 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   // ── Transfer queue strip ──
-  Widget _queueStrip(AppState app) {
-    // Subscribe to the transfer queue here so status changes update the strip
+  Widget _queueStrip() {
+    // Watch only the transfer queue here so status changes update the strip
     // without rebuilding the file tables above.
-    return Builder(builder: (context) {
-      TransfersScope.of(context);
-      final active = app.transfers.where((t) => t.status.name == 'active').toList();
+    return Consumer(builder: (context, ref, _) {
+      final state = ref.watch(transfersProvider);
+      final active = state.transfers.where((t) => t.status == TransferStatus.active).toList();
       final current = active.isNotEmpty ? active.first : null;
-      return _queueStripBody(app, current);
+      return _queueStripBody(state, current);
     });
   }
 
-  Widget _queueStripBody(AppState app, Transfer? current) {
+  Widget _queueStripBody(TransfersState state, Transfer? current) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: const BoxDecoration(
@@ -795,22 +800,20 @@ class _BrowserScreenState extends State<BrowserScreen> {
             ]),
           ),
         const Spacer(),
-        Text('${app.queuedCount} remaining', style: FsType.sans(size: 11, color: FsColors.text2)),
+        Text('${state.queuedCount} remaining', style: FsType.sans(size: 11, color: FsColors.text2)),
         const SizedBox(width: 10),
-        FsButton('Pause all', fontSize: 10, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), onTap: app.pauseAll),
+        FsButton('Pause all', fontSize: 10, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), onTap: () => ref.read(transfersProvider.notifier).pauseAll()),
         const SizedBox(width: 6),
-        FsButton('View queue', fontSize: 10, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), onTap: () => app.go(AppScreen.queue)),
+        FsButton('View queue', fontSize: 10, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), onTap: () => _go(AppScreen.queue)),
       ]),
     );
   }
 
   // ── SFTP / activity log console ──
   Widget _logPanel() {
-    Widget line(String time, String marker, Color markerColor, String msg) => Padding(
+    Widget line(String marker, Color markerColor, String msg) => Padding(
           padding: const EdgeInsets.only(bottom: 2),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(time, style: FsType.mono(size: 10, color: FsColors.text3)),
-            const SizedBox(width: 10),
             Text(marker, style: FsType.mono(size: 10, color: markerColor)),
             const SizedBox(width: 10),
             Expanded(child: Text(msg, style: FsType.mono(size: 10, color: FsColors.text3))),
@@ -826,10 +829,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
       ),
       child: SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          line('08:14:02', '»', FsColors.accent, 'Drag files between panes to transfer (Local ⇄ S3, S3 ⇄ S3).'),
-          line('08:14:03', '✓', FsColors.green, 'Local endpoint ready'),
-          line('08:14:05', '»', FsColors.accent, 'Select an S3 account in either pane to browse a bucket'),
-          line('08:14:06', 'ℹ', FsColors.accentHi, 'Add credentials in Connection Manager to connect S3'),
+          line('»', FsColors.accent, 'Drag files between panes to transfer (Local ⇄ S3, S3 ⇄ S3, SFTP).'),
+          line('✓', FsColors.green, 'Local endpoint ready'),
+          line('»', FsColors.accent, 'Select an S3 or SFTP endpoint in either pane to browse it'),
+          line('ℹ', FsColors.accentHi, 'Add credentials in Connection Manager to connect'),
         ]),
       ),
     );

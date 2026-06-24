@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
-import '../state/app_state.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../state/app.dart';
 import '../theme.dart';
 
 /// Bottom-right stack of transient notifications.
-class ToastOverlay extends StatelessWidget {
+class ToastOverlay extends ConsumerWidget {
   const ToastOverlay({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final toasts = ref.watch(toastsProvider);
     return Positioned(
       right: 18,
       bottom: 18,
@@ -17,7 +18,7 @@ class ToastOverlay extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final t in app.toasts) _ToastCard(t),
+          for (final t in toasts) _ToastCard(t),
         ],
       ),
     );

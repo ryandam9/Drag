@@ -57,8 +57,12 @@ written to the SQLite history database.
 ## Highlights
 
 - **Drag & drop** local files onto the remote pane to start a transfer.
-- **Live transfer engine** (`AppState`) advances active transfers, promotes
-  queued ones up to the thread budget, and fires completion toasts.
+- **Live transfer engine** (`TransfersNotifier`) streams real bytes through
+  `TransferService` and fires completion toasts + history records.
+- **Riverpod** state management end-to-end; **no dummy data** — connections,
+  the queue and the panes all start empty/real.
+- **Sessions persist** to SQLite: your open tabs and each pane's endpoint +
+  path come back exactly as you left them on the next launch.
 - Pixel-faithful dark theme ported from the mockup's CSS variables
   (`lib/theme.dart`), with Inter + JetBrains Mono via `google_fonts`.
 - Resizable split between the two file panes.
@@ -66,28 +70,40 @@ written to the SQLite history database.
 
 ## Project layout
 
+State is managed with **Riverpod** — each concern is an idiomatic `Notifier`
+behind a provider, wired together in the root `ProviderScope`. There is **no
+seed/dummy data**: the app starts with no connections and an empty transfer
+queue, and every endpoint (Local / S3 / SFTP) is real.
+
 ```
 lib/
-  main.dart                    App entry + AppScope wiring
+  main.dart                    App entry: opens SQLite stores + ProviderScope overrides
   app_shell.dart               Title bar + nav rail + screen switcher + toasts
   theme.dart                   Colors, text styles, ThemeData
   state/
-    app_state.dart             ChangeNotifier: navigation, panes, queue, toasts
+    app.dart                   Barrel export for the provider layer
+    providers.dart             DI seams for the SQLite stores + startup data
+    navigation_provider.dart   NavNotifier: the active screen
+    toasts_provider.dart       ToastsNotifier: transient notifications
+    settings_provider.dart     SettingsNotifier: appearance, applied live + persisted
+    connections_provider.dart  ConnectionsNotifier: saved connections + selection (CRUD)
+    sessions_provider.dart     SessionsNotifier: tabs, panes, backends, file ops, restore
+    transfers_provider.dart    TransfersNotifier: the live transfer queue
+    history_provider.dart      HistoryNotifier: SQLite-backed transfer history
     pane_controller.dart       Per-pane endpoint/path/listing/selection state
   fs/
     storage_backend.dart       StorageBackend interface + LocalBackend + S3Backend
     sftp_backend.dart          Real SFTP backend (dartssh2)
-    simulated_backend.dart     Offline SFTP demo backend (tests/fallback)
-    transfer_service.dart      Streams source → dest with live progress (S3/local)
+    transfer_service.dart      Streams source → dest with live progress (S3/local/SFTP)
     aws/
       sigv4.dart               Hand-written AWS Signature V4 signer
       s3_client.dart           Minimal S3 REST client (List/Get/Put) on HttpClient
   models/                      FileItem, Connection (incl. S3 fields), Transfer (timing)
   data/
-    mock_data.dart             Seed connections (incl. two S3 accounts)
     history_db.dart            SQLite history repository (sqflite_common_ffi)
     connection_store.dart      SQLite store for saved connections (no secrets)
     settings_store.dart        SQLite store for app settings + window geometry
+    session_store.dart         SQLite store for open tabs (restored on next launch)
   widgets/                     Title bar, buttons, badges, nav, toasts,
                                transfer_progress (active-transfer card)
   screens/                     browser / connection_manager / transfer_queue /
@@ -117,22 +133,27 @@ flutter build windows --release
 
 ```bash
 flutter analyze
-flutter test                 # 126 hermetic tests
+flutter test                 # 131 hermetic tests
 ```
 
-Coverage spans the whole stack:
+Coverage spans the whole stack. The Riverpod providers are exercised through a
+`ProviderContainer` test harness (`test/support/harness.dart`); a read-only
+`FakeRemoteBackend` (`test/support/fake_remote_backend.dart`) stands in for a
+remote endpoint where hitting the network would be impractical.
 
 | File | What it covers |
 | --- | --- |
 | `models_test.dart` | byte/date formatting, `FileItem`, `Connection` (S3 readiness), `Transfer` |
-| `backends_test.dart` | `LocalBackend` (real temp-dir listing + byte round-trip), `S3Backend` path math, `SimulatedBackend` |
+| `backends_test.dart` | `LocalBackend` (real temp-dir listing + byte round-trip), `S3Backend` path math, `FakeRemoteBackend` |
 | `pane_controller_test.dart` | listing, navigation (enter dir / `..` / up), selection, breadcrumb, not-ready short-circuit |
-| `app_state_test.dart` | navigation, queue counts & controls, toasts, simulated ticker, endpoint switching, `connect`, and all `dropTransfer` decisions (incl. a real Local→Local transfer) |
+| `app_state_test.dart` | provider layer: navigation, queue controls, toasts, endpoint switching, `connect`, and all `dropTransfer` decisions (incl. a real Local→Local transfer + history recording) |
+| `connection_store_test.dart` | `Connection` JSON (no secrets), `ConnectionStore` SQLite CRUD, `ConnectionsNotifier` persistence |
+| `session_store_test.dart` | `SessionStore` SQLite round-trip + `SessionsNotifier` tab restore/persistence |
 | `sigv4_test.dart` | AWS SigV4 — signing key vs **AWS's published test vector**, header/encoding |
 | `transfer_test.dart` | `TransferService` streaming with progress |
-| `screens_widget_test.dart` | Connection Manager (S3 vs SSH form + editing), Transfer Queue, Settings toggles, toasts |
-| `settings_store_test.dart` | `AppSettings` JSON round-trip, `SettingsStore` SQLite save/load, and `AppState` applying/persisting settings (accent, font size, hidden-file filter, reset) |
-| `widget_test.dart` | app boot + nav rail |
+| `screens_widget_test.dart` | Connection Manager (S3 vs SSH form + empty state), Transfer Queue, Settings toggles, Dashboard, toasts |
+| `settings_store_test.dart` | `AppSettings` JSON round-trip, `SettingsStore` SQLite save/load, and the `SettingsNotifier` applying/persisting settings (accent, font size, hidden-file filter, reset) |
+| `widget_test.dart` | app boot (Local ⇄ Local) + nav rail |
 
 Real end-to-end S3 tests live in `s3_integration_test.dart` and **auto-skip**
 unless an S3 server is supplied:

@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/history_db.dart';
 import '../models/file_item.dart';
-import '../state/app_state.dart';
+import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final s = app.historyStats;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(historyProvider);
+    final notifier = ref.read(historyProvider.notifier);
+    final s = history.stats;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -28,20 +30,20 @@ class DashboardScreen extends StatelessWidget {
                 style: FsType.sans(size: 15, weight: FontWeight.w600, color: FsColors.text1)),
             const SizedBox(width: 10),
             Text(
-                app.hasHistoryDb
+                history.hasDb
                     ? 'SQLite · ${s.total} record${s.total == 1 ? '' : 's'}'
                     : 'SQLite unavailable',
-                style: FsType.mono(size: 11, color: app.hasHistoryDb ? FsColors.text3 : FsColors.amber)),
+                style: FsType.mono(size: 11, color: history.hasDb ? FsColors.text3 : FsColors.amber)),
             const Spacer(),
             FsButton('↺ Refresh',
                 fontSize: 11,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                onTap: app.refreshHistory),
+                onTap: notifier.refresh),
             const SizedBox(width: 8),
             FsButton('⊗ Clear history',
                 fontSize: 11,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                onTap: app.clearHistory),
+                onTap: notifier.clear),
           ]),
         ),
 
@@ -60,7 +62,7 @@ class DashboardScreen extends StatelessWidget {
         ),
 
         // ── History table ──
-        Expanded(child: _HistoryTable(records: app.history)),
+        Expanded(child: _HistoryTable(records: history.records)),
       ],
     );
   }

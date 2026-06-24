@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/transfer.dart';
-import '../state/app_state.dart';
+import '../state/app.dart';
 import '../theme.dart';
 
 /// Threshold above which a transfer is considered "big" and gets the
@@ -11,17 +12,19 @@ const _bigFileBytes = 10 * 1024 * 1024;
 /// A floating card that appears (bottom-left, above the toasts) while a
 /// transfer is active — an animated ring + bar with live speed/ETA. Big files
 /// get the spotlight; if nothing is active it renders nothing.
-class ActiveTransferOverlay extends StatelessWidget {
+class ActiveTransferOverlay extends ConsumerWidget {
   const ActiveTransferOverlay({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final screen = ref.watch(navProvider);
     // Keep clear of screens whose bottom-left holds action buttons / forms.
-    if (app.screen == AppScreen.connections || app.screen == AppScreen.settings) {
+    if (screen == AppScreen.connections || screen == AppScreen.settings) {
       return const SizedBox.shrink();
     }
-    final active = app.transfers.where((t) => t.status == TransferStatus.active).toList()
+    final active = ref.watch(transfersProvider).transfers
+        .where((t) => t.status == TransferStatus.active)
+        .toList()
       ..sort((a, b) => b.sizeBytes.compareTo(a.sizeBytes));
     if (active.isEmpty) return const SizedBox.shrink();
 

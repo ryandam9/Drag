@@ -1,9 +1,9 @@
-import 'dart:ui';
-
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:drag/main.dart';
-import 'package:drag/state/app_state.dart';
+import 'package:drag/state/app.dart';
 import 'package:drag/widgets/nav_rail.dart';
 
 void main() {
@@ -19,25 +19,32 @@ void main() {
     binding.platformDispatcher.views.first.resetPhysicalSize();
   });
 
-  testWidgets('Drag boots into the dual-pane browser', (tester) async {
-    await tester.pumpWidget(const DragApp());
+  Widget app() => ProviderScope(
+        // Avoid real filesystem I/O during the boot test.
+        overrides: [autoRefreshPanesProvider.overrideWithValue(false)],
+        child: const DragApp(),
+      );
+
+  testWidgets('Drag boots into the dual-pane browser (Local ⇄ Local)', (tester) async {
+    await tester.pumpWidget(app());
     await tester.pump();
 
-    // Title bar reflects the active session (default tab = first S3 account).
-    expect(find.textContaining('Drag — s3-prod'), findsOneWidget);
-    // Left pane is Local, right pane defaults to an S3 endpoint.
-    expect(find.text('LOCAL'), findsOneWidget);
-    expect(find.text('S3'), findsOneWidget);
+    // Title bar reflects the active session — a fresh Local tab.
+    expect(find.textContaining('Drag — Local'), findsOneWidget);
+    // Both panes default to the Local endpoint on a clean install.
+    expect(find.text('LOCAL'), findsWidgets);
+    expect(find.text('S3'), findsNothing);
   });
 
   testWidgets('Navigation rail switches to the transfer queue', (tester) async {
-    await tester.pumpWidget(const DragApp());
+    await tester.pumpWidget(app());
     await tester.pump();
 
     expect(find.byType(NavRail), findsOneWidget);
 
     final context = tester.element(find.byType(NavRail));
-    AppScope.of(context).go(AppScreen.queue);
+    final container = ProviderScope.containerOf(context);
+    container.read(navProvider.notifier).go(AppScreen.queue);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 

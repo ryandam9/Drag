@@ -1,10 +1,11 @@
 import 'dart:io';
 
-import 'package:drag/fs/simulated_backend.dart';
 import 'package:drag/fs/storage_backend.dart';
 import 'package:drag/models/connection.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+
+import 'support/fake_remote_backend.dart';
 
 void main() {
   group('LocalBackend', () {
@@ -111,9 +112,9 @@ void main() {
     test('supportsMutation is true', () => expect(b.supportsMutation, isTrue));
   });
 
-  group('SimulatedBackend (SFTP)', () {
+  group('FakeRemoteBackend (SFTP stand-in)', () {
     final conn = Connection(name: 'host', protocol: Protocol.sftp, username: 'u', remotePath: '/srv');
-    final b = SimulatedBackend(conn);
+    final b = FakeRemoteBackend(conn);
 
     test('is read-only (no mutation, no transfer)', () {
       expect(b.supportsMutation, isFalse);
@@ -121,7 +122,7 @@ void main() {
       expect(() => b.makeDir('/srv/x'), throwsUnsupportedError);
     });
 
-    test('lists mock data', () async {
+    test('lists fixture data', () async {
       final items = await b.list('/srv');
       expect(items, isNotEmpty);
     });
