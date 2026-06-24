@@ -133,25 +133,35 @@ flutter build windows --release
 
 ```bash
 flutter analyze
-flutter test                 # 131 hermetic tests
+flutter test                 # 195 hermetic tests
+flutter test --coverage      # ~89% line coverage
 ```
 
-Coverage spans the whole stack. The Riverpod providers are exercised through a
-`ProviderContainer` test harness (`test/support/harness.dart`); a read-only
-`FakeRemoteBackend` (`test/support/fake_remote_backend.dart`) stands in for a
-remote endpoint where hitting the network would be impractical.
+Coverage spans the whole stack (≈89% of lines; the only thin spots are
+`main()`'s window-manager bootstrap and the live-SSH paths of `SftpBackend`,
+which need a real server). Test helpers live in `test/support/`:
+`harness.dart` builds a `ProviderContainer` with the SQLite stores stubbed;
+`memory_backend.dart` is an in-memory `StorageBackend` for widget tests (real
+disk I/O can't resolve under `testWidgets`' fake-async clock);
+`fake_remote_backend.dart` is a read-only remote stand-in.
 
 | File | What it covers |
 | --- | --- |
 | `models_test.dart` | byte/date formatting, `FileItem`, `Connection` (S3 readiness), `Transfer` |
+| `toast_test.dart` | `ToastKind` icon/colour/foreground styling, `ToastMessage` fields |
 | `backends_test.dart` | `LocalBackend` (real temp-dir listing + byte round-trip), `S3Backend` path math, `FakeRemoteBackend` |
+| `s3_client_test.dart` | `S3Client` + `S3Backend` against an **in-process mock S3 server**: ListObjectsV2 paging, get/put/delete/copy, error parsing, folder mapping |
+| `sftp_backend_test.dart` | `SftpBackend` path helpers, readiness, and connection/key-file error paths |
 | `pane_controller_test.dart` | listing, navigation (enter dir / `..` / up), selection, breadcrumb, not-ready short-circuit |
+| `transfer_test.dart` / `transfer_service_test.dart` | `TransferService` streaming, progress/ETA, and error truncation |
 | `app_state_test.dart` | provider layer: navigation, queue controls, toasts, endpoint switching, `connect`, and all `dropTransfer` decisions (incl. a real Local→Local transfer + history recording) |
+| `provider_extra_test.dart` | toast auto-dismiss, settings persistence, history refresh/clear, backend caching, focus/switch edge cases |
 | `connection_store_test.dart` | `Connection` JSON (no secrets), `ConnectionStore` SQLite CRUD, `ConnectionsNotifier` persistence |
 | `session_store_test.dart` | `SessionStore` SQLite round-trip + `SessionsNotifier` tab restore/persistence |
 | `sigv4_test.dart` | AWS SigV4 — signing key vs **AWS's published test vector**, header/encoding |
-| `transfer_test.dart` | `TransferService` streaming with progress |
+| `browser_screen_test.dart` | dual-pane browser: tabs, endpoint picker, file ops (new/rename/delete), folder open, drag-and-drop transfer, queue strip, log panel |
 | `screens_widget_test.dart` | Connection Manager (S3 vs SSH form + empty state), Transfer Queue, Settings toggles, Dashboard, toasts |
+| `transfer_progress_test.dart` | the floating active-transfer card (ring %, big-file badge, ETA, multi-transfer summary) |
 | `settings_store_test.dart` | `AppSettings` JSON round-trip, `SettingsStore` SQLite save/load, and the `SettingsNotifier` applying/persisting settings (accent, font size, hidden-file filter, reset) |
 | `widget_test.dart` | app boot (Local ⇄ Local) + nav rail |
 
