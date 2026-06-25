@@ -7,6 +7,7 @@ import '../fs/sftp_backend.dart';
 import '../fs/storage_backend.dart';
 import '../models/connection.dart';
 import '../models/file_item.dart';
+import 'compare.dart';
 import 'connection_log_provider.dart';
 import 'connections_provider.dart';
 import 'navigation_provider.dart';
@@ -299,6 +300,65 @@ class SessionsNotifier extends Notifier<SessionsState> {
     final port = c.port == 0 ? 22 : c.port;
     final auth = c.auth == AuthMethod.privateKey ? 'key' : 'password';
     return 'sftp://${c.username}@${c.host}:$port · $auth';
+  }
+
+  // ── Compare & sync ──
+
+  /// Compare the two panes' current listings and mark each entry (only-here /
+  /// differs / same) so the UI can highlight the differences.
+  PaneDiff compareActivePanes() {
+    final l = leftPane, r = rightPane;
+    final diff = comparePanes(l.items, r.items);
+    l.compareMarks = diff.left;
+    r.compareMarks = diff.right;
+    _emit();
+    final toasts = ref.read(toastsProvider.notifier);
+    if (diff.isIdentical) {
+      toasts.push('Panes match', 'No differences in the current folders', ToastKind.success);
+    } else {
+      toasts.push('Compared',
+          '${diff.onlyLeft} only left · ${diff.differing} differ · ${diff.onlyRight} only right',
+          ToastKind.info);
+    }
+    return diff;
+  }
+
+  /// Compute (but don't run) a mirror of one pane onto the other.
+  MirrorPlan mirrorPlan({required bool leftToRight, required bool deleteExtras}) {
+    final src = leftToRight ? leftPane : rightPane;
+    final dst = leftToRight ? rightPane : leftPane;
+    return planMirror(src.items, dst.items, leftToRight: leftToRight, deleteExtras: deleteExtras);
+  }
+
+  /// Run a previously-computed [plan]: copy the missing/different entries
+  /// (recursively for folders, overwriting on the destination) and optionally
+  /// delete the destination-only extras.
+  Future<void> runMirror(MirrorPlan plan) async {
+    final src = plan.leftToRight ? leftPane : rightPane;
+    final dst = plan.leftToRight ? rightPane : leftPane;
+    final toasts = ref.read(toastsProvider.notifier);
+    if (!src.isReady || !dst.isReady) {
+      toasts.push('Not connected', 'Connect both endpoints first', ToastKind.error);
+      return;
+    }
+    final transfers = ref.read(transfersProvider.notifier);
+    for (final item in plan.copy) {
+      if (item.isDir) {
+        transfers.enqueueTree(src, dst, item); // recursive, overwrites
+      } else {
+        transfers.enqueue(src, dst, item, announce: false);
+      }
+    }
+    var deleted = 0;
+    for (final d in plan.delete) {
+      try {
+        await dst.backend.delete(dst.backend.childPath(dst.path, d.name, d.isDir), isDir: d.isDir);
+        deleted++;
+      } catch (_) {/* best-effort */}
+    }
+    if (plan.delete.isNotEmpty) await dst.refresh();
+    toasts.push('Mirroring',
+        '${plan.copy.length} copied · $deleted deleted → ${dst.endpointLabel}', ToastKind.info);
   }
 
   /// Re-filter every pane after the "show hidden files" setting changes.

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../fs/storage_backend.dart';
 import '../models/connection.dart';
 import '../models/file_item.dart';
+import 'compare.dart';
 
 /// Holds the live state of one browser pane: which endpoint/backend it points
 /// at, the current directory, the listing, and selection — plus async
@@ -35,6 +36,10 @@ class PaneController {
   List<FileItem> items = const [];
   bool loading = false;
   String? error;
+
+  /// Per-entry comparison marks from the last Compare (by name). Empty when no
+  /// comparison is active; cleared automatically when the listing reloads.
+  Map<String, CompareMark> compareMarks = const {};
 
   /// Anchor / primary selection (used for shift-range and single-item actions).
   int? selectedIndex;
@@ -85,6 +90,7 @@ class PaneController {
     }
     loading = true;
     error = null;
+    compareMarks = const {}; // a fresh listing invalidates any comparison
     onChanged();
     try {
       _all = await backend.list(path);
