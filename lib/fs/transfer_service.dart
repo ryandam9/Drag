@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
 import '../models/file_item.dart';
 import '../models/transfer.dart';
+import 'rate_limiter.dart';
 import 'storage_backend.dart';
 
 /// Performs a real transfer by streaming bytes from a source backend into a
@@ -15,6 +17,12 @@ import 'storage_backend.dart';
 ///   • S3 → S3       (copy across accounts / regions — streamed, no server-side
 ///                    copy, so differing credentials are fine)
 class TransferService {
+  TransferService({RateLimiter? limiter}) : limiter = limiter ?? RateLimiter();
+
+  /// Shared across every [run] call on this service, so a bandwidth cap limits
+  /// aggregate throughput across all concurrent transfers, not each one.
+  final RateLimiter limiter;
+
   /// Runs [t] from [srcPath] on [src] to [dstPath] on [dst].
   ///
   /// [onStatus] fires on structural changes (active / done / error) that the
@@ -37,7 +45,10 @@ class TransferService {
     required void Function() onStatus,
     void Function()? onProgress,
     String verify = 'off',
+    int? bytesPerSecond,
   }) async {
+    // Apply the (shared) bandwidth cap; null/0 ⇒ unlimited.
+    limiter.bytesPerSecond = bytesPerSecond;
     t.status = TransferStatus.active;
     t.startedAt = DateTime.now();
     onStatus();
@@ -82,13 +93,18 @@ class TransferService {
         hasher = md5.startChunkedConversion(out);
       }
 
-      final counting = handle.stream.map((chunk) {
-        hasher?.add(chunk);
-        report(sent + chunk.length);
-        return chunk;
-      });
+      // Throttle on the read side: each chunk waits for bandwidth tokens before
+      // it flows downstream, so progress tracks the actual (capped) throughput.
+      Stream<Uint8List> pump() async* {
+        await for (final chunk in handle.stream) {
+          await limiter.acquire(chunk.length);
+          hasher?.add(chunk);
+          report(sent + chunk.length);
+          yield chunk;
+        }
+      }
 
-      await dst.write(dstPath, counting, total, onProgress: (s) => report(s));
+      await dst.write(dstPath, pump(), total, onProgress: (s) => report(s));
       hasher?.close();
 
       if (verify != 'off') {
