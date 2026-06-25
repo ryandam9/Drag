@@ -504,8 +504,8 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
 
       _sectionTitle('Credentials', Icons.vpn_key_outlined),
       const SizedBox(height: 12),
-      // Credentials source: typed, or read live from ~/.aws/credentials.
-      _checkRow('Load credentials from ~/.aws/credentials (auto-refreshed)', c.useAwsProfile,
+      // Credentials source: typed, or the AWS chain (env vars → ~/.aws).
+      _checkRow('Use AWS environment / ~/.aws credentials (auto-refreshed)', c.useAwsProfile,
           (v) => setState(() => c.useAwsProfile = v)),
       const SizedBox(height: 12),
       if (c.useAwsProfile) ...[
@@ -513,9 +513,10 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
             _field(_awsProfile, (v) => c.awsProfile = v, hint: 'default (or \$AWS_PROFILE)', icon: Icons.person_outline)),
         const SizedBox(height: 6),
         Text(
-          'Access key, secret and session token are read from the profile on '
-          'every request, so refreshed temporary credentials are picked up '
-          'automatically.',
+          'Credentials are resolved per request from the AWS environment '
+          'variables (AWS_ACCESS_KEY_ID / …) if set, otherwise this profile in '
+          '~/.aws/credentials — so refreshed temporary credentials are picked '
+          'up automatically.',
           style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
         ),
       ] else ...[

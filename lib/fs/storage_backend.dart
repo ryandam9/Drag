@@ -320,11 +320,16 @@ class S3Backend extends StorageBackend {
   /// AWS shared-credentials profile, or the typed key/secret/token.
   static AwsCredentials _resolveCredentials(Connection c) {
     if (c.useAwsProfile) {
+      // Standard AWS chain: environment variables take precedence, then the
+      // shared credentials file profile. Both are re-read per request, so
+      // refreshed temporary credentials are picked up automatically.
+      final env = loadAwsEnvCredentials();
+      if (env != null) return env;
       final name = resolveAwsProfile(c);
       final creds = loadAwsCredentials(name);
       if (creds == null) {
         throw S3Exception(0,
-            'AWS profile "$name" not found or incomplete in ${awsCredentialsPath()}');
+            'No AWS credentials in the environment or profile "$name" (${awsCredentialsPath()})');
       }
       return creds;
     }

@@ -23,6 +23,13 @@ String? debugAwsCredentialsPath;
 @visibleForTesting
 String? debugAwsConfigPath;
 
+/// Test seam — when set, overrides the process environment used by the
+/// environment-variable credential provider.
+@visibleForTesting
+Map<String, String>? debugAwsEnv;
+
+Map<String, String> _env() => debugAwsEnv ?? Platform.environment;
+
 String _home() =>
     Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
 
@@ -73,6 +80,18 @@ AwsCredentials? loadAwsCredentials(String profile, {String? path}) {
   final secret = section['aws_secret_access_key'] ?? '';
   if (key.isEmpty || secret.isEmpty) return null;
   final token = section['aws_session_token'] ?? section['aws_security_token'] ?? '';
+  return AwsCredentials(key, secret, sessionToken: token.isEmpty ? null : token);
+}
+
+/// Credentials from the standard AWS environment variables
+/// (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`), or
+/// null if the access key and secret aren't both present.
+AwsCredentials? loadAwsEnvCredentials() {
+  final env = _env();
+  final key = env['AWS_ACCESS_KEY_ID'] ?? '';
+  final secret = env['AWS_SECRET_ACCESS_KEY'] ?? '';
+  if (key.isEmpty || secret.isEmpty) return null;
+  final token = env['AWS_SESSION_TOKEN'] ?? env['AWS_SECURITY_TOKEN'] ?? '';
   return AwsCredentials(key, secret, sessionToken: token.isEmpty ? null : token);
 }
 
