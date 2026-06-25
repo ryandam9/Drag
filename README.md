@@ -72,9 +72,12 @@ actual error (`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
 > role** (STS `AssumeRole`): set a role ARN and the base credentials are
 > exchanged for temporary, auto-refreshed credentials scoped to that role.
 
-> SFTP host keys are verified **trust-on-first-use**: the server's key is
-> remembered on first connect (SQLite) and a later change is rejected as a
-> possible man-in-the-middle. Manage trusted keys in Settings → Fingerprints.
+> SFTP host keys are verified **trust-on-first-use**: on the first connection
+> Drag shows the host's fingerprint and asks you to trust it (once, or
+> remembered in SQLite); a later change to a remembered key is rejected as a
+> possible man-in-the-middle. If the key store can't be opened, verification
+> falls back to a session-only memory store rather than silently accepting
+> every key. Manage trusted keys in Settings → Fingerprints.
 
 ## Screens
 

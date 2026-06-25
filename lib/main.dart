@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' show inMemoryDatabasePath;
 import 'package:window_manager/window_manager.dart';
 
 import 'app_shell.dart';
@@ -78,9 +79,18 @@ Future<void> main() async {
   KnownHostsStore? knownHostsStore;
   try {
     knownHostsStore = await KnownHostsStore.open();
-    globalHostKeyVerifier = HostKeyVerifier(knownHostsStore);
   } catch (_) {
-    knownHostsStore = null;
+    // Persistent store unavailable — fall back to a session-only in-memory
+    // store so host-key verification still happens (just not remembered across
+    // restarts), rather than silently accepting every key.
+    try {
+      knownHostsStore = await KnownHostsStore.open(inMemoryDatabasePath);
+    } catch (_) {
+      knownHostsStore = null;
+    }
+  }
+  if (knownHostsStore != null) {
+    globalHostKeyVerifier = HostKeyVerifier(knownHostsStore);
   }
 
   // Apply the persisted theme + fonts to the global palette before the first frame.

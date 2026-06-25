@@ -419,9 +419,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ]),
         const SizedBox(height: 4),
         Text(
-          'Drag remembers each SFTP server\'s key the first time you connect and '
-          'refuses to connect if it later changes (a possible man-in-the-middle). '
-          'Forget an entry to be re-prompted, e.g. after a legitimate key rotation.',
+          'On the first connection to an SFTP server, Drag shows the host\'s '
+          'fingerprint and asks you to trust it (once, or remembered). It then '
+          'refuses to connect if a remembered key later changes (a possible '
+          'man-in-the-middle). Forget an entry to be re-prompted, e.g. after a '
+          'legitimate key rotation.',
           style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
         ),
         const SizedBox(height: 14),

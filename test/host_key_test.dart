@@ -60,6 +60,52 @@ void main() {
     });
   });
 
+  group('HostKeyVerifier first-use prompt', () {
+    test('"trust & remember" accepts and persists the key', () async {
+      final v = HostKeyVerifier(store)..prompt = (_) async => HostKeyDecision.trustAndRemember;
+      expect(await v.check('h', 22, 't', 'SHA256:aaa'), HostKeyOutcome.trustedFirstUse);
+      expect((await store.find('h', 22))!.fingerprint, 'SHA256:aaa');
+    });
+
+    test('"trust once" accepts but does not persist', () async {
+      final v = HostKeyVerifier(store)..prompt = (_) async => HostKeyDecision.trustOnce;
+      expect(await v.verify('h', 22, 't', 'SHA256:aaa'), isTrue);
+      expect(await store.find('h', 22), isNull); // not remembered
+    });
+
+    test('"cancel" rejects the connection', () async {
+      final v = HostKeyVerifier(store)..prompt = (_) async => HostKeyDecision.cancel;
+      expect(await v.check('h', 22, 't', 'SHA256:aaa'), HostKeyOutcome.rejectedByUser);
+      expect(await v.verify('h', 22, 't', 'SHA256:aaa'), isFalse);
+      expect(await store.find('h', 22), isNull);
+    });
+
+    test('the prompt receives the presented fingerprint', () async {
+      HostKeyInfo? got;
+      final v = HostKeyVerifier(store)
+        ..prompt = (info) async {
+          got = info;
+          return HostKeyDecision.trustOnce;
+        };
+      await v.check('host.example', 2222, 'ssh-ed25519', 'SHA256:zzz');
+      expect(got!.host, 'host.example');
+      expect(got!.port, 2222);
+      expect(got!.fingerprint, 'SHA256:zzz');
+    });
+
+    test('a remembered host never re-prompts', () async {
+      var prompts = 0;
+      final v = HostKeyVerifier(store)
+        ..prompt = (_) async {
+          prompts++;
+          return HostKeyDecision.trustAndRemember;
+        };
+      await v.check('h', 22, 't', 'SHA256:aaa');
+      await v.check('h', 22, 't', 'SHA256:aaa'); // matches → no prompt
+      expect(prompts, 1);
+    });
+  });
+
   group('KnownHostsStore', () {
     test('load is sorted; remove and clear work', () async {
       await store.trust(const KnownHost(host: 'b', port: 22, type: 't', fingerprint: 'f2'));
