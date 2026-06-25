@@ -10,6 +10,7 @@ TransferRecord rec({
   int sizeBytes = 1000,
   int direction = 0, // 0 = upload
   bool success = true,
+  DateTime? finishedAt,
 }) =>
     TransferRecord(
       name: name,
@@ -20,7 +21,7 @@ TransferRecord rec({
       direction: direction,
       durationMs: 1000,
       success: success,
-      finishedAt: DateTime(2024, 1, 1),
+      finishedAt: finishedAt ?? DateTime(2024, 1, 1),
     );
 
 void main() {
@@ -150,6 +151,65 @@ void main() {
 
     test('empty input yields empty breakdown', () {
       expect(breakdownByEndpoint(const []), isEmpty);
+    });
+  });
+
+  group('date window', () {
+    final now = DateTime(2024, 6, 15, 12);
+    test('historySince computes the right cut-offs', () {
+      expect(historySince(HistoryDateFilter.all, now), isNull);
+      expect(historySince(HistoryDateFilter.last24h, now), now.subtract(const Duration(hours: 24)));
+      expect(historySince(HistoryDateFilter.last7d, now), now.subtract(const Duration(days: 7)));
+      expect(historySince(HistoryDateFilter.last30d, now), now.subtract(const Duration(days: 30)));
+    });
+
+    test('since excludes records finished before the cut-off', () {
+      final recent = rec(name: 'recent', finishedAt: now.subtract(const Duration(hours: 2)));
+      final old = rec(name: 'old', finishedAt: now.subtract(const Duration(days: 3)));
+      final since = historySince(HistoryDateFilter.last24h, now);
+      expect(historyMatches(recent, since: since), isTrue);
+      expect(historyMatches(old, since: since), isFalse);
+      final out = filterHistory([recent, old], since: since);
+      expect(out.map((r) => r.name), ['recent']);
+    });
+  });
+
+  group('bytesOverTime', () {
+    final start = DateTime(2024, 1, 1);
+    final end = DateTime(2024, 1, 1, 4); // 4-hour span
+
+    test('buckets bytes by finish time, oldest first', () {
+      final records = [
+        rec(sizeBytes: 100, finishedAt: start), // bucket 0
+        rec(sizeBytes: 50, finishedAt: start.add(const Duration(hours: 1))), // bucket 1
+        rec(sizeBytes: 25, finishedAt: start.add(const Duration(hours: 1, minutes: 30))), // bucket 1
+        rec(sizeBytes: 10, finishedAt: start.add(const Duration(hours: 3))), // bucket 3
+      ];
+      final series = bytesOverTime(records, start: start, end: end, buckets: 4);
+      expect(series, [100, 75, 0, 10]);
+    });
+
+    test('ignores records outside the range', () {
+      final records = [
+        rec(sizeBytes: 999, finishedAt: start.subtract(const Duration(hours: 1))),
+        rec(sizeBytes: 999, finishedAt: end.add(const Duration(hours: 1))),
+        rec(sizeBytes: 7, finishedAt: start.add(const Duration(hours: 2))),
+      ];
+      final series = bytesOverTime(records, start: start, end: end, buckets: 4);
+      expect(series.fold<int>(0, (a, b) => a + b), 7);
+    });
+
+    test('the end instant lands in the last bucket (half-open at end)', () {
+      final atEnd = rec(sizeBytes: 5, finishedAt: end);
+      final series = bytesOverTime([atEnd], start: start, end: end, buckets: 4);
+      // end is exclusive → excluded entirely
+      expect(series, [0, 0, 0, 0]);
+    });
+
+    test('degenerate inputs yield an empty series', () {
+      expect(bytesOverTime(const [], start: start, end: start, buckets: 4), isEmpty);
+      expect(bytesOverTime(const [], start: end, end: start, buckets: 4), isEmpty);
+      expect(bytesOverTime(const [], start: start, end: end, buckets: 0), isEmpty);
     });
   });
 }
