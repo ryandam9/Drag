@@ -166,7 +166,8 @@ sudo apt-get update
 sudo apt-get install -y \
   clang cmake ninja-build pkg-config \
   libgtk-3-dev liblzma-dev \
-  libsqlite3-0 libsqlite3-dev      # SQLite is used for history/connections/settings/sessions
+  libsqlite3-0 libsqlite3-dev \    # SQLite is used for history/connections/settings/sessions
+  libsecret-1-dev                  # OS keychain for connection secrets (flutter_secure_storage)
 ```
 
 **Run from source:**

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/connection_store.dart';
+import '../data/secret_store.dart';
 import '../models/connection.dart';
 import 'providers.dart';
 import 'sessions_provider.dart';
@@ -21,12 +22,28 @@ class ConnectionsState {
 /// endpoints in the Connection Manager.
 class ConnectionsNotifier extends Notifier<ConnectionsState> {
   ConnectionStore? get _store => ref.read(connectionStoreProvider);
+  SecretStore? get _secrets => ref.read(secretStoreProvider);
 
   @override
   ConnectionsState build() {
     final initial = ref.read(initialConnectionsProvider);
     final list = List<Connection>.of(initial ?? const []);
+    // Lazily pull each connection's secrets out of the OS keychain and back
+    // into the form, once the app is running (keychain plugins aren't ready
+    // before the first frame).
+    if (_secrets != null && list.isNotEmpty) {
+      Future.microtask(() => _loadSecrets(list));
+    }
     return ConnectionsState(list, list.isEmpty ? null : list.first);
+  }
+
+  Future<void> _loadSecrets(List<Connection> list) async {
+    final store = _secrets;
+    if (store == null) return;
+    for (final c in list) {
+      if (c.id.isNotEmpty) await store.load(c);
+    }
+    touch(); // refresh the form with the restored secrets
   }
 
   List<Connection> get _list => state.connections;
@@ -49,21 +66,29 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
   }
 
   /// Persist edits made to [c] in place (via the form) and refresh listeners.
+  /// Non-secret fields go to SQLite; secrets go to the OS keychain.
   Future<void> save(Connection c) async {
     if (c.id.isEmpty) c.id = Connection.newId();
     // [c] is mutated in place by the form; emit a fresh list so watchers rebuild.
     state = ConnectionsState(List.of(_list), c);
     await _store?.upsert(c, _list.indexOf(c).clamp(0, _list.length));
+    await _secrets?.save(c);
   }
 
   Future<Connection> duplicate(Connection c) async {
     final copy = Connection.fromJson(c.toJson())
       ..id = Connection.newId()
-      ..name = '${c.name} (copy)';
+      ..name = '${c.name} (copy)'
+      // toJson drops secrets, so copy them across explicitly.
+      ..password = c.password
+      ..passphrase = c.passphrase
+      ..secretAccessKey = c.secretAccessKey
+      ..sessionToken = c.sessionToken;
     final idx = _list.indexOf(c);
     final next = [..._list]..insert(idx < 0 ? _list.length : idx + 1, copy);
     state = ConnectionsState(next, copy);
     await _persist();
+    await _secrets?.save(copy);
     return copy;
   }
 
@@ -76,6 +101,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
         : state.selected;
     state = ConnectionsState(next, selected);
     await _persist();
+    await _secrets?.delete(c.id);
   }
 }
 

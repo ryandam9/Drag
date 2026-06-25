@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'app_shell.dart';
 import 'data/connection_store.dart';
 import 'data/history_db.dart';
+import 'data/secret_store.dart';
 import 'data/session_store.dart';
 import 'data/settings_store.dart';
 import 'models/app_font.dart';
@@ -97,6 +98,7 @@ Future<void> main() async {
       connectionStoreProvider.overrideWithValue(connectionStore),
       settingsStoreProvider.overrideWithValue(settingsStore),
       sessionStoreProvider.overrideWithValue(sessionStore),
+      secretStoreProvider.overrideWithValue(KeychainSecretStore()),
       initialSettingsProvider.overrideWithValue(settings),
       initialConnectionsProvider.overrideWithValue(connections),
       initialSessionLayoutProvider.overrideWithValue(sessionLayout),

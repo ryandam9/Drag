@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/connection_store.dart';
 import '../data/history_db.dart';
+import '../data/secret_store.dart';
 import '../data/session_store.dart';
 import '../data/settings_store.dart';
 import '../models/connection.dart';
@@ -18,6 +19,10 @@ final connectionStoreProvider = Provider<ConnectionStore?>((ref) => null);
 final settingsStoreProvider = Provider<SettingsStore?>((ref) => null);
 
 final sessionStoreProvider = Provider<SessionStore?>((ref) => null);
+
+/// Where connection secrets are persisted (OS keychain). Null → secrets stay
+/// in memory only, as before keychain support existed.
+final secretStoreProvider = Provider<SecretStore?>((ref) => null);
 
 /// Settings loaded from [SettingsStore] at startup (null → defaults).
 final initialSettingsProvider = Provider<AppSettings?>((ref) => null);
