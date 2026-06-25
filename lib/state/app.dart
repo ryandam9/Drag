@@ -7,7 +7,7 @@ export 'connection_log_provider.dart';
 export 'connections_provider.dart';
 export 'history_provider.dart';
 export 'navigation_provider.dart';
-export 'pane_controller.dart' show PaneController, DragPayload;
+export 'pane_controller.dart' show PaneController, DragPayload, SortKey, sortItems;
 export 'providers.dart';
 export 'session.dart' show Session;
 export 'sessions_provider.dart' show SessionsState, SessionsNotifier, sessionsProvider;

@@ -5,6 +5,38 @@ import '../models/connection.dart';
 import '../models/file_item.dart';
 import 'compare.dart';
 
+/// A sortable file-table column.
+enum SortKey { name, size, modified, perms }
+
+/// Returns a new list sorted by [key] in [ascending] order. The `..` parent is
+/// always pinned first and directories are always grouped before files; only
+/// entries *within* a group are reordered by the column, so toggling direction
+/// never scatters folders among files. Ties fall back to case-insensitive name.
+List<FileItem> sortItems(List<FileItem> items, SortKey key, bool ascending) {
+  int byKey(FileItem a, FileItem b) {
+    switch (key) {
+      case SortKey.name:
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      case SortKey.size:
+        return (a.sizeBytes ?? -1).compareTo(b.sizeBytes ?? -1);
+      case SortKey.modified:
+        return a.modified.compareTo(b.modified);
+      case SortKey.perms:
+        return a.perms.compareTo(b.perms);
+    }
+  }
+
+  final sorted = [...items];
+  sorted.sort((a, b) {
+    if (a.isParent != b.isParent) return a.isParent ? -1 : 1;
+    if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
+    var c = byKey(a, b);
+    if (c == 0) c = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    return ascending ? c : -c;
+  });
+  return sorted;
+}
+
 /// Holds the live state of one browser pane: which endpoint/backend it points
 /// at, the current directory, the listing, and selection — plus async
 /// loading/error state for real backends (Local / S3).
@@ -31,11 +63,18 @@ class PaneController {
   /// The unfiltered listing as returned by the backend.
   List<FileItem> _all = const [];
 
-  /// The listing the UI sees (after the hidden-file filter). Selection indices
-  /// are relative to this list.
+  /// The listing the UI sees (after the hidden-file filter, the in-pane name
+  /// filter and the active sort). Selection indices are relative to this list.
   List<FileItem> items = const [];
   bool loading = false;
   String? error;
+
+  /// In-pane name filter (substring, case-insensitive). Empty shows everything.
+  String filterQuery = '';
+
+  /// The active sort column and direction (default: name ascending).
+  SortKey sortKey = SortKey.name;
+  bool sortAscending = true;
 
   /// Per-entry comparison marks from the last Compare (by name). Empty when no
   /// comparison is active; cleared automatically when the listing reloads.
@@ -94,7 +133,7 @@ class PaneController {
     onChanged();
     try {
       _all = await backend.list(path);
-      _applyFilter();
+      _applyView();
     } catch (e) {
       _all = const [];
       items = const [];
@@ -107,10 +146,14 @@ class PaneController {
     }
   }
 
-  void _applyFilter() {
-    items = showHidden
-        ? _all
-        : _all.where((f) => f.isParent || !f.name.startsWith('.')).toList();
+  /// Recomputes [items] from [_all] by applying, in order: the hidden-file
+  /// filter, the in-pane name filter, and the active sort.
+  void _applyView() {
+    Iterable<FileItem> v = _all;
+    if (!showHidden) v = v.where((f) => f.isParent || !f.name.startsWith('.'));
+    final q = filterQuery.trim().toLowerCase();
+    if (q.isNotEmpty) v = v.where((f) => f.isParent || f.name.toLowerCase().contains(q));
+    items = sortItems(v.toList(), sortKey, sortAscending);
   }
 
   /// Toggle hidden-file visibility, re-filtering the current listing in place
@@ -118,9 +161,32 @@ class PaneController {
   void setShowHidden(bool value) {
     if (showHidden == value) return;
     showHidden = value;
+    _resetView();
+  }
+
+  /// Set the in-pane name filter and re-apply the view.
+  void setFilter(String query) {
+    if (filterQuery == query) return;
+    filterQuery = query;
+    _resetView();
+  }
+
+  /// Sort by [key]; selecting the active column flips the direction.
+  void setSort(SortKey key) {
+    if (sortKey == key) {
+      sortAscending = !sortAscending;
+    } else {
+      sortKey = key;
+      sortAscending = true;
+    }
+    _resetView();
+  }
+
+  /// Re-derive [items] and drop the (now index-shifted) selection.
+  void _resetView() {
     selectedIndex = null;
     selection.clear();
-    _applyFilter();
+    _applyView();
     onChanged();
   }
 
@@ -133,6 +199,18 @@ class PaneController {
   }
 
   Future<void> goUp() => _navigate(backend.parentPath(path));
+
+  /// Navigate up [levels] directories at once (for clickable breadcrumbs).
+  /// Applies [StorageBackend.parentPath] repeatedly, so it works for every
+  /// backend without per-backend path maths.
+  Future<void> goUpLevels(int levels) async {
+    if (levels <= 0) return;
+    var target = path;
+    for (var i = 0; i < levels; i++) {
+      target = backend.parentPath(target);
+    }
+    await _navigate(target);
+  }
 
   /// Jump straight to [newPath] (e.g. a bookmark) on the current backend.
   Future<void> navigateTo(String newPath) => _navigate(newPath);
