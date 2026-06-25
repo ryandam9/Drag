@@ -391,7 +391,11 @@ void main() {
       final credFile = File('${dir.path}/credentials');
       credFile.writeAsStringSync('[default]\naws_access_key_id=AKIAONE\naws_secret_access_key=s1\n');
       debugAwsCredentialsPath = credFile.path;
-      addTearDown(() => debugAwsCredentialsPath = null);
+      debugAwsEnv = {}; // isolate from any AWS_* vars in the test environment
+      addTearDown(() {
+        debugAwsCredentialsPath = null;
+        debugAwsEnv = null;
+      });
 
       final mock = await MockS3.start((req, res) => xml(res, listingXml(contents: [])));
       addTearDown(mock.stop);
@@ -416,11 +420,62 @@ void main() {
       expect(mock.last.headers.value('authorization'), contains('Credential=AKIATWO/'));
     });
 
+    test('loadAwsEnvCredentials reads the standard environment variables', () {
+      debugAwsEnv = {
+        'AWS_ACCESS_KEY_ID': 'AKIAENV',
+        'AWS_SECRET_ACCESS_KEY': 'envsecret',
+        'AWS_SESSION_TOKEN': 'envtoken',
+      };
+      addTearDown(() => debugAwsEnv = null);
+      final c = loadAwsEnvCredentials()!;
+      expect(c.accessKeyId, 'AKIAENV');
+      expect(c.secretAccessKey, 'envsecret');
+      expect(c.sessionToken, 'envtoken');
+
+      // The secret is required — a lone key yields no credentials.
+      debugAwsEnv = {'AWS_ACCESS_KEY_ID': 'AKIAENV'};
+      expect(loadAwsEnvCredentials(), isNull);
+    });
+
+    test('environment credentials take precedence over the shared profile', () async {
+      // A profile on disk that should be ignored while env vars are present.
+      final dir = await Directory.systemTemp.createTemp('awsenv');
+      addTearDown(() => dir.delete(recursive: true));
+      File('${dir.path}/credentials').writeAsStringSync(
+          '[default]\naws_access_key_id=AKIAFILE\naws_secret_access_key=filesecret\n');
+      debugAwsCredentialsPath = '${dir.path}/credentials';
+      debugAwsEnv = {'AWS_ACCESS_KEY_ID': 'AKIAENV', 'AWS_SECRET_ACCESS_KEY': 'envsecret'};
+      addTearDown(() {
+        debugAwsCredentialsPath = null;
+        debugAwsEnv = null;
+      });
+
+      final mock = await MockS3.start((req, res) => xml(res, listingXml(contents: [])));
+      addTearDown(mock.stop);
+      final b = S3Backend(Connection(
+        name: 's3',
+        protocol: Protocol.s3,
+        bucket: 'bk',
+        region: 'us-east-1',
+        endpoint: mock.endpoint,
+        useSsl: false,
+        useAwsProfile: true,
+      ));
+      addTearDown(b.dispose);
+
+      await b.list('');
+      expect(mock.last.headers.value('authorization'), contains('Credential=AKIAENV/'));
+    });
+
     test('a missing profile surfaces a clear error', () async {
       final dir = await Directory.systemTemp.createTemp('awsprof2');
       addTearDown(() => dir.delete(recursive: true));
       debugAwsCredentialsPath = '${dir.path}/credentials'; // does not exist
-      addTearDown(() => debugAwsCredentialsPath = null);
+      debugAwsEnv = {}; // isolate from any AWS_* vars in the test environment
+      addTearDown(() {
+        debugAwsCredentialsPath = null;
+        debugAwsEnv = null;
+      });
 
       final b = S3Backend(Connection(
         name: 's3',
