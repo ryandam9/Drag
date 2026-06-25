@@ -1,7 +1,10 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:drag/data/known_hosts_store.dart';
+import 'package:drag/fs/host_key_verifier.dart';
 import 'package:drag/main.dart';
 import 'package:drag/state/app.dart';
 import 'package:drag/widgets/nav_rail.dart';
@@ -50,5 +53,25 @@ void main() {
 
     // Stats footer of the queue screen.
     expect(find.text('Total queued'), findsOneWidget);
+  });
+
+  testWidgets('AppShell registers the SFTP host-key prompt on mount (any screen)', (tester) async {
+    // Open the real (in-memory) store outside the fake-async zone — awaiting
+    // sqflite I/O directly inside testWidgets would deadlock.
+    late final KnownHostsStore store;
+    await tester.runAsync(() async {
+      sqfliteFfiInit();
+      store = await KnownHostsStore.open(inMemoryDatabasePath);
+    });
+    globalHostKeyVerifier = HostKeyVerifier(store);
+    addTearDown(() => globalHostKeyVerifier = null);
+
+    // No prompt before the shell mounts — a connection now would auto-trust.
+    expect(globalHostKeyVerifier!.prompt, isNull);
+    await tester.pumpWidget(app());
+    await tester.pump();
+    // The always-mounted shell wired the interactive prompt, so connections
+    // from the Connection Manager (or anywhere) are covered, not just Browser.
+    expect(globalHostKeyVerifier!.prompt, isNotNull);
   });
 }
