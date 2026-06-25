@@ -73,6 +73,12 @@ class TransfersNotifier extends Notifier<TransfersState> {
 
   @override
   TransfersState build() {
+    // Apply the speed cap live: changing the setting updates the shared limiter
+    // immediately, so transfers that are already active respect the new cap
+    // without waiting for the next one to start.
+    ref.listen(settingsProvider.select((s) => s.transferLimitKbps), (_, kbps) {
+      _service.limiter.bytesPerSecond = kbps <= 0 ? null : kbps * 1024;
+    }, fireImmediately: true);
     ref.onDispose(() {
       _disposed = true;
       _runners.clear();
@@ -84,6 +90,11 @@ class TransfersNotifier extends Notifier<TransfersState> {
     });
     return const TransfersState();
   }
+
+  /// The shared limiter's current cap in bytes/sec (null = unlimited). Exposed
+  /// for tests asserting the live speed-limit update.
+  @visibleForTesting
+  int? get currentRateCap => _service.limiter.bytesPerSecond;
 
   List<Transfer> get _list => state.transfers;
 
