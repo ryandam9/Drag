@@ -167,6 +167,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
       dstPath: dstPath,
       onStatus: () => _emit(_list),
       onProgress: t.touchLive, // progress repaints only the progress widgets
+      verify: ref.read(settingsProvider).verifyLevel,
     )
         .then((_) {
       if (_disposed) return;
