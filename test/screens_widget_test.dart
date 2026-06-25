@@ -115,6 +115,33 @@ void main() {
       expect(find.text('No connections yet'), findsOneWidget);
     });
 
+    testWidgets('groups by tag and filters the list live via search', (tester) async {
+      final conns = [
+        Connection(id: '1', name: 'Prod SFTP', host: 'prod.example.com', tag: 'Production'),
+        Connection(id: '2', name: 'Staging box', host: 'stg.example.com', tag: 'Staging'),
+        Connection(id: '3', name: 'Data bucket', protocol: Protocol.s3, bucket: 'acme', tag: 'Production'),
+      ];
+      final c = makeContainer(connections: conns);
+      await pumpScreen(tester, c, const ConnectionManagerScreen());
+
+      // Sidebar is grouped by tag (group headers are sidebar-only).
+      expect(find.text('PRODUCTION'), findsOneWidget);
+      expect(find.text('STAGING'), findsOneWidget);
+
+      // The search box is the first TextField (sidebar precedes the form).
+      final search = find.byType(TextField).first;
+      await tester.enterText(search, 'staging');
+      await tester.pump();
+      expect(find.text('STAGING'), findsOneWidget);
+      expect(find.text('PRODUCTION'), findsNothing); // filtered out
+      expect(find.text('Staging box'), findsOneWidget);
+
+      // A query with no hits shows the empty note.
+      await tester.enterText(search, 'zzzz');
+      await tester.pump();
+      expect(find.textContaining('No matches'), findsOneWidget);
+    });
+
     testWidgets('lays out without overflow on a narrow window', (tester) async {
       final binding = TestWidgetsFlutterBinding.ensureInitialized();
       binding.platformDispatcher.views.first.physicalSize = const Size(520, 820);
