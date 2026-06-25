@@ -24,6 +24,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String _query = '';
   HistoryStatusFilter _status = HistoryStatusFilter.all;
   HistoryDirectionFilter _direction = HistoryDirectionFilter.all;
+  HistoryDateFilter _date = HistoryDateFilter.all;
 
   @override
   void dispose() {
@@ -36,12 +37,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final history = ref.watch(historyProvider);
     final notifier = ref.read(historyProvider.notifier);
     final s = history.stats;
-    final filtered =
-        filterHistory(history.records, query: _query, status: _status, direction: _direction);
-    final breakdown = breakdownByEndpoint(history.records);
+    final since = historySince(_date, DateTime.now());
+    final filtered = filterHistory(history.records,
+        query: _query, status: _status, direction: _direction, since: since);
+    final breakdown = breakdownByEndpoint(filtered);
     final filtering = _query.trim().isNotEmpty ||
         _status != HistoryStatusFilter.all ||
-        _direction != HistoryDirectionFilter.all;
+        _direction != HistoryDirectionFilter.all ||
+        _date != HistoryDateFilter.all;
     return Container(
       color: FsColors.bgScaffold,
       child: Column(
@@ -87,6 +90,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   Icons.speed, FsColors.amber, last: true),
             ]),
           ),
+
+          // ── Throughput-over-time sparkline ──
+          if (filtered.length > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+              child: _throughputChart(filtered),
+            ),
 
           // ── Per-endpoint breakdown (only when there's more than one) ──
           if (breakdown.length > 1)
@@ -145,6 +155,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         HistoryDirectionFilter.upload: 'Uploads',
         HistoryDirectionFilter.download: 'Downloads',
       }, (v) => setState(() => _direction = v)),
+      const SizedBox(width: 8),
+      _dropdown<HistoryDateFilter>(_date, const {
+        HistoryDateFilter.all: 'All time',
+        HistoryDateFilter.last24h: 'Last 24h',
+        HistoryDateFilter.last7d: 'Last 7 days',
+        HistoryDateFilter.last30d: 'Last 30 days',
+      }, (v) => setState(() => _date = v)),
       const Spacer(),
       if (filtering)
         Text('$shown match${shown == 1 ? '' : 'es'}',
@@ -174,6 +191,45 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           },
         ),
       ),
+    );
+  }
+
+  Widget _throughputChart(List<TransferRecord> shown) {
+    // Span the window from the oldest to the newest shown transfer. A flat
+    // (zero-width) span — e.g. everything finished at once — has nothing
+    // meaningful to plot.
+    var lo = shown.first.finishedAt;
+    var hi = shown.first.finishedAt;
+    for (final r in shown) {
+      if (r.finishedAt.isBefore(lo)) lo = r.finishedAt;
+      if (r.finishedAt.isAfter(hi)) hi = r.finishedAt;
+    }
+    if (!hi.isAfter(lo)) return const SizedBox.shrink();
+    final series = bytesOverTime(shown, start: lo, end: hi.add(const Duration(milliseconds: 1)), buckets: 32);
+    final peak = series.fold<int>(0, (m, v) => v > m ? v : m);
+    if (peak == 0) return const SizedBox.shrink();
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+      decoration: BoxDecoration(
+        color: FsColors.bgSurface,
+        borderRadius: BorderRadius.circular(FsColors.rCard),
+        border: Border.all(color: FsColors.border),
+      ),
+      child: Row(children: [
+        Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text('THROUGHPUT', style: FsType.sans(size: 9, weight: FontWeight.w700, color: FsColors.text3, letterSpacing: 0.8)),
+          const SizedBox(height: 2),
+          Text('peak ${formatBytes(peak)}', style: FsType.sans(size: 11, color: FsColors.text2, tabular: true)),
+        ]),
+        const SizedBox(width: 14),
+        Expanded(
+          child: CustomPaint(
+            painter: _SparklinePainter(series, FsColors.accent),
+            size: Size.infinite,
+          ),
+        ),
+      ]),
     );
   }
 
@@ -415,6 +471,44 @@ class _HistoryTable extends StatelessWidget {
     if (d.inHours < 24) return '${d.inHours}h ago';
     return '${d.inDays}d ago';
   }
+}
+
+/// Paints a filled sparkline of the [values] series, scaled to the tallest
+/// bucket. Degenerate input (empty or all-zero) paints nothing.
+class _SparklinePainter extends CustomPainter {
+  final List<int> values;
+  final Color color;
+  const _SparklinePainter(this.values, this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.length < 2 || size.width <= 0 || size.height <= 0) return;
+    final peak = values.fold<int>(0, (m, v) => v > m ? v : m);
+    if (peak == 0) return;
+    final dx = size.width / (values.length - 1);
+    Offset at(int i) => Offset(i * dx, size.height - (values[i] / peak) * size.height);
+
+    final line = Path()..moveTo(0, at(0).dy);
+    for (var i = 1; i < values.length; i++) {
+      line.lineTo(at(i).dx, at(i).dy);
+    }
+    final fill = Path.from(line)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(fill, Paint()..color = color.withValues(alpha: 0.14));
+    canvas.drawPath(
+      line,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SparklinePainter old) => old.values != values || old.color != color;
 }
 
 /// Formats a raw millisecond duration for the history table.
