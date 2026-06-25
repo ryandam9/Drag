@@ -105,6 +105,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.15.1"
+  cross_file:
+    dependency: transitive
+    description:
+      name: cross_file
+      sha256: "28bb3ae56f117b5aec029d702a90f57d285cd975c3c5c281eaca38dbc47c5937"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.5+2"
   crypto:
     dependency: "direct main"
     description:
@@ -129,6 +137,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.18.0"
+  desktop_drop:
+    dependency: "direct main"
+    description:
+      name: desktop_drop
+      sha256: "927511f590ce01ee90d0d80f79bc71b9c919d8522d01e495e89a00c6f4a4fb5b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.6.1"
   fake_async:
     dependency: "direct dev"
     description:
@@ -773,6 +789,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  universal_platform:
+    dependency: transitive
+    description:
+      name: universal_platform
+      sha256: "64e16458a0ea9b99260ceb5467a214c1f298d647c659af1bff6d3bf82536b1ec"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
   uuid:
     dependency: transitive
     description:

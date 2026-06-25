@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,6 +24,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   double _split = 0.5;
   bool _dropHoverLeft = false;
   bool _dropHoverRight = false;
+  bool _osDropLeft = false; // native OS file-drag hovering the pane
+  bool _osDropRight = false;
 
   /// Runtime override for the log panel; null = follow the "show log on
   /// startup" setting.
@@ -617,8 +620,18 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
 
   // ── A pane (drag source + drop target) ──
   Widget _pane(PaneController pane, bool showPerms, {required bool left}) {
-    final hover = left ? _dropHoverLeft : _dropHoverRight;
-    return DragTarget<DragPayload>(
+    final hover = (left ? _dropHoverLeft : _dropHoverRight) || (left ? _osDropLeft : _osDropRight);
+    return DropTarget(
+      onDragEntered: (_) => setState(() => left ? _osDropLeft = true : _osDropRight = true),
+      onDragExited: (_) => setState(() => left ? _osDropLeft = false : _osDropRight = false),
+      onDragDone: (detail) {
+        setState(() => left ? _osDropLeft = false : _osDropRight = false);
+        final paths = detail.files.map((f) => f.path).where((s) => s.isNotEmpty).toList();
+        if (paths.isEmpty) return;
+        _sessions.focusPane(left);
+        ref.read(transfersProvider.notifier).importFiles(left ? _leftPane : _rightPane, paths);
+      },
+      child: DragTarget<DragPayload>(
       onWillAcceptWithDetails: (d) {
         if (d.data.fromLeft == left) return false;
         setState(() => left ? _dropHoverLeft = true : _dropHoverRight = true);
@@ -652,6 +665,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           ),
         );
       },
+      ),
     );
   }
 
