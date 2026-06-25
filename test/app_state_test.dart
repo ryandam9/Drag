@@ -138,6 +138,29 @@ void main() {
     });
   });
 
+  group('backend cache', () {
+    test('caches by connection id and evicting rebuilds', () {
+      final c = makeContainer();
+      final s = c.read(sessionsProvider.notifier);
+      final conn1 = Connection(id: 'cx', name: 'srv', protocol: Protocol.sftp);
+      // A rebuilt Connection object with the same id (e.g. after an edit).
+      final conn2 = Connection(id: 'cx', name: 'srv-edited', protocol: Protocol.sftp);
+
+      final b1 = s.backendFor(conn1);
+      expect(identical(s.backendFor(conn2), b1), isTrue); // same id ⇒ same backend
+
+      s.evictBackend(conn1);
+      expect(identical(s.backendFor(conn1), b1), isFalse); // evicted ⇒ rebuilt
+    });
+
+    test('does not cache an unsaved (empty-id) connection', () {
+      final c = makeContainer();
+      final s = c.read(sessionsProvider.notifier);
+      final conn = Connection(id: '', name: 'unsaved', protocol: Protocol.sftp);
+      expect(identical(s.backendFor(conn), s.backendFor(conn)), isFalse);
+    });
+  });
+
   group('endpoints', () {
     test('setPaneEndpoint to Local and to S3 connection', () async {
       final c = makeContainer(connections: sampleConnections());

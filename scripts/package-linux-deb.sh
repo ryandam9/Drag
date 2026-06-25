@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Builds a Debian package (.deb) from a Flutter Linux release bundle.
 #
-#   scripts/package-linux-deb.sh <bundle-dir> <version> <output.deb>
+#   scripts/package-linux-deb.sh <bundle-dir> <version> <output.deb> [arch]
 #
 # The app and its bundled data/libs are installed under /usr/lib/drag, with a
 # launcher at /usr/bin/drag, a .desktop entry and an icon — so it shows up in
 # the application menu and `drag` works from a terminal.
+#
+# [arch] defaults to the host's dpkg architecture (e.g. amd64, arm64).
 set -euo pipefail
 
-BUNDLE="${1:?usage: package-linux-deb.sh <bundle-dir> <version> <output.deb>}"
+BUNDLE="${1:?usage: package-linux-deb.sh <bundle-dir> <version> <output.deb> [arch]}"
 VERSION="${2:?missing version}"
 OUTPUT="${3:?missing output path}"
+ARCH="${4:-$(dpkg --print-architecture 2>/dev/null || echo amd64)}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
@@ -55,7 +58,7 @@ Package: drag
 Version: ${VERSION}
 Section: utils
 Priority: optional
-Architecture: amd64
+Architecture: ${ARCH}
 Maintainer: ryandam <ryandam.explorer@gmail.com>
 Installed-Size: ${SIZE_KB}
 Depends: libgtk-3-0, libsqlite3-0, libsecret-1-0, libnotify4

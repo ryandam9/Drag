@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -173,6 +174,7 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener, WidgetsB
 
   @override
   void dispose() {
+    _windowSaveTimer?.cancel();
     if (_isDesktop) windowManager.removeListener(this);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -189,6 +191,14 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener, WidgetsB
   }
 
   // ── Persist window geometry on resize / move ──
+  // Resize/move fire continuously while dragging; debounce so we write to
+  // SQLite once the geometry settles instead of on every event.
+  Timer? _windowSaveTimer;
+  void _scheduleWindowSave() {
+    _windowSaveTimer?.cancel();
+    _windowSaveTimer = Timer(const Duration(milliseconds: 400), _persistWindow);
+  }
+
   Future<void> _persistWindow() async {
     try {
       final size = await windowManager.getSize();
@@ -203,10 +213,10 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener, WidgetsB
   }
 
   @override
-  void onWindowResized() => _persistWindow();
+  void onWindowResized() => _scheduleWindowSave();
 
   @override
-  void onWindowMoved() => _persistWindow();
+  void onWindowMoved() => _scheduleWindowSave();
 
   // Track focus so transfer-finished notifications only fire when the app is
   // in the background.

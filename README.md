@@ -365,3 +365,24 @@ flutter test test/s3_integration_test.dart \
   --dart-define=S3_BUCKET=bucket-a --dart-define=S3_BUCKET2=bucket-b \
   --dart-define=S3_KEY=... --dart-define=S3_SECRET=...
 ```
+
+## Known limitations
+
+Drag is a capable desktop transfer client, but a few things are intentionally
+out of scope (or need external setup) today:
+
+- **AWS auth:** environment variables, the shared credentials/config file
+  (named profiles), and STS `AssumeRole` are supported. **AWS SSO**,
+  `credential_process`, web-identity, and full `source_profile`/`role_arn`
+  chaining are **not** — use a static key, a profile, or an assumed role.
+- **S3 listing:** a folder listing fetches all pages before rendering (a
+  streamed `listPages` API exists but the pane doesn't yet render
+  incrementally), so a very large prefix can take a moment to appear.
+- **Signed installers:** the macOS `.dmg` and Windows `.zip` produced by CI are
+  **unsigned** — they install with a first-launch OS prompt. Signing +
+  notarization need an Apple Developer ID / Windows code-signing certificate.
+  No in-app auto-update yet.
+- **Native OS drag:** dragging files *into* a pane from the system file manager
+  works; dragging *out* to the desktop/Finder/Explorer does not.
+- **SFTP:** host keys are trust-on-first-use (with a confirmation prompt);
+  there's no SSH agent / `~/.ssh/config` integration beyond default key files.

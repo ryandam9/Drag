@@ -47,7 +47,7 @@ String awsConfigPath() =>
 /// `default`.
 String resolveAwsProfile(Connection c) => c.awsProfile.isNotEmpty
     ? c.awsProfile
-    : (Platform.environment['AWS_PROFILE'] ?? 'default');
+    : (_env()['AWS_PROFILE'] ?? 'default');
 
 /// Minimal INI parser → `{section: {key: value}}`. Tolerates comments
 /// (`#` / `;`) and surrounding whitespace.

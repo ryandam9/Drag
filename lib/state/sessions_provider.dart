@@ -38,7 +38,10 @@ class SessionsState {
 /// next launch.
 class SessionsNotifier extends Notifier<SessionsState> {
   final LocalBackend _localBackend = LocalBackend();
-  final Map<Connection, StorageBackend> _backendCache = {};
+  // Keyed by the connection's stable id (not the mutable object identity), so
+  // an edited/rebuilt Connection with the same id reuses or correctly evicts
+  // its backend. Unsaved connections (empty id) aren't cached.
+  final Map<String, StorageBackend> _backendCache = {};
 
   int _seq = 0;
   bool _disposed = false;
@@ -50,6 +53,12 @@ class SessionsNotifier extends Notifier<SessionsState> {
     ref.onDispose(() {
       _disposed = true;
       _saveTimer?.cancel();
+      // Release pooled network clients (SFTP sockets / S3 HttpClients).
+      for (final b in _backendCache.values) {
+        b.dispose();
+      }
+      _backendCache.clear();
+      _localBackend.dispose();
     });
 
     // React to the "show hidden files" setting without rebuilding this notifier.
@@ -103,10 +112,14 @@ class SessionsNotifier extends Notifier<SessionsState> {
   // ── Backends ──
   StorageBackend backendFor(Connection? c) {
     if (c == null) return _localBackend;
-    return _backendCache.putIfAbsent(c, () => c.isS3 ? S3Backend(c) : SftpBackend(c));
+    if (c.id.isEmpty) return c.isS3 ? S3Backend(c) : SftpBackend(c); // don't cache unsaved
+    return _backendCache.putIfAbsent(c.id, () => c.isS3 ? S3Backend(c) : SftpBackend(c));
   }
 
-  void evictBackend(Connection c) => _backendCache.remove(c);
+  void evictBackend(Connection c) {
+    if (c.id.isEmpty) return;
+    _backendCache.remove(c.id)?.dispose(); // release the old client's sockets
+  }
 
   // ── State plumbing ──
   void _emit({List<Session>? sessions, int? activeSessionId, bool? focusedLeft}) {
