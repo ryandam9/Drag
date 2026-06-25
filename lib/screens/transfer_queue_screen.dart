@@ -371,6 +371,11 @@ class TransferQueueScreen extends ConsumerWidget {
               app.retry(t);
               Navigator.pop(ctx);
             }),
+          if (t.status != TransferStatus.done)
+            FsButton('Cancel transfer', kind: FsButtonKind.danger, onTap: () {
+              app.cancel(t);
+              Navigator.pop(ctx);
+            }),
           FsButton('Close', onTap: () => Navigator.pop(ctx)),
         ],
       ),

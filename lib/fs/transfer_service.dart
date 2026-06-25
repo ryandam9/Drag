@@ -8,6 +8,20 @@ import '../models/transfer.dart';
 import 'rate_limiter.dart';
 import 'storage_backend.dart';
 
+/// A cooperative cancellation handle for an in-flight transfer. Calling [abort]
+/// makes the streaming loop stop at the next chunk; the partial destination is
+/// then removed. Used by pause and cancel in the queue.
+class TransferControl {
+  bool _aborted = false;
+  void abort() => _aborted = true;
+  bool get isAborted => _aborted;
+}
+
+/// Thrown internally when a transfer is aborted via its [TransferControl].
+class _Aborted implements Exception {
+  const _Aborted();
+}
+
 /// Performs a real transfer by streaming bytes from a source backend into a
 /// destination backend, reporting live progress/speed onto the [Transfer].
 ///
@@ -46,6 +60,7 @@ class TransferService {
     void Function()? onProgress,
     String verify = 'off',
     int? bytesPerSecond,
+    TransferControl? control,
   }) async {
     // Apply the (shared) bandwidth cap; null/0 ⇒ unlimited.
     limiter.bytesPerSecond = bytesPerSecond;
@@ -97,7 +112,9 @@ class TransferService {
       // it flows downstream, so progress tracks the actual (capped) throughput.
       Stream<Uint8List> pump() async* {
         await for (final chunk in handle.stream) {
+          if (control?.isAborted ?? false) throw const _Aborted();
           await limiter.acquire(chunk.length);
+          if (control?.isAborted ?? false) throw const _Aborted();
           hasher?.add(chunk);
           report(sent + chunk.length);
           yield chunk;
@@ -115,6 +132,13 @@ class TransferService {
       t.status = TransferStatus.done;
       t.eta = 'Done';
       if (t.speed == '—') t.speed = '${formatBytes(total)}/s';
+    } on _Aborted {
+      // Stopped by the user (pause/cancel). Drop any partial bytes and settle
+      // as paused — the queue decides whether to resume or discard it.
+      await _safeDelete(dst, dstPath);
+      t.status = TransferStatus.paused;
+      t.speed = '—';
+      t.eta = '—';
     } catch (e) {
       t.status = TransferStatus.error;
       t.errorMessage = _friendly(e);
@@ -151,6 +175,15 @@ class TransferService {
       if (destDigest != srcDigest) {
         throw Exception('Checksum mismatch: the copy does not match the source');
       }
+    }
+  }
+
+  /// Best-effort removal of a partial destination file after an abort.
+  Future<void> _safeDelete(StorageBackend dst, String path) async {
+    try {
+      await dst.delete(path, isDir: false);
+    } catch (_) {
+      // Backend may not support delete, or there's nothing to remove.
     }
   }
 
