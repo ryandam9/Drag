@@ -88,7 +88,10 @@ actual error (`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
 
 While a transfer runs, a floating **progress card** (animated ring + bar, live
 speed/ETA, "big file" badge) appears. On completion an in-app **notification**
-reports the destination path, size and time taken. Every finished transfer is
+reports the destination path, size and time taken. When the window is
+unfocused, a finished transfer also raises an **OS desktop notification**
+(`local_notifier`); clicking it refocuses Drag and opens the queue. (Toggle in
+Settings → Transfers.) Every finished transfer is
 written to the SQLite history database.
 
 ## Highlights

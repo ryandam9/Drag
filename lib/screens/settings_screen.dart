@@ -357,6 +357,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _card(children: [
         _check('Show transfer log on startup', settings.showLogOnStartup, notifier.setShowLogOnStartup),
         _check('Confirm before overwriting files', settings.confirmOverwrite, notifier.setConfirmOverwrite),
+        _check('Notify when a transfer finishes (window unfocused)', settings.notifyOnComplete,
+            notifier.setNotifyOnComplete),
       ]),
       const SizedBox(height: 16),
       _card(children: [

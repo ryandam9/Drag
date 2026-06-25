@@ -19,6 +19,7 @@ class AppSettings {
     this.confirmOverwrite = true,
     this.verifyLevel = 'size',
     this.transferLimitKbps = 0,
+    this.notifyOnComplete = true,
     this.sidebarCollapsed = false,
     this.windowWidth,
     this.windowHeight,
@@ -60,6 +61,10 @@ class AppSettings {
   /// transfers. `0` means unlimited.
   int transferLimitKbps;
 
+  /// Post an OS desktop notification when a transfer finishes while the app
+  /// window is unfocused.
+  bool notifyOnComplete;
+
   /// Whether the left navigation sidebar is collapsed to icons only.
   bool sidebarCollapsed;
 
@@ -83,6 +88,7 @@ class AppSettings {
     bool? confirmOverwrite,
     String? verifyLevel,
     int? transferLimitKbps,
+    bool? notifyOnComplete,
     bool? sidebarCollapsed,
     double? windowWidth,
     double? windowHeight,
@@ -103,6 +109,7 @@ class AppSettings {
         confirmOverwrite: confirmOverwrite ?? this.confirmOverwrite,
         verifyLevel: verifyLevel ?? this.verifyLevel,
         transferLimitKbps: transferLimitKbps ?? this.transferLimitKbps,
+        notifyOnComplete: notifyOnComplete ?? this.notifyOnComplete,
         sidebarCollapsed: sidebarCollapsed ?? this.sidebarCollapsed,
         windowWidth: windowWidth ?? this.windowWidth,
         windowHeight: windowHeight ?? this.windowHeight,
@@ -124,6 +131,7 @@ class AppSettings {
         'confirmOverwrite': confirmOverwrite,
         'verifyLevel': verifyLevel,
         'transferLimitKbps': transferLimitKbps,
+        'notifyOnComplete': notifyOnComplete,
         'sidebarCollapsed': sidebarCollapsed,
         'windowWidth': windowWidth,
         'windowHeight': windowHeight,
@@ -147,6 +155,7 @@ class AppSettings {
       confirmOverwrite: (j['confirmOverwrite'] as bool?) ?? true,
       verifyLevel: (j['verifyLevel'] as String?) ?? 'size',
       transferLimitKbps: (j['transferLimitKbps'] as num?)?.toInt() ?? 0,
+      notifyOnComplete: (j['notifyOnComplete'] as bool?) ?? true,
       sidebarCollapsed: (j['sidebarCollapsed'] as bool?) ?? false,
       windowWidth: d(j['windowWidth']),
       windowHeight: d(j['windowHeight']),

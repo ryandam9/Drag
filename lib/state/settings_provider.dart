@@ -71,6 +71,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setConfirmOverwrite(bool v) => _update(state.copyWith(confirmOverwrite: v));
   void setVerifyLevel(String v) => _update(state.copyWith(verifyLevel: v));
   void setTransferLimitKbps(int v) => _update(state.copyWith(transferLimitKbps: v));
+  void setNotifyOnComplete(bool v) => _update(state.copyWith(notifyOnComplete: v));
   void setSidebarCollapsed(bool v) => _update(state.copyWith(sidebarCollapsed: v));
   void toggleSidebar() => setSidebarCollapsed(!state.sidebarCollapsed);
 

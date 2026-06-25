@@ -27,6 +27,7 @@ void main() {
         showLogOnStartup: true,
         confirmOverwrite: false,
         transferLimitKbps: 5120,
+        notifyOnComplete: false,
         windowWidth: 1200,
         windowHeight: 800,
         windowX: 40,
@@ -45,6 +46,7 @@ void main() {
       expect(back.showLogOnStartup, isTrue);
       expect(back.confirmOverwrite, isFalse);
       expect(back.transferLimitKbps, 5120);
+      expect(back.notifyOnComplete, isFalse);
       expect(back.windowWidth, 1200);
       expect(back.windowHeight, 800);
       expect(back.windowX, 40);

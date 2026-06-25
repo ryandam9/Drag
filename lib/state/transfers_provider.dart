@@ -8,9 +8,11 @@ import 'package:path/path.dart' as p;
 import '../fs/storage_backend.dart';
 import '../fs/transfer_service.dart';
 import '../models/connection.dart';
+import '../platform/desktop_notifications.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
 import 'history_provider.dart';
+import 'navigation_provider.dart';
 import 'pane_controller.dart';
 import 'settings_provider.dart';
 import 'toasts_provider.dart';
@@ -195,6 +197,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
       if (t.status == TransferStatus.done) {
         ref.read(historyProvider.notifier).record(t);
         _completionToast(t);
+        _maybeNotify(t, success: true);
         dst.refresh();
       } else if (t.status == TransferStatus.error) {
         if (t.attempts < maxAttempts) {
@@ -210,6 +213,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
         } else {
           ref.read(historyProvider.notifier).record(t);
           _toast('Transfer failed', '${t.name}: ${t.errorMessage ?? 'error'}', ToastKind.error);
+          _maybeNotify(t, success: false);
         }
       }
     });
@@ -474,6 +478,25 @@ class TransfersNotifier extends Notifier<TransfersState> {
     if (failed.isNotEmpty) {
       _toast('Retrying', '${failed.length} failed ${failed.length == 1 ? 'transfer' : 'transfers'}', ToastKind.info);
     }
+  }
+
+  /// Post an OS desktop notification for a finished transfer, but only when the
+  /// setting is on and the window is unfocused (so we never notify about
+  /// something already on screen). Clicking it refocuses the app and opens the
+  /// queue.
+  void _maybeNotify(Transfer t, {required bool success}) {
+    if (!shouldNotify(
+        enabled: ref.read(settingsProvider).notifyOnComplete, windowFocused: gWindowFocused)) {
+      return;
+    }
+    final title = success ? 'Transfer complete' : 'Transfer failed';
+    final body = success
+        ? (t.destPath.isNotEmpty ? t.destPath : '${t.session} · ${t.name}')
+        : '${t.name}: ${t.errorMessage ?? 'error'}';
+    gDesktopNotifications?.show(title, body, onClick: () {
+      gFocusWindow?.call();
+      if (!_disposed) ref.read(navProvider.notifier).go(AppScreen.queue);
+    });
   }
 
   /// Rich "transfer completed" notification: destination path, size, time.
