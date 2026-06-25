@@ -35,6 +35,10 @@ void main() {
       await store.load(blank);
       expect(blank.password, '');
     });
+
+    test('reports memory-only health', () {
+      expect(MemorySecretStore().status, SecretStoreStatus.memoryFallback);
+    });
   });
 
   group('KeychainSecretStore', () {
@@ -47,6 +51,15 @@ void main() {
       final blank = Connection(id: 'k1', name: 'srv');
       await store.load(blank);
       expect(blank.password, 'pw');
+    });
+
+    test('status flips to memoryFallback once the keychain fails', () async {
+      final store = KeychainSecretStore();
+      // Healthy until a real operation proves the backend is missing.
+      expect(store.status, SecretStoreStatus.keychain);
+      // No platform channel in tests ⇒ the write fails and the store degrades.
+      await store.save(Connection(id: 'k2', name: 'srv')..password = 'pw');
+      expect(store.status, SecretStoreStatus.memoryFallback);
     });
   });
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/known_hosts_store.dart';
+import '../data/secret_store.dart';
 import '../models/app_font.dart';
 import '../state/app.dart';
 import '../theme.dart';
@@ -402,6 +403,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   List<Widget> _fingerprints() {
     final store = ref.watch(knownHostsStoreProvider);
     return [
+      _secretStorageCard(),
+      const SizedBox(height: 16),
       _card(children: [
         Row(children: [
           Expanded(
@@ -448,6 +451,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
       ]),
     ];
+  }
+
+  Widget _secretStorageCard() {
+    final store = ref.watch(secretStoreProvider);
+    // No store wired (or an explicit memory store) ⇒ secrets are memory-only.
+    final healthy = store?.status == SecretStoreStatus.keychain;
+    final color = healthy ? FsColors.green : FsColors.amber;
+    return _card(children: [
+      Row(children: [
+        Icon(healthy ? Icons.lock_outline : Icons.warning_amber_rounded, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text('Secret storage',
+              style: FsType.sans(size: 15, weight: FontWeight.w700, color: FsColors.text1)),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(FsColors.rPill),
+          ),
+          child: Text(healthy ? 'Keychain' : 'Memory only',
+              style: FsType.sans(size: 11, weight: FontWeight.w600, color: color)),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      Text(
+        healthy
+            ? 'Connection passwords, key passphrases and S3 secrets are stored in '
+                'your OS keychain and persist across restarts.'
+            : 'The OS keychain is unavailable, so connection passwords and secrets '
+                'are kept in memory only — they will be lost when Drag closes. '
+                'Re-enter them each session, or fix the system keychain to persist them.',
+        style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
+      ),
+    ]);
   }
 
   Widget _hostRow(KnownHostsStore store, KnownHost h) {

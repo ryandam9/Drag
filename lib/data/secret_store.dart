@@ -4,6 +4,17 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/connection.dart';
 
+/// Health of the secret backend, so the UI can warn when secrets won't
+/// survive a restart.
+enum SecretStoreStatus {
+  /// Secrets are written to the OS keychain and persist across restarts.
+  keychain,
+
+  /// The keychain is unavailable; secrets are kept in memory only and are
+  /// lost when the app closes.
+  memoryFallback,
+}
+
 /// Persists a connection's secrets (SSH password / key passphrase, S3 secret
 /// access key, session token) outside the plain SQLite store. Implementations
 /// keep them in the OS keychain; a memory fallback is used when none is
@@ -11,6 +22,9 @@ import '../models/connection.dart';
 abstract class SecretStore {
   /// Save [c]'s secrets, keyed by its `id`.
   Future<void> save(Connection c);
+
+  /// Current backend health — whether secrets are persisted or memory-only.
+  SecretStoreStatus get status;
 
   /// Load [c]'s secrets back into the connection (no-op if none stored).
   Future<void> load(Connection c);
@@ -47,6 +61,9 @@ class MemorySecretStore implements SecretStore {
   final Map<String, String> _store = {};
 
   @override
+  SecretStoreStatus get status => SecretStoreStatus.memoryFallback;
+
+  @override
   Future<void> save(Connection c) async {
     if (c.id.isEmpty) return;
     _store[c.id] = jsonEncode(SecretStore.secretsOf(c));
@@ -73,6 +90,10 @@ class KeychainSecretStore implements SecretStore {
   final FlutterSecureStorage _storage;
   final Map<String, String> _fallback = {};
   bool _degraded = false;
+
+  @override
+  SecretStoreStatus get status =>
+      _degraded ? SecretStoreStatus.memoryFallback : SecretStoreStatus.keychain;
 
   String _key(String id) => 'drag_secret_$id';
 

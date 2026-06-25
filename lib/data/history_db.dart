@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'db_migrations.dart';
+
 import '../models/transfer.dart';
 
 /// A persisted record of a finished transfer.
@@ -124,6 +126,7 @@ class HistoryRepository {
       dbPath,
       options: OpenDatabaseOptions(
         version: 1,
+        onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
         onCreate: (db, _) async {
           await db.execute('''
             CREATE TABLE $_table (
@@ -208,3 +211,7 @@ class HistoryRepository {
 
   Future<void> close() => _db.close();
 }
+
+/// Schema migrations keyed by the version they bring the database *to*.
+/// Empty today (schema v1); add an entry and bump `version` for each change.
+final _migrations = <int, Migration>{};
