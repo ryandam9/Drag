@@ -225,6 +225,15 @@ void main() {
   });
 
   group('Settings', () {
+    testWidgets('Fingerprints section renders and navigates from the sidebar', (tester) async {
+      final c = makeContainer(); // no known-hosts store ⇒ "unavailable" notice
+      await pumpScreen(tester, c, const SettingsScreen());
+      await tester.tap(find.text('Fingerprints'));
+      await tester.pump();
+      expect(find.text('Trusted SSH host keys'), findsOneWidget);
+      expect(find.text('Host-key storage is unavailable.'), findsOneWidget);
+    });
+
     testWidgets('renders appearance options by default', (tester) async {
       final c = makeContainer();
       await pumpScreen(tester, c, const SettingsScreen());

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -5,6 +6,7 @@ import 'package:dartssh2/dartssh2.dart';
 
 import '../models/connection.dart';
 import '../models/file_item.dart';
+import 'host_key_verifier.dart';
 import 'storage_backend.dart';
 
 /// Real SFTP endpoint backed by `dartssh2`. Connects lazily on first use and
@@ -58,6 +60,10 @@ class SftpBackend extends StorageBackend {
         onPasswordRequest: connection.auth == AuthMethod.password
             ? () => connection.password
             : null,
+        // Trust-on-first-use host-key verification: remember the key on first
+        // connect, reject a changed key (possible MITM). Null verifier (e.g.
+        // tests) falls back to accepting the key.
+        onVerifyHostKey: _verifyHostKey,
       );
       _client = client;
       _sftp = await client.sftp();
@@ -66,6 +72,14 @@ class SftpBackend extends StorageBackend {
       _connecting = null; // allow retry on next attempt
       rethrow;
     }
+  }
+
+  /// dartssh2 passes the host-key algorithm and the OpenSSH-style fingerprint
+  /// bytes (`SHA256:…`). Defer to the global verifier; accept when there's none.
+  Future<bool> _verifyHostKey(String type, Uint8List fingerprint) async {
+    final verifier = globalHostKeyVerifier;
+    if (verifier == null) return true;
+    return verifier.verify(connection.host, connection.port, type, utf8.decode(fingerprint));
   }
 
   Future<List<SSHKeyPair>?> _identities() async {

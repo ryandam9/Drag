@@ -66,6 +66,10 @@ actual error (`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
 
 > Typed secrets are held in memory for the session and are not persisted to disk.
 
+> SFTP host keys are verified **trust-on-first-use**: the server's key is
+> remembered on first connect (SQLite) and a later change is rejected as a
+> possible man-in-the-middle. Manage trusted keys in Settings → Fingerprints.
+
 ## Screens
 
 | Screen | Description |
@@ -74,7 +78,7 @@ actual error (`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
 | **Connection Manager** | Saved-sessions sidebar with online indicators, a **live search box** (filters by name, tag, host, bucket, region or username) and **tag grouping** (set a "Group / tag" like _Production_ on each connection; the sidebar folds them into sections, untagged last). Form adapts to the protocol: SSH fields for SFTP, or **S3 credentials** (access key, secret, session token, region, bucket, endpoint, SSL) for S3. New / Save / Duplicate / Delete **persist to SQLite** (secrets excluded — see #16). |
 | **Transfer Queue** | Active / queued / paused / done / error transfers with per-file progress, speed, ETA, a status filter, an aggregate stats bar and an adjustable parallel-thread count. **Click any row** for a details panel: full source → destination paths, size, bytes done, speed, ETA, elapsed, attempts and the error message, with per-transfer **Pause / Resume / Cancel** / Retry and copy-path actions (live-updating while active). Pause and cancel really **abort the in-flight byte stream** (cancel discards the partial destination file); resume restarts the transfer. |
 | **History Dashboard** | Persistent transfer history backed by **SQLite** — stat cards (total / succeeded / failed / data transferred / avg speed) and a table of past transfers (file, route, size, time taken, speed, when, status). **Export CSV** writes every record (name, source, dest, size, direction, duration, speed, success, error, session, timestamp) to a timestamped file (falling back to the clipboard). Refresh / clear. |
-| **Preferences** | Categorised settings that **apply live and persist** (SQLite): a **Light / Dark / System** brightness mode (each bird palette has a coherent dark variant; System follows the OS live), a **transfer speed limit** (a shared token-bucket caps the combined throughput of all active transfers; unlimited by default), accent color recolors the whole UI, UI font size rescales text, "show hidden files" filters dot-files in every pane, and the permissions-column / startup-log toggles take effect immediately. Window size & position are remembered across launches (`window_manager`). |
+| **Preferences** | Categorised settings that **apply live and persist** (SQLite), including a **Fingerprints** pane that lists trusted SSH host keys (with per-host and bulk *Forget*): a **Light / Dark / System** brightness mode (each bird palette has a coherent dark variant; System follows the OS live), a **transfer speed limit** (a shared token-bucket caps the combined throughput of all active transfers; unlimited by default), accent color recolors the whole UI, UI font size rescales text, "show hidden files" filters dot-files in every pane, and the permissions-column / startup-log toggles take effect immediately. Window size & position are remembered across launches (`window_manager`). |
 
 While a transfer runs, a floating **progress card** (animated ring + bar, live
 speed/ETA, "big file" badge) appears. On completion an in-app **notification**
