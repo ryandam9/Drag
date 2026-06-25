@@ -201,6 +201,35 @@ void main() {
       expect(progress.last, 2048);
     });
 
+    test('getObject sends a Range header and streams the tail when resuming', () async {
+      final full = List<int>.generate(100, (i) => i);
+      final mock = await MockS3.start((req, res) {
+        final range = req.headers.value('range');
+        if (range != null) {
+          final start = int.parse(range.replaceAll(RegExp(r'[^0-9]'), ''));
+          final tail = full.sublist(start);
+          res.statusCode = 206;
+          res.contentLength = tail.length;
+          res.add(tail);
+        } else {
+          res.contentLength = full.length;
+          res.add(full);
+        }
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      final resp = await c.getObject('f.bin', rangeStart: 40);
+      expect(mock.last.headers.value('range'), 'bytes=40-');
+      expect(resp.contentLength, 60);
+      final got = <int>[];
+      await for (final ch in resp.stream) {
+        got.addAll(ch);
+      }
+      expect(got, full.sublist(40));
+    });
+
     test('deleteObject issues a DELETE', () async {
       final mock = await MockS3.start((req, res) => res.statusCode = 204);
       addTearDown(mock.stop);

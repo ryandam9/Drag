@@ -93,9 +93,17 @@ class TransferService {
     }
 
     try {
-      final handle = await src.openRead(srcPath);
-      // Prefer the real content length; fall back to whatever the queue knew.
-      final total = handle.length > 0 ? handle.length : t.sizeBytes;
+      // Resume an interrupted download: if a previous attempt left a partial
+      // local file, continue from its size via a ranged read + append, instead
+      // of re-downloading from zero.
+      final resumeFrom = await _resumeOffset(t, src, dst, dstPath, verify);
+      final handle =
+          resumeFrom > 0 ? await src.openReadRange(srcPath, resumeFrom) : await src.openRead(srcPath);
+      // handle.length is the *remaining* bytes when resuming; total is the full
+      // object size. Fall back to whatever the queue knew.
+      final remaining = handle.length > 0 ? handle.length : (t.sizeBytes - resumeFrom);
+      final total = resumeFrom + remaining;
+      sent = resumeFrom; // progress already covers the bytes on disk
 
       // For a checksum verify, hash the source bytes as they stream past so we
       // never read the (possibly remote) source twice.
@@ -121,7 +129,11 @@ class TransferService {
         }
       }
 
-      await dst.write(dstPath, pump(), total, onProgress: (s) => report(s));
+      if (resumeFrom > 0 && dst is LocalBackend) {
+        await dst.writeResume(dstPath, pump(), from: resumeFrom, onProgress: (s) => report(s));
+      } else {
+        await dst.write(dstPath, pump(), total, onProgress: (s) => report(s));
+      }
       hasher?.close();
 
       if (verify != 'off') {
@@ -176,6 +188,26 @@ class TransferService {
         throw Exception('Checksum mismatch: the copy does not match the source');
       }
     }
+  }
+
+  /// How many bytes of [dstPath] are already on disk from a previous,
+  /// interrupted attempt — the offset to resume the download from. Returns 0
+  /// (full restart) unless every safety condition holds:
+  ///   • this is a retry ([Transfer.attempts] > 1), so the partial is *ours*
+  ///     and not a pre-existing file the first attempt would overwrite;
+  ///   • the source can seek/Range ([StorageBackend.supportsResume]);
+  ///   • the destination is local (so we can stat + append);
+  ///   • verification isn't checksum (which must hash the whole file).
+  Future<int> _resumeOffset(
+      Transfer t, StorageBackend src, StorageBackend dst, String dstPath, String verify) async {
+    if (t.attempts <= 1 || verify == 'checksum' || !src.supportsResume || dst is! LocalBackend) {
+      return 0;
+    }
+    final existing = await dst.sizeOf(dstPath);
+    if (existing == null || existing <= 0) return 0;
+    // A complete (or larger) file isn't a partial — restart cleanly.
+    if (t.sizeBytes > 0 && existing >= t.sizeBytes) return 0;
+    return existing;
   }
 
   /// Best-effort removal of a partial destination file after an abort.
