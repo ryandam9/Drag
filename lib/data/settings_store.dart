@@ -16,6 +16,7 @@ class AppSettings {
     this.showPermsColumn = true,
     this.showLogOnStartup = false,
     this.confirmOverwrite = true,
+    this.verifyLevel = 'size',
     this.sidebarCollapsed = false,
     this.windowWidth,
     this.windowHeight,
@@ -45,6 +46,11 @@ class AppSettings {
   bool showLogOnStartup;
   bool confirmOverwrite;
 
+  /// How thoroughly a completed transfer is checked against its source:
+  /// `'off'` (no check), `'size'` (compare byte counts) or `'checksum'`
+  /// (compare MD5 digests). A mismatch fails the transfer so it can retry.
+  String verifyLevel;
+
   /// Whether the left navigation sidebar is collapsed to icons only.
   bool sidebarCollapsed;
 
@@ -65,6 +71,7 @@ class AppSettings {
     bool? showPermsColumn,
     bool? showLogOnStartup,
     bool? confirmOverwrite,
+    String? verifyLevel,
     bool? sidebarCollapsed,
     double? windowWidth,
     double? windowHeight,
@@ -82,6 +89,7 @@ class AppSettings {
         showPermsColumn: showPermsColumn ?? this.showPermsColumn,
         showLogOnStartup: showLogOnStartup ?? this.showLogOnStartup,
         confirmOverwrite: confirmOverwrite ?? this.confirmOverwrite,
+        verifyLevel: verifyLevel ?? this.verifyLevel,
         sidebarCollapsed: sidebarCollapsed ?? this.sidebarCollapsed,
         windowWidth: windowWidth ?? this.windowWidth,
         windowHeight: windowHeight ?? this.windowHeight,
@@ -100,6 +108,7 @@ class AppSettings {
         'showPermsColumn': showPermsColumn,
         'showLogOnStartup': showLogOnStartup,
         'confirmOverwrite': confirmOverwrite,
+        'verifyLevel': verifyLevel,
         'sidebarCollapsed': sidebarCollapsed,
         'windowWidth': windowWidth,
         'windowHeight': windowHeight,
@@ -120,6 +129,7 @@ class AppSettings {
       showPermsColumn: (j['showPermsColumn'] as bool?) ?? true,
       showLogOnStartup: (j['showLogOnStartup'] as bool?) ?? false,
       confirmOverwrite: (j['confirmOverwrite'] as bool?) ?? true,
+      verifyLevel: (j['verifyLevel'] as String?) ?? 'size',
       sidebarCollapsed: (j['sidebarCollapsed'] as bool?) ?? false,
       windowWidth: d(j['windowWidth']),
       windowHeight: d(j['windowHeight']),

@@ -70,6 +70,31 @@ abstract class StorageBackend {
   /// Parent of [path] (for the "Up" / ".." actions).
   String parentPath(String path);
 
+  /// The size in bytes of the file at [path], or null if it can't be
+  /// determined. Used by post-transfer verification to confirm the
+  /// destination received every byte. The default lists the parent directory
+  /// and matches by basename; backends with a cheaper stat override this.
+  Future<int?> sizeOf(String path) async {
+    final name = childName(path);
+    try {
+      final entries = await list(parentPath(path));
+      for (final e in entries) {
+        if (e.name == name) return e.sizeBytes;
+      }
+    } catch (_) {
+      // Treat an unlistable parent as "unknown size".
+    }
+    return null;
+  }
+
+  /// The trailing name component of [path] (basename), backend-aware so S3's
+  /// trailing-slash folders and key prefixes resolve correctly.
+  String childName(String path) {
+    final trimmed = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+    final idx = trimmed.lastIndexOf('/');
+    return idx < 0 ? trimmed : trimmed.substring(idx + 1);
+  }
+
   void dispose() {}
 
   static int dirsFirst(FileItem a, FileItem b) {
@@ -176,6 +201,17 @@ class LocalBackend extends StorageBackend {
 
   @override
   String parentPath(String path) => p.dirname(path);
+
+  @override
+  Future<int?> sizeOf(String path) async {
+    try {
+      final stat = await File(path).stat();
+      if (stat.type == FileSystemEntityType.notFound) return null;
+      return stat.size;
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────

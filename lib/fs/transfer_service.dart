@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
 import '../models/file_item.dart';
 import '../models/transfer.dart';
 import 'storage_backend.dart';
@@ -17,6 +21,13 @@ class TransferService {
   /// rest of the app cares about (queue counts, toasts, history). [onProgress]
   /// fires on high-frequency progress/speed/eta updates and should only repaint
   /// the small progress widgets — keep it off the global notifier.
+  /// [verify] controls the post-transfer integrity check:
+  ///   • `'off'`      — trust the write.
+  ///   • `'size'`     — confirm the destination's byte count matches the source.
+  ///   • `'checksum'` — also compare MD5 digests (source hashed in-flight,
+  ///                     destination re-read afterwards).
+  /// A failed check throws, which marks the transfer as errored so the retry
+  /// machinery can re-attempt it.
   Future<void> run({
     required Transfer t,
     required StorageBackend src,
@@ -25,6 +36,7 @@ class TransferService {
     required String dstPath,
     required void Function() onStatus,
     void Function()? onProgress,
+    String verify = 'off',
   }) async {
     t.status = TransferStatus.active;
     t.startedAt = DateTime.now();
@@ -59,12 +71,29 @@ class TransferService {
       // Prefer the real content length; fall back to whatever the queue knew.
       final total = handle.length > 0 ? handle.length : t.sizeBytes;
 
+      // For a checksum verify, hash the source bytes as they stream past so we
+      // never read the (possibly remote) source twice.
+      final wantChecksum = verify == 'checksum';
+      Digest? srcDigest;
+      ByteConversionSink? hasher;
+      if (wantChecksum) {
+        final out = ChunkedConversionSink<Digest>.withCallback(
+            (digests) => srcDigest = digests.single);
+        hasher = md5.startChunkedConversion(out);
+      }
+
       final counting = handle.stream.map((chunk) {
+        hasher?.add(chunk);
         report(sent + chunk.length);
         return chunk;
       });
 
       await dst.write(dstPath, counting, total, onProgress: (s) => report(s));
+      hasher?.close();
+
+      if (verify != 'off') {
+        await _verify(verify, dst, dstPath, total, srcDigest, onStatus, t);
+      }
 
       t.progress = 1.0;
       t.status = TransferStatus.done;
@@ -76,6 +105,36 @@ class TransferService {
     } finally {
       t.finishedAt = DateTime.now();
       onStatus();
+    }
+  }
+
+  /// Confirms the destination received the file intact. Throws a descriptive
+  /// [Exception] on any mismatch so [run]'s catch marks the transfer errored.
+  Future<void> _verify(
+    String level,
+    StorageBackend dst,
+    String dstPath,
+    int total,
+    Digest? srcDigest,
+    void Function() onStatus,
+    Transfer t,
+  ) async {
+    t.eta = 'Verifying…';
+    onStatus();
+
+    final destSize = await dst.sizeOf(dstPath);
+    if (destSize != null && destSize != total) {
+      throw Exception(
+          'Verification failed: destination is ${formatBytes(destSize)}, '
+          'expected ${formatBytes(total)}');
+    }
+
+    if (level == 'checksum' && srcDigest != null) {
+      final handle = await dst.openRead(dstPath);
+      final destDigest = await md5.bind(handle.stream).single;
+      if (destDigest != srcDigest) {
+        throw Exception('Checksum mismatch: the copy does not match the source');
+      }
     }
   }
 

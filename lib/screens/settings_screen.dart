@@ -272,11 +272,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ];
   }
 
+  static const _verifyLabels = {
+    'off': 'Off',
+    'size': 'Size (byte count)',
+    'checksum': 'Checksum (MD5)',
+  };
+
   List<Widget> _transfers(AppSettings settings, SettingsNotifier notifier) {
     return [
       _card(children: [
         _check('Show transfer log on startup', settings.showLogOnStartup, notifier.setShowLogOnStartup),
         _check('Confirm before overwriting files', settings.confirmOverwrite, notifier.setConfirmOverwrite),
+      ]),
+      const SizedBox(height: 16),
+      _card(children: [
+        FormField2(
+          'Verify transfers',
+          _select(
+            _verifyLabels[settings.verifyLevel] ?? _verifyLabels['size']!,
+            _verifyLabels.values.toList(),
+            (v) {
+              final level = _verifyLabels.entries.firstWhere((e) => e.value == v).key;
+              notifier.setVerifyLevel(level);
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'After each file copies, confirm the destination matches the source. '
+          'A mismatch fails the transfer so it can retry.',
+          style: FsType.sans(size: 11, color: FsColors.text3),
+        ),
       ]),
     ];
   }
