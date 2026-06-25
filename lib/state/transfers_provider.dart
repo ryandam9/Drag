@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../fs/storage_backend.dart';
 import '../fs/transfer_service.dart';
@@ -189,6 +191,37 @@ class TransfersNotifier extends Notifier<TransfersState> {
         }
       }
     });
+  }
+
+  /// Import OS file-system paths (e.g. dropped from the native file manager)
+  /// into [dst] at its current path. Files upload directly; folders recurse.
+  void importFiles(PaneController dst, List<String> osPaths) {
+    if (!dst.isReady) {
+      _toast('Not connected', 'Connect ${dst.endpointLabel} before dropping files', ToastKind.error);
+      return;
+    }
+    if (!dst.backend.supportsMutation) {
+      _toast('Read-only', "Can't write to ${dst.endpointLabel} here", ToastKind.error);
+      return;
+    }
+    for (final osPath in osPaths) {
+      final name = p.basename(osPath);
+      // A throwaway Local source pane rooted at the dropped item's parent.
+      final src = PaneController(backend: LocalBackend(), onChanged: () {})..path = p.dirname(osPath);
+      if (FileSystemEntity.isDirectorySync(osPath)) {
+        enqueueTree(src, dst, FileItem(name: name, isDir: true));
+      } else {
+        var size = 0;
+        try {
+          size = File(osPath).lengthSync();
+        } catch (_) {/* unknown size */}
+        final dstPath = dst.backend.childPath(dst.path, name, false);
+        enqueueFile(src, dst, osPath, dstPath, name, size, announce: osPaths.length == 1);
+      }
+    }
+    if (osPaths.length > 1) {
+      _toast('Importing', '${osPaths.length} items → ${dst.endpointLabel}', ToastKind.info);
+    }
   }
 
   /// Recursively transfer a [folder] from [src] to [dst]: recreate the

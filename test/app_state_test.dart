@@ -319,6 +319,35 @@ void main() {
       expect(c.read(transfersProvider).transfers.length, 2);
     });
 
+    test('importFiles uploads OS files and folders into the destination pane', () async {
+      final c = makeContainer();
+      final s = c.read(sessionsProvider.notifier);
+      final ext = await Directory.systemTemp.createTemp('os_ext'); // simulated OS files
+      final dst = await Directory.systemTemp.createTemp('os_dst');
+      addTearDown(() => ext.delete(recursive: true));
+      addTearDown(() => dst.delete(recursive: true));
+      await File(p.join(ext.path, 'f.txt')).writeAsString('F');
+      final folder = Directory(p.join(ext.path, 'fold'))..createSync();
+      await File(p.join(folder.path, 'g.txt')).writeAsString('G');
+
+      s.rightPane
+        ..backend = LocalBackend()
+        ..connection = null
+        ..path = dst.path;
+      await s.rightPane.refresh();
+
+      c.read(transfersProvider.notifier)
+          .importFiles(s.rightPane, [p.join(ext.path, 'f.txt'), folder.path]);
+
+      final f = File(p.join(dst.path, 'f.txt'));
+      final g = File(p.join(dst.path, 'fold', 'g.txt'));
+      for (var i = 0; i < 200 && !(f.existsSync() && g.existsSync()); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await f.readAsString(), 'F');
+      expect(await g.readAsString(), 'G');
+    });
+
     // Sets up Local→Local panes where the destination already holds a file of
     // the same name, with a conflict resolver returning [action].
     Future<(SessionsNotifier, Directory)> _conflictSetup(
