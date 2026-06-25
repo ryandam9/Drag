@@ -220,15 +220,17 @@ class S3Client {
     return S3Listing(objects, prefixes, null);
   }
 
-  // ── GetObject (streamed) ──
-  Future<S3GetResponse> getObject(String key) async {
+  // ── GetObject (streamed; optional Range for resume) ──
+  Future<S3GetResponse> getObject(String key, {int rangeStart = 0}) async {
     final canonicalUri = _objectPath(key);
+    // A Range header is signed like any other header (lower-cased name).
+    final extra = rangeStart > 0 ? {'range': 'bytes=$rangeStart-'} : const <String, String>{};
     final headers = _signer.sign(
       method: 'GET',
       host: _hostHeader,
       canonicalUri: canonicalUri,
       query: const {},
-      headers: const {},
+      headers: extra,
       payloadHash: emptyBodySha256,
     );
     final req = await _http.getUrl(_uri(canonicalUri, const {}));
@@ -238,6 +240,7 @@ class S3Client {
       final body = await resp.transform(utf8.decoder).join();
       throw _error(resp.statusCode, body);
     }
+    // For a 206 the content length is the remaining (ranged) byte count.
     final len = resp.contentLength < 0 ? 0 : resp.contentLength;
     return S3GetResponse(resp, len);
   }

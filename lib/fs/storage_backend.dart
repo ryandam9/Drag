@@ -57,6 +57,15 @@ abstract class StorageBackend {
 
   Future<ReadHandle> openRead(String path);
 
+  /// Whether this backend can resume a read from a byte offset (file seek /
+  /// HTTP Range), so an interrupted download continues instead of restarting.
+  bool get supportsResume => false;
+
+  /// Opens a read of [path] starting [start] bytes in. The returned handle's
+  /// length is the *remaining* byte count. Only meaningful when
+  /// [supportsResume]; the base default ignores [start] and reads from 0.
+  Future<ReadHandle> openReadRange(String path, int start) => openRead(path);
+
   Future<void> write(
     String path,
     Stream<Uint8List> data,
@@ -156,6 +165,40 @@ class LocalBackend extends StorageBackend {
     final file = File(path);
     final length = await file.length();
     return ReadHandle(file.openRead().map(Uint8List.fromList), length);
+  }
+
+  @override
+  bool get supportsResume => true;
+
+  @override
+  Future<ReadHandle> openReadRange(String path, int start) async {
+    final file = File(path);
+    final length = await file.length();
+    if (start <= 0) return ReadHandle(file.openRead().map(Uint8List.fromList), length);
+    final remaining = (length - start).clamp(0, length);
+    return ReadHandle(file.openRead(start).map(Uint8List.fromList), remaining);
+  }
+
+  /// Append [data] to an existing partial file (used to resume a download from
+  /// [from] bytes already on disk). [onProgress] reports the cumulative total.
+  Future<void> writeResume(
+    String path,
+    Stream<Uint8List> data, {
+    required int from,
+    void Function(int sent)? onProgress,
+  }) async {
+    final sink = File(path).openWrite(mode: FileMode.writeOnlyAppend);
+    var sent = from;
+    try {
+      await for (final chunk in data) {
+        sink.add(chunk);
+        sent += chunk.length;
+        onProgress?.call(sent);
+      }
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
   }
 
   @override
@@ -359,6 +402,18 @@ class S3Backend extends StorageBackend {
     final (bucket, key) = _split(path);
     final client = await _clientFor(bucket);
     final resp = await client.getObject(key);
+    return ReadHandle(resp.stream.map(Uint8List.fromList), resp.contentLength);
+  }
+
+  @override
+  bool get supportsResume => true;
+
+  @override
+  Future<ReadHandle> openReadRange(String path, int start) async {
+    if (start <= 0) return openRead(path);
+    final (bucket, key) = _split(path);
+    final client = await _clientFor(bucket);
+    final resp = await client.getObject(key, rangeStart: start);
     return ReadHandle(resp.stream.map(Uint8List.fromList), resp.contentLength);
   }
 

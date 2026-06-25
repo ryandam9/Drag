@@ -85,7 +85,9 @@ written to the SQLite history database.
 
 - **Drag & drop** local files onto the remote pane to start a transfer.
 - **Live transfer engine** (`TransfersNotifier`) streams real bytes through
-  `TransferService` and fires completion toasts + history records.
+  `TransferService` and fires completion toasts + history records. Transient
+  failures **auto-retry with backoff**, and a retried download **resumes from
+  the partial file** (HTTP Range / file seek) instead of restarting.
 - **Riverpod** state management end-to-end; **no dummy data** — connections,
   the queue and the panes all start empty/real.
 - **Sessions persist** to SQLite: your open tabs and each pane's endpoint +
