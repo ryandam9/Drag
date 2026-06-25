@@ -804,6 +804,25 @@ void main() {
       expect(methods, ['PUT /bk/b.txt', 'DELETE /bk/a.txt']);
     });
 
+    test('a copy that 200s with an <Error> body fails rename without deleting the source', () async {
+      var deleted = false;
+      final mock = await MockS3.start((req, res) {
+        if (req.method == 'DELETE') {
+          deleted = true;
+          res.statusCode = 204;
+        } else {
+          // CopyObject "succeeds" at the HTTP layer but reports an error body.
+          xml(res, '<Error><Code>InternalError</Code><Message>copy failed</Message></Error>');
+        }
+      });
+      addTearDown(mock.stop);
+      final b = backend(mock);
+      addTearDown(b.dispose);
+
+      await expectLater(b.rename('a.txt', 'b.txt'), throwsA(isA<S3Exception>()));
+      expect(deleted, isFalse, reason: 'the source must survive a failed copy');
+    });
+
     test('delete (recursive) lists the prefix and deletes each object', () async {
       var listed = false;
       final deleted = <String>[];
