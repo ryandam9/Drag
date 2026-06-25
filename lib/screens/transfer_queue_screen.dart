@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
@@ -26,7 +27,7 @@ class TransferQueueScreen extends ConsumerWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: _queueCard(state, notifier),
+              child: _queueCard(ref, state, notifier),
             ),
           ),
         ],
@@ -130,7 +131,7 @@ class TransferQueueScreen extends ConsumerWidget {
   }
 
   // ── Transfer table card ──
-  Widget _queueCard(TransfersState s, TransfersNotifier n) {
+  Widget _queueCard(WidgetRef ref, TransfersState s, TransfersNotifier n) {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -140,14 +141,14 @@ class TransferQueueScreen extends ConsumerWidget {
         boxShadow: FsColors.cardShadow,
       ),
       child: Column(children: [
-        Expanded(child: _table(s, n)),
+        Expanded(child: _table(ref, s, n)),
         _statsBar(s, n),
       ]),
     );
   }
 
   // ── Transfer table ──
-  Widget _table(TransfersState s, TransfersNotifier n) {
+  Widget _table(WidgetRef ref, TransfersState s, TransfersNotifier n) {
     if (s.transfers.isEmpty) {
       return Container(
         alignment: Alignment.center,
@@ -176,7 +177,7 @@ class TransferQueueScreen extends ConsumerWidget {
       Expanded(
         child: ListView.builder(
           itemCount: s.transfers.length,
-          itemBuilder: (context, i) => _row(n, s.transfers[i]),
+          itemBuilder: (context, i) => _row(context, ref, n, s.transfers[i]),
         ),
       ),
     ]);
@@ -215,7 +216,7 @@ class TransferQueueScreen extends ConsumerWidget {
         TransferStatus.paused => (bg: FsColors.badgePausedBg, fg: FsColors.badgePausedFg, label: '⏸ Paused'),
       };
 
-  Widget _row(TransfersNotifier app, Transfer t) {
+  Widget _row(BuildContext context, WidgetRef ref, TransfersNotifier app, Transfer t) {
     final dirGlyph = switch (t.status) {
       TransferStatus.done => '✓',
       TransferStatus.error => '!',
@@ -241,6 +242,11 @@ class TransferQueueScreen extends ConsumerWidget {
       builder: (context, _, _) => Hoverable(builder: (hover) {
         return Opacity(
           opacity: t.status == TransferStatus.done ? 0.55 : 1,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _showDetails(context, ref, app, t),
+          child: MouseRegion(
+          cursor: SystemMouseCursors.click,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
@@ -312,8 +318,103 @@ class TransferQueueScreen extends ConsumerWidget {
             ),
             ]),
           ),
+          ),
+          ),
         );
       }),
+    );
+  }
+
+  // ── Per-transfer details panel ──
+  Future<void> _showDetails(
+      BuildContext context, WidgetRef ref, TransfersNotifier app, Transfer t) {
+    Future<void> copy(String label, String value) async {
+      await Clipboard.setData(ClipboardData(text: value));
+      ref.read(toastsProvider.notifier).push('Copied', label, ToastKind.info);
+    }
+
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: FsColors.bgPanel,
+        title: Row(children: [
+          Expanded(
+            child: Text(t.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: FsType.sans(size: 15, weight: FontWeight.w700, color: FsColors.text1)),
+          ),
+          () {
+            final b = _badge(t.status);
+            return StatusBadge(b.label, bg: b.bg, fg: b.fg);
+          }(),
+        ]),
+        content: SizedBox(
+          width: 520,
+          // Live-update while the transfer is active.
+          child: ValueListenableBuilder<int>(
+            valueListenable: t.liveTick,
+            builder: (_, _, _) => _detailsBody(t),
+          ),
+        ),
+        actions: [
+          if (t.sourcePath.isNotEmpty)
+            FsButton('Copy source', onTap: () => copy('Source path', t.sourcePath)),
+          if (t.destPath.isNotEmpty)
+            FsButton('Copy destination', onTap: () => copy('Destination path', t.destPath)),
+          if (t.status == TransferStatus.active || t.status == TransferStatus.queued)
+            FsButton('Pause', onTap: () => app.togglePause(t)),
+          if (t.status == TransferStatus.paused)
+            FsButton('Resume', onTap: () => app.togglePause(t)),
+          if (t.status == TransferStatus.error)
+            FsButton('Retry', kind: FsButtonKind.primary, onTap: () {
+              app.retry(t);
+              Navigator.pop(ctx);
+            }),
+          FsButton('Close', onTap: () => Navigator.pop(ctx)),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailsBody(Transfer t) {
+    final done = formatBytes(t.sizeBytes * t.progress);
+    final rows = <(String, String)>[
+      ('Direction', t.direction == TransferDirection.upload ? 'Upload' : 'Download'),
+      ('Source', t.sourcePath.isEmpty ? '—' : t.sourcePath),
+      ('Destination', t.destPath.isEmpty ? '—' : t.destPath),
+      ('Size', formatBytes(t.sizeBytes)),
+      ('Transferred', '$done (${(t.progress * 100).round()}%)'),
+      ('Speed', t.speed),
+      ('ETA', t.eta),
+      ('Elapsed', t.elapsedLabel),
+      ('Session', t.session),
+      ('Attempts', '${t.attempts} / ${TransfersNotifier.maxAttempts}'),
+      if (t.errorMessage != null) ('Error', t.errorMessage!),
+    ];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (label, value) in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                width: 110,
+                child: Text(label,
+                    style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.text3)),
+              ),
+              Expanded(
+                child: SelectableText(value,
+                    style: FsType.sans(
+                        size: 12,
+                        color: label == 'Error' ? FsColors.red : FsColors.text1,
+                        height: 1.4)),
+              ),
+            ]),
+          ),
+      ],
     );
   }
 

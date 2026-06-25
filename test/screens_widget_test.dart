@@ -189,6 +189,39 @@ void main() {
       await pumpScreen(tester, c, const TransferQueueScreen());
       expect(find.text('No transfers yet'), findsOneWidget);
     });
+
+    testWidgets('tapping a transfer row opens its details panel', (tester) async {
+      final c = makeContainer();
+      c.read(transfersProvider.notifier).debugSetTransfers([
+        Transfer(
+          name: 'photo.png',
+          route: 'Local → s3://b/',
+          direction: TransferDirection.upload,
+          sizeBytes: 2048,
+          session: 'sess',
+          status: TransferStatus.error,
+          errorMessage: 'timeout',
+          sourcePath: '/home/u/photo.png',
+          destPath: 's3://b/photo.png',
+          attempts: 3,
+        ),
+      ]);
+      await pumpScreen(tester, c, const TransferQueueScreen());
+
+      await tester.tap(find.text('photo.png')); // the row
+      await tester.pumpAndSettle();
+
+      // The panel shows full details + the relevant action.
+      expect(find.text('Direction'), findsOneWidget);
+      expect(find.text('/home/u/photo.png'), findsOneWidget);
+      expect(find.text('timeout'), findsWidgets); // error surfaced
+      expect(find.text('Retry'), findsOneWidget); // error → retry action
+      expect(find.text('Close'), findsOneWidget);
+
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('Direction'), findsNothing);
+    });
   });
 
   group('Settings', () {
