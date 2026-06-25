@@ -100,6 +100,14 @@ void main() {
       expect(t.status, TransferStatus.queued);
     });
 
+    test('cancel removes a transfer from the queue', () {
+      final before = state().transfers.length;
+      final t = state().transfers.firstWhere((t) => t.status == TransferStatus.active);
+      q.cancel(t);
+      expect(state().transfers.length, before - 1);
+      expect(state().transfers.contains(t), isFalse);
+    });
+
     test('retry resets an errored transfer', () {
       final t = state().transfers.firstWhere((t) => t.status == TransferStatus.error);
       q.retry(t);

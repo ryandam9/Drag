@@ -149,6 +149,10 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// How to re-run each live transfer (keyed by the transfer instance).
   final Map<Transfer, void Function()> _runners = {};
 
+  /// The abort handle for each transfer's in-flight run (present only while
+  /// active). Pause/cancel abort through this to stop the byte stream.
+  final Map<Transfer, TransferControl> _controls = {};
+
   /// Backoff before an automatic retry (exponential: 2s, 4s). Overridable in
   /// tests so they don't have to wait real seconds.
   @visibleForTesting
@@ -165,6 +169,8 @@ class TransfersNotifier extends Notifier<TransfersState> {
 
   void _runOnce(Transfer t, PaneController src, String srcPath, PaneController dst, String dstPath) {
     t.attempts++;
+    final control = TransferControl();
+    _controls[t] = control;
     _service
         .run(
       t: t,
@@ -176,9 +182,16 @@ class TransfersNotifier extends Notifier<TransfersState> {
       onProgress: t.touchLive, // progress repaints only the progress widgets
       verify: ref.read(settingsProvider).verifyLevel,
       bytesPerSecond: _transferBytesPerSecond,
+      control: control,
     )
         .then((_) {
+      _controls.remove(t);
       if (_disposed) return;
+      // Aborted (paused/cancelled) — the queue already set the desired state.
+      if (t.status == TransferStatus.paused) {
+        _emit(_list);
+        return;
+      }
       if (t.status == TransferStatus.done) {
         ref.read(historyProvider.notifier).record(t);
         _completionToast(t);
@@ -381,6 +394,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
   void pauseAll() {
     for (final t in _list) {
       if (t.status == TransferStatus.active || t.status == TransferStatus.queued) {
+        _controls[t]?.abort();
         t.status = TransferStatus.paused;
         t.speed = '—';
         t.eta = '—';
@@ -390,10 +404,9 @@ class TransfersNotifier extends Notifier<TransfersState> {
   }
 
   void resumeAll() {
-    for (final t in _list) {
-      if (t.status == TransferStatus.paused) t.status = TransferStatus.queued;
+    for (final t in _list.toList()) {
+      if (t.status == TransferStatus.paused) resume(t);
     }
-    _emit(_list);
   }
 
   void clearDone() {
@@ -402,19 +415,43 @@ class TransfersNotifier extends Notifier<TransfersState> {
     _emit(kept);
   }
 
-  void togglePause(Transfer t) {
-    switch (t.status) {
-      case TransferStatus.active:
-      case TransferStatus.queued:
-        t.status = TransferStatus.paused;
-        t.speed = '—';
-        t.eta = '—';
-      case TransferStatus.paused:
-        t.status = TransferStatus.queued;
-      default:
-        break;
-    }
+  /// Pause [t]: abort its in-flight stream (if active) and mark it paused. A
+  /// queued transfer simply won't start.
+  void pause(Transfer t) {
+    _controls[t]?.abort();
+    t.status = TransferStatus.paused;
+    t.speed = '—';
+    t.eta = '—';
     _emit(_list);
+  }
+
+  /// Resume a paused transfer by re-running it from the start (a fresh attempt,
+  /// so pausing never eats into the auto-retry budget).
+  void resume(Transfer t) {
+    if (t.status != TransferStatus.paused) return;
+    t.status = TransferStatus.queued;
+    t.progress = 0;
+    t.attempts = 0;
+    _emit(_list);
+    _runners[t]?.call();
+  }
+
+  /// Cancel [t]: abort any in-flight stream (which discards the partial
+  /// destination) and remove it from the queue.
+  void cancel(Transfer t) {
+    _controls[t]?.abort();
+    _controls.remove(t);
+    _runners.remove(t);
+    _emit(_list.where((x) => !identical(x, t)).toList());
+    t.dispose();
+  }
+
+  void togglePause(Transfer t) {
+    if (t.status == TransferStatus.paused) {
+      resume(t);
+    } else if (t.status == TransferStatus.active || t.status == TransferStatus.queued) {
+      pause(t);
+    }
   }
 
   /// Re-run a failed transfer from scratch (resets the attempt counter). A
