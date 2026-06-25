@@ -1,6 +1,6 @@
 name: Build & Release
 
-# Produces packaged, downloadable Linux & macOS binaries.
+# Produces packaged, downloadable Linux, macOS & Windows binaries.
 #   • workflow_dispatch  → build on demand, available as workflow artifacts
 #   • push of a v* tag   → also attach the archives to a GitHub Release
 on:
@@ -96,15 +96,66 @@ jobs:
           cd build/macos/Build/Products/Release
           ditto -c -k --keepParent Drag.app "$GITHUB_WORKSPACE/drag-macos.zip"
 
+      # Unsigned .dmg. Signing + notarisation needs Apple Developer secrets
+      # (see the packaging issue); the disk image itself installs by drag-to-
+      # Applications, with a first-launch Gatekeeper prompt until signed.
+      - name: Package installer (.dmg)
+        run: |
+          hdiutil create -volname Drag \
+            -srcfolder "build/macos/Build/Products/Release/Drag.app" \
+            -ov -format UDZO "$GITHUB_WORKSPACE/drag-macos.dmg"
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: drag-macos
-          path: drag-macos.zip
+          path: |
+            drag-macos.zip
+            drag-macos.dmg
           if-no-files-found: error
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: drag-macos.zip
+          files: |
+            drag-macos.zip
+            drag-macos.dmg
+
+  # ── 🪟 Windows (x64) ────────────────────────────────────────────
+  windows:
+    name: Build Windows (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      # Portable zip of the runner output. A signed MSIX/Inno installer needs
+      # a code-signing certificate (see the packaging issue); the zip runs by
+      # unpacking and launching drag.exe.
+      - name: Package portable zip
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath drag-windows-x64.zip -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: drag-windows-x64
+          path: drag-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: drag-windows-x64.zip

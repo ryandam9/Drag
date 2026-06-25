@@ -261,6 +261,19 @@ build/macos/Build/Products/Release/Drag.app
 
 Launch it with `open build/macos/Build/Products/Release/Drag.app`.
 
+**Build a `.dmg` installer** (drag-to-Applications disk image):
+
+```bash
+flutter build macos --release
+hdiutil create -volname Drag \
+  -srcfolder build/macos/Build/Products/Release/Drag.app \
+  -ov -format UDZO drag-macos.dmg
+```
+
+The release workflow attaches both `drag-macos.zip` and `drag-macos.dmg` to
+tagged releases. The CI-built `.dmg` is **unsigned** — sign + notarize (below)
+for a Gatekeeper-friendly install.
+
 > **App Sandbox is intentionally disabled** (`macos/Runner/*.entitlements`).
 > Drag is a file manager that browses the *whole* filesystem from the Local
 > pane and opens outbound **S3 / SFTP** connections — neither is possible under
@@ -285,6 +298,16 @@ xcrun stapler staple build/macos/Build/Products/Release/Drag.app
 ```bash
 flutter build windows --release   # build/windows/x64/runner/Release/
 ```
+
+**Package a portable zip** (unpack and run `drag.exe`):
+
+```powershell
+Compress-Archive -Path build/windows/x64/runner/Release/* `
+  -DestinationPath drag-windows-x64.zip -Force
+```
+
+Tagged releases attach `drag-windows-x64.zip`. A signed MSIX / Inno Setup
+installer needs a code-signing certificate (tracked in the packaging issue).
 
 ### CI
 
