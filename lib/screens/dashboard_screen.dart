@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/history_csv.dart';
 import '../data/history_db.dart';
 import '../models/file_item.dart';
 import '../state/app.dart';
@@ -39,6 +43,8 @@ class DashboardScreen extends ConsumerWidget {
                 ]),
               ),
               const SizedBox(width: 12),
+              FsButton('⬇ Export CSV', onTap: () => _exportCsv(ref)),
+              const SizedBox(width: 10),
               FsButton('↺ Refresh', onTap: notifier.refresh),
               const SizedBox(width: 10),
               FsButton('⊗ Clear history', kind: FsButtonKind.danger, onTap: notifier.clear),
@@ -78,6 +84,32 @@ class DashboardScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+/// Export the current history to a timestamped CSV file in the user's home
+/// directory, falling back to the clipboard where a file can't be written
+/// (sandboxed environments, no HOME). Surfaces the outcome as a toast.
+Future<void> _exportCsv(WidgetRef ref) async {
+  final history = ref.read(historyProvider);
+  final toasts = ref.read(toastsProvider.notifier);
+  if (history.records.isEmpty) {
+    toasts.push('Nothing to export', 'No transfer history yet', ToastKind.info);
+    return;
+  }
+  final csv = historyToCsv(history.records);
+  final count = history.records.length;
+  final rowsLabel = '$count row${count == 1 ? '' : 's'}';
+  try {
+    final env = Platform.environment;
+    final dir = env['HOME'] ?? env['USERPROFILE'] ?? Directory.systemTemp.path;
+    final sep = dir.endsWith('/') || dir.endsWith(r'\') ? '' : '/';
+    final path = '$dir$sep${csvFileName(DateTime.now())}';
+    await File(path).writeAsString(csv);
+    toasts.push('History exported', '$rowsLabel → $path', ToastKind.success);
+  } catch (_) {
+    await Clipboard.setData(ClipboardData(text: csv));
+    toasts.push('Copied to clipboard', '$rowsLabel of CSV', ToastKind.info);
   }
 }
 
