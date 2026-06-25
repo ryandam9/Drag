@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../fs/file_search.dart';
+import '../fs/storage_backend.dart';
 import '../models/connection.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
@@ -320,6 +324,25 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     );
   }
 
+  /// Recursive find under the focused pane's current path. Picking a result
+  /// navigates the pane to it (and selects a matched file).
+  Future<void> _showFindDialog(PaneController pane) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _FindDialog(
+        backend: pane.backend,
+        root: pane.path,
+        rootLabel: '${pane.endpointLabel} · ${pane.displayPath}',
+        onPick: (hit) async {
+          final target = hit.isDir ? hit.path : pane.backend.parentPath(hit.path);
+          await pane.navigateTo(target);
+          final idx = pane.items.indexWhere((e) => e.name == hit.name && !e.isParent);
+          if (idx >= 0) pane.select(idx);
+        },
+      ),
+    );
+  }
+
   /// Mirror dialog: pick a direction, preview what it'll do, optionally delete
   /// destination-only extras, then run.
   Future<void> _showMirrorDialog() async {
@@ -559,6 +582,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
               ToolButton('→ Fwd', onTap: pane.canGoForward ? pane.goForward : null),
               ToolButton('↑ Up', onTap: pane.goUp),
               const ToolSep(),
+              ToolButton('🔍 Find', onTap: () => _showFindDialog(_focusedPane)),
               ToolButton('⇄ Compare', onTap: () => _sessions.compareActivePanes()),
               ToolButton('⇉ Mirror', onTap: _showMirrorDialog),
               ToolButton('↯ Queue', onTap: () => _go(AppScreen.queue)),
@@ -1111,6 +1135,166 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           line('ℹ', FsColors.accentHi, 'Add credentials in Connection Manager to connect'),
         ]),
       ),
+    );
+  }
+}
+
+/// A modal recursive-search dialog: type a query (substring, or a glob with
+/// `*`/`?`), see matches stream in with their full paths, cancel anytime, and
+/// click a result to jump to it.
+class _FindDialog extends StatefulWidget {
+  final StorageBackend backend;
+  final String root;
+  final String rootLabel;
+  final Future<void> Function(SearchHit hit) onPick;
+  const _FindDialog({
+    required this.backend,
+    required this.root,
+    required this.rootLabel,
+    required this.onPick,
+  });
+
+  @override
+  State<_FindDialog> createState() => _FindDialogState();
+}
+
+class _FindDialogState extends State<_FindDialog> {
+  final _q = TextEditingController();
+  final _results = <SearchHit>[];
+  SearchCancel? _cancel;
+  StreamSubscription<SearchHit>? _sub;
+  int _scanned = 0;
+  bool _searching = false;
+
+  @override
+  void dispose() {
+    _cancel?.cancel();
+    _sub?.cancel();
+    _q.dispose();
+    super.dispose();
+  }
+
+  void _start() {
+    final query = _q.text.trim();
+    if (query.isEmpty) return;
+    _stop();
+    setState(() {
+      _results.clear();
+      _scanned = 0;
+      _searching = true;
+    });
+    final cancel = SearchCancel();
+    _cancel = cancel;
+    _sub = searchTree(widget.backend, widget.root, query,
+            cancel: cancel, onScanned: (n) => mounted ? setState(() => _scanned = n) : null)
+        .listen(
+      (hit) => mounted ? setState(() => _results.add(hit)) : null,
+      onDone: () => mounted ? setState(() => _searching = false) : null,
+      onError: (_) => mounted ? setState(() => _searching = false) : null,
+    );
+  }
+
+  void _stop() {
+    _cancel?.cancel();
+    _sub?.cancel();
+    _sub = null;
+    if (mounted) setState(() => _searching = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: FsColors.bgPanel,
+      title: Text('Find', style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+      content: SizedBox(
+        width: 520,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('in ${widget.rootLabel}',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 11, color: FsColors.text3)),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _q,
+                autofocus: true,
+                onSubmitted: (_) => _start(),
+                style: FsType.sans(size: 13, color: FsColors.text1),
+                cursorColor: FsColors.accent,
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'name, or glob like *.log',
+                  hintStyle: FsType.sans(size: 13, color: FsColors.text3),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  filled: true,
+                  fillColor: FsColors.bgSurface,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(FsColors.rField),
+                    borderSide: BorderSide(color: FsColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(FsColors.rField),
+                    borderSide: BorderSide(color: FsColors.accent, width: 1.5),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _searching
+                ? FsButton('Cancel', kind: FsButtonKind.danger, onTap: _stop)
+                : FsButton('Search', kind: FsButtonKind.primary, onTap: _start),
+          ]),
+          const SizedBox(height: 8),
+          Text(
+            _searching
+                ? 'Searching… ${_scanned} scanned · ${_results.length} found'
+                : (_results.isEmpty ? '${_scanned} scanned' : '${_results.length} match(es)'),
+            style: FsType.sans(size: 11, color: FsColors.text3),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            height: 320,
+            decoration: BoxDecoration(
+              color: FsColors.bgScaffold,
+              borderRadius: BorderRadius.circular(FsColors.rField),
+              border: Border.all(color: FsColors.border),
+            ),
+            child: _results.isEmpty
+                ? Center(
+                    child: Text(_searching ? '…' : 'No matches yet',
+                        style: FsType.sans(size: 12, color: FsColors.text3)))
+                : ListView.builder(
+                    itemCount: _results.length,
+                    itemBuilder: (_, i) {
+                      final h = _results[i];
+                      return InkWell(
+                        onTap: () {
+                          Navigator.pop(context);
+                          widget.onPick(h);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          child: Row(children: [
+                            Text(h.isDir ? '📁' : '📄', style: const TextStyle(fontSize: 13)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(h.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                    style: FsType.sans(size: 12, color: FsColors.text1)),
+                                Text(widget.backend.displayPath(h.path),
+                                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                                    style: FsType.sans(size: 10, color: FsColors.text3)),
+                              ]),
+                            ),
+                          ]),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ]),
+      ),
+      actions: [FsButton('Close', onTap: () => Navigator.pop(context))],
     );
   }
 }
