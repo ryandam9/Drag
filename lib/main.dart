@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app_shell.dart';
+import 'data/bookmark_store.dart';
 import 'data/connection_store.dart';
 import 'data/history_db.dart';
 import 'data/secret_store.dart';
@@ -59,6 +60,16 @@ Future<void> main() async {
     sessionLayout = null;
   }
 
+  BookmarkStore? bookmarkStore;
+  List<Bookmark>? bookmarks;
+  try {
+    bookmarkStore = await BookmarkStore.open();
+    bookmarks = await bookmarkStore.load();
+  } catch (_) {
+    bookmarkStore = null;
+    bookmarks = null;
+  }
+
   // Apply the persisted theme + fonts to the global palette before the first frame.
   if (settings != null) {
     FsColors.applyTheme(birdThemeByName(settings.themeName));
@@ -99,6 +110,8 @@ Future<void> main() async {
       settingsStoreProvider.overrideWithValue(settingsStore),
       sessionStoreProvider.overrideWithValue(sessionStore),
       secretStoreProvider.overrideWithValue(KeychainSecretStore()),
+      bookmarkStoreProvider.overrideWithValue(bookmarkStore),
+      initialBookmarksProvider.overrideWithValue(bookmarks),
       initialSettingsProvider.overrideWithValue(settings),
       initialConnectionsProvider.overrideWithValue(connections),
       initialSessionLayoutProvider.overrideWithValue(sessionLayout),
