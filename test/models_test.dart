@@ -102,6 +102,23 @@ void main() {
       expect(sftp.isS3, isFalse);
       expect(sftp.kind, EndpointKind.sftp);
     });
+
+    test('JSON round-trips the assume-role fields (non-secret)', () {
+      final c = Connection(
+        name: 'role',
+        protocol: Protocol.s3,
+        useAwsProfile: true,
+        assumeRoleArn: 'arn:aws:iam::1:role/R',
+        roleSessionName: 'drag-session',
+        roleExternalId: 'ext-123',
+      );
+      final back = Connection.fromJson(c.toJson());
+      expect(back.assumeRoleArn, 'arn:aws:iam::1:role/R');
+      expect(back.roleSessionName, 'drag-session');
+      expect(back.roleExternalId, 'ext-123');
+      // Defaults when absent.
+      expect(Connection.fromJson(const {'name': 'x'}).assumeRoleArn, '');
+    });
   });
 
   group('formatDuration', () {

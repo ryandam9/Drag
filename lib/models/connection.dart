@@ -69,6 +69,16 @@ class Connection {
   /// AWS shared-credentials profile name (empty → `$AWS_PROFILE` / `default`).
   String awsProfile;
 
+  /// When set, the resolved base credentials are exchanged via STS
+  /// `AssumeRole` for temporary credentials scoped to this role ARN.
+  String assumeRoleArn;
+
+  /// Session name for the assumed role (empty → `drag`).
+  String roleSessionName;
+
+  /// Optional external ID required by some cross-account role trust policies.
+  String roleExternalId;
+
   EndpointKind get kind => protocol == Protocol.s3 ? EndpointKind.s3 : EndpointKind.sftp;
   bool get isS3 => protocol == Protocol.s3;
 
@@ -108,6 +118,9 @@ class Connection {
     this.useSsl = true,
     this.useAwsProfile = false,
     this.awsProfile = '',
+    this.assumeRoleArn = '',
+    this.roleSessionName = '',
+    this.roleExternalId = '',
   });
 
   /// Generates a process-unique id for a new connection.
@@ -141,6 +154,9 @@ class Connection {
         'useSsl': useSsl,
         'useAwsProfile': useAwsProfile,
         'awsProfile': awsProfile,
+        'assumeRoleArn': assumeRoleArn,
+        'roleSessionName': roleSessionName,
+        'roleExternalId': roleExternalId,
       };
 
   factory Connection.fromJson(Map<String, Object?> m) {
@@ -171,6 +187,9 @@ class Connection {
       useSsl: (m['useSsl'] as bool?) ?? true,
       useAwsProfile: (m['useAwsProfile'] as bool?) ?? false,
       awsProfile: (m['awsProfile'] as String?) ?? '',
+      assumeRoleArn: (m['assumeRoleArn'] as String?) ?? '',
+      roleSessionName: (m['roleSessionName'] as String?) ?? '',
+      roleExternalId: (m['roleExternalId'] as String?) ?? '',
     );
   }
 }

@@ -8,6 +8,7 @@ import '../models/file_item.dart';
 import 'aws/aws_profile.dart';
 import 'aws/s3_client.dart';
 import 'aws/sigv4.dart';
+import 'aws/sts_client.dart';
 
 /// A readable handle: the byte stream plus the total size (for progress/ETA).
 class ReadHandle {
@@ -305,15 +306,39 @@ class S3Backend extends StorageBackend {
       ? c.region
       : (c.useAwsProfile ? (loadAwsRegion(resolveAwsProfile(c)) ?? 'us-east-1') : 'us-east-1');
 
-  static S3Client _build(Connection c, {required String bucket, required String region}) {
+  S3Client _build(Connection c, {required String bucket, required String region}) {
     return S3Client(
       bucket: bucket,
       region: region,
       endpoint: c.endpoint,
       useSsl: c.useSsl,
-      // Resolved per request → a refreshed ~/.aws profile is picked up live.
-      credentials: () => _resolveCredentials(c),
+      // Resolved per request → a refreshed ~/.aws profile or assumed role's
+      // temporary credentials are picked up live.
+      credentials: _currentCredentials,
     );
+  }
+
+  // ── STS AssumeRole (optional) ──
+  AssumeRoleCredentialsProvider? _roleProvider;
+  AwsCredentials? _assumed;
+
+  /// The credentials to sign the next request with: the cached assumed-role
+  /// credentials when role mode is active, otherwise the base chain.
+  AwsCredentials _currentCredentials() => _assumed ?? _resolveCredentials(connection);
+
+  /// Ensures valid credentials are available before an operation: in
+  /// assume-role mode this calls STS (cached + auto-refreshed); otherwise it's
+  /// a no-op (the base chain is resolved per request when signing).
+  Future<void> _ensureCredentials() async {
+    if (connection.assumeRoleArn.isEmpty) return;
+    _roleProvider ??= AssumeRoleCredentialsProvider(
+      sts: StsClient(region: _defaultRegion(connection)),
+      roleArn: connection.assumeRoleArn,
+      sessionName: connection.roleSessionName.isEmpty ? 'drag' : connection.roleSessionName,
+      externalId: connection.roleExternalId.isEmpty ? null : connection.roleExternalId,
+      baseCredentials: () => _resolveCredentials(connection),
+    );
+    _assumed = await _roleProvider!.resolve();
   }
 
   /// The credentials to sign the next request with — either read fresh from the
@@ -347,6 +372,7 @@ class S3Backend extends StorageBackend {
   /// via GetBucketLocation and cached). With a custom endpoint (MinIO etc.)
   /// region routing doesn't apply, so the configured region is used as-is.
   Future<S3Client> _clientFor(String bucket) async {
+    await _ensureCredentials();
     final existing = _bucketClients[bucket];
     if (existing != null) return existing;
     final String region;
@@ -368,6 +394,7 @@ class S3Backend extends StorageBackend {
 
   @override
   Future<List<FileItem>> list(String path) async {
+    await _ensureCredentials();
     final (bucket, key) = _split(path);
 
     // Root of a discovery connection → list the account's buckets.
@@ -482,6 +509,7 @@ class S3Backend extends StorageBackend {
     for (final c in _bucketClients.values) {
       c.close();
     }
+    _roleProvider?.sts.close();
   }
 
   @override

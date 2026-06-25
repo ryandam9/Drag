@@ -218,6 +218,8 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   late final _secret = TextEditingController(text: c.secretAccessKey);
   late final _token = TextEditingController(text: c.sessionToken);
   late final _awsProfile = TextEditingController(text: c.awsProfile);
+  late final _roleArn = TextEditingController(text: c.assumeRoleArn);
+  late final _roleSession = TextEditingController(text: c.roleSessionName);
 
   // Clears the placeholder name when the field is focused, so the user can type
   // straight away instead of deleting "New connection" first.
@@ -235,7 +237,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   @override
   void dispose() {
     _nameFocus.dispose();
-    for (final ctl in [_name, _tag, _host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token, _awsProfile]) {
+    for (final ctl in [_name, _tag, _host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token, _awsProfile, _roleArn, _roleSession]) {
       ctl.dispose();
     }
     super.dispose();
@@ -526,6 +528,20 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
         const SizedBox(height: 12),
         FormField2('Session Token (optional)', _field(_token, (v) => c.sessionToken = v, obscure: true, hint: 'For temporary STS credentials', icon: Icons.confirmation_number_outlined)),
       ],
+      const SizedBox(height: 20),
+      _sectionTitle('Assume role (optional)', Icons.badge_outlined),
+      const SizedBox(height: 12),
+      FormField2('Role ARN',
+          _field(_roleArn, (v) => c.assumeRoleArn = v, hint: 'arn:aws:iam::123456789012:role/Name', icon: Icons.security)),
+      const SizedBox(height: 12),
+      FormField2('Role session name',
+          _field(_roleSession, (v) => c.roleSessionName = v, hint: 'drag', icon: Icons.label_outline)),
+      const SizedBox(height: 6),
+      Text(
+        'When set, the credentials above are exchanged for temporary credentials '
+        'scoped to this role via STS AssumeRole (auto-refreshed before expiry).',
+        style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
+      ),
       const SizedBox(height: 20),
       _sectionTitle('Paths & Options', Icons.folder_outlined),
       const SizedBox(height: 14),
