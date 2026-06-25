@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -232,6 +233,107 @@ void main() {
         () => c.putObject('x', Stream.value(Uint8List(1)), 1),
         throwsA(isA<S3Exception>().having((e) => e.message, 'message', 'denied')),
       );
+    });
+  });
+
+  group('S3Client — multipart upload', () {
+    test('uploads parts and completes, round-tripping the bytes in order', () async {
+      final partBodies = <int, List<int>>{};
+      String? completeBody;
+      final mock = await MockS3.start((req, res) {
+        final q = req.query;
+        if (req.method == 'POST' && q.containsKey('uploads')) {
+          xml(res, '<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>');
+        } else if (req.method == 'PUT' && q.containsKey('partNumber')) {
+          partBodies[int.parse(q['partNumber']!)] = req.body;
+          res.headers.set('ETag', '"etag-${q['partNumber']}"');
+          res.statusCode = 200;
+        } else if (req.method == 'POST' && q.containsKey('uploadId')) {
+          completeBody = utf8.decode(req.body);
+          xml(res, '<CompleteMultipartUploadResult><ETag>"final"</ETag></CompleteMultipartUploadResult>');
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      final payload = List<int>.generate(25, (i) => i);
+      await c.putObjectMultipart('big.bin', Stream.value(Uint8List.fromList(payload)), partSize: 10);
+
+      // 25 bytes / 10 ⇒ parts of 10, 10, 5.
+      expect(partBodies.keys.toList()..sort(), [1, 2, 3]);
+      expect(partBodies[1]!.length, 10);
+      expect(partBodies[3]!.length, 5);
+      final assembled = [for (var i = 1; i <= 3; i++) ...partBodies[i]!];
+      expect(assembled, payload);
+      // The Complete request lists every part + its ETag.
+      expect(completeBody, contains('<PartNumber>1</PartNumber>'));
+      expect(completeBody, contains('etag-3'));
+    });
+
+    test('aborts the upload when a part fails', () async {
+      var aborted = false;
+      final mock = await MockS3.start((req, res) {
+        final q = req.query;
+        if (req.method == 'POST' && q.containsKey('uploads')) {
+          xml(res, '<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>');
+        } else if (req.method == 'PUT' && q['partNumber'] == '2') {
+          xml(res, '<Error><Message>part boom</Message></Error>', status: 500);
+        } else if (req.method == 'PUT' && q.containsKey('partNumber')) {
+          res.headers.set('ETag', '"e"');
+          res.statusCode = 200;
+        } else if (req.method == 'DELETE' && q.containsKey('uploadId')) {
+          aborted = true;
+          res.statusCode = 204;
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      await expectLater(
+        c.putObjectMultipart('big.bin', Stream.value(Uint8List(25)), partSize: 10),
+        throwsA(isA<S3Exception>()),
+      );
+      expect(aborted, isTrue, reason: 'a failed part must abort the upload');
+    });
+
+    test('put picks multipart above the threshold and single PUT below it', () async {
+      final seen = <String>[];
+      final mock = await MockS3.start((req, res) {
+        seen.add('${req.method} ${req.query.containsKey('uploads') ? 'uploads' : req.query.containsKey('uploadId') ? 'uploadId' : req.query.containsKey('partNumber') ? 'part' : 'plain'}');
+        final q = req.query;
+        if (req.method == 'POST' && q.containsKey('uploads')) {
+          xml(res, '<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>');
+        } else if (req.method == 'PUT' && q.containsKey('partNumber')) {
+          res.headers.set('ETag', '"e"');
+          res.statusCode = 200;
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+      final c = S3Client(
+        bucket: 'bk',
+        region: 'us-east-1',
+        endpoint: mock.endpoint,
+        useSsl: false,
+        credentials: () => const AwsCredentials('AKIA', 'secret'),
+        multipartThreshold: 10,
+        partSize: 10,
+      );
+      addTearDown(c.close);
+
+      await c.put('big.bin', Stream.value(Uint8List(25)), 25); // > threshold ⇒ multipart
+      expect(seen.where((s) => s.contains('uploads')), isNotEmpty);
+
+      seen.clear();
+      await c.put('small.bin', Stream.value(Uint8List(5)), 5); // ≤ threshold ⇒ single PUT
+      expect(seen, ['PUT plain']);
     });
   });
 
