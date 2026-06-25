@@ -375,8 +375,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   Future<void> _newFolder(PaneController pane) async {
-    if (!pane.backend.supportsMutation) {
-      _toast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
+    if (!pane.backend.mutableAt(pane.path)) {
+      _toast('Not supported', 'Open a bucket first to create folders here', ToastKind.error);
       return;
     }
     final name = await _promptText(title: 'New folder', hint: 'Folder name', confirm: 'Create');
