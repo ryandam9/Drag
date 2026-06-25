@@ -60,42 +60,130 @@ PaneDiff comparePanes(List<FileItem> left, List<FileItem> right) {
   return PaneDiff(marksFor(l, r), marksFor(r, l));
 }
 
-/// A planned mirror of one pane onto the other: the entries to copy (those that
-/// are missing or differ on the destination) and, optionally, the destination
-/// entries to delete (those that exist only on the destination).
-class MirrorPlan {
-  final bool leftToRight;
-  final List<FileItem> copy;
-  final List<FileItem> delete;
-  const MirrorPlan({required this.leftToRight, required this.copy, required this.delete});
+/// Lists the entries of a directory at [path] on one side of a mirror.
+typedef MirrorLister = Future<List<FileItem>> Function(String path);
 
-  bool get isEmpty => copy.isEmpty && delete.isEmpty;
-  int get fileCopies => copy.where((e) => !e.isDir).length;
-  int get folderCopies => copy.where((e) => e.isDir).length;
+/// Joins a child [name] onto a directory [path], backend-aware (e.g. S3's
+/// trailing-slash folders). Matches `StorageBackend.childPath`.
+typedef MirrorJoin = String Function(String path, String name, bool isDir);
+
+/// One file to copy from [srcPath] to [dstPath] (because it's missing on, or
+/// differs from, the destination).
+class MirrorCopy {
+  final String srcPath;
+  final String dstPath;
+  final String name;
+  final int sizeBytes;
+  const MirrorCopy({
+    required this.srcPath,
+    required this.dstPath,
+    required this.name,
+    required this.sizeBytes,
+  });
 }
 
-/// Builds a [MirrorPlan] to make [dstItems] match [srcItems]: copy everything
-/// that's missing or different on the destination, and (if [deleteExtras])
-/// remove destination entries that don't exist on the source.
-MirrorPlan planMirror(
-  List<FileItem> srcItems,
-  List<FileItem> dstItems, {
+/// A destination directory to create so the tree structure exists before files
+/// land in it (also covers empty source folders).
+class MirrorMkdir {
+  final String dstPath;
+  const MirrorMkdir(this.dstPath);
+}
+
+/// A destination entry to remove — either a destination-only "extra" (when
+/// `deleteExtras`) or an entry whose type blocks the source (a file where a
+/// folder must go, or vice-versa).
+class MirrorDelete {
+  final String dstPath;
+  final bool isDir;
+  const MirrorDelete(this.dstPath, this.isDir);
+}
+
+/// A planned recursive mirror of one tree onto another. [deletes] run first,
+/// then [mkdirs] (parents before children), then the file [copies].
+class MirrorPlan {
+  final bool leftToRight;
+  final List<MirrorMkdir> mkdirs;
+  final List<MirrorCopy> copies;
+  final List<MirrorDelete> deletes;
+  const MirrorPlan({
+    required this.leftToRight,
+    this.mkdirs = const [],
+    this.copies = const [],
+    this.deletes = const [],
+  });
+
+  bool get isEmpty => mkdirs.isEmpty && copies.isEmpty && deletes.isEmpty;
+  int get fileCount => copies.length;
+  int get dirCount => mkdirs.length;
+  int get deleteCount => deletes.length;
+  int get totalBytes => copies.fold(0, (sum, c) => sum + c.sizeBytes);
+}
+
+/// Recursively walks the source and destination trees (rooted at [srcRoot] /
+/// [dstRoot]) and plans the operations to make the destination match the
+/// source: directories to create, files to copy (missing, or different by
+/// size), and — when [deleteExtras] — destination-only entries to remove.
+/// Type conflicts (a file where the source has a folder, or vice-versa) are
+/// always resolved by removing the blocker, regardless of [deleteExtras].
+Future<MirrorPlan> planMirrorRecursive({
+  required String srcRoot,
+  required String dstRoot,
+  required MirrorLister listSrc,
+  required MirrorLister listDst,
+  required MirrorJoin joinSrc,
+  required MirrorJoin joinDst,
   required bool leftToRight,
   required bool deleteExtras,
-}) {
-  final diff = comparePanes(srcItems, dstItems);
-  final copy = <FileItem>[];
-  for (final i in srcItems) {
-    if (i.isParent) continue;
-    final m = diff.left[i.name];
-    if (m == CompareMark.onlyHere || m == CompareMark.differs) copy.add(i);
-  }
-  final delete = <FileItem>[];
-  if (deleteExtras) {
-    for (final i in dstItems) {
-      if (i.isParent) continue;
-      if (diff.right[i.name] == CompareMark.onlyHere) delete.add(i);
+}) async {
+  final mkdirs = <MirrorMkdir>[];
+  final copies = <MirrorCopy>[];
+  final deletes = <MirrorDelete>[];
+
+  Future<void> walk(String sDir, String dDir, bool dstExists) async {
+    final srcEntries = [for (final e in await listSrc(sDir)) if (!e.isParent) e];
+    final dstEntries = dstExists ? [for (final e in await listDst(dDir)) if (!e.isParent) e] : <FileItem>[];
+    final dstByName = {for (final e in dstEntries) e.name: e};
+    final srcNames = {for (final e in srcEntries) e.name};
+
+    for (final s in srcEntries) {
+      final d = dstByName[s.name];
+      if (s.isDir) {
+        final sPath = joinSrc(sDir, s.name, true);
+        final dPath = joinDst(dDir, s.name, true);
+        if (d != null && !d.isDir) {
+          // A file blocks the folder — remove it, then build the subtree fresh.
+          deletes.add(MirrorDelete(joinDst(dDir, s.name, false), false));
+          mkdirs.add(MirrorMkdir(dPath));
+          await walk(sPath, dPath, false);
+        } else if (d == null) {
+          mkdirs.add(MirrorMkdir(dPath));
+          await walk(sPath, dPath, false);
+        } else {
+          await walk(sPath, dPath, true);
+        }
+      } else {
+        final sPath = joinSrc(sDir, s.name, false);
+        final dPath = joinDst(dDir, s.name, false);
+        final size = s.sizeBytes ?? 0;
+        if (d != null && d.isDir) {
+          // A folder blocks the file — remove it, then copy.
+          deletes.add(MirrorDelete(joinDst(dDir, s.name, true), true));
+          copies.add(MirrorCopy(srcPath: sPath, dstPath: dPath, name: s.name, sizeBytes: size));
+        } else if (d == null || (d.sizeBytes ?? 0) != size) {
+          copies.add(MirrorCopy(srcPath: sPath, dstPath: dPath, name: s.name, sizeBytes: size));
+        }
+      }
+    }
+
+    if (deleteExtras && dstExists) {
+      for (final d in dstEntries) {
+        if (!srcNames.contains(d.name)) {
+          deletes.add(MirrorDelete(joinDst(dDir, d.name, d.isDir), d.isDir));
+        }
+      }
     }
   }
-  return MirrorPlan(leftToRight: leftToRight, copy: copy, delete: delete);
+
+  await walk(srcRoot, dstRoot, true);
+  return MirrorPlan(leftToRight: leftToRight, mkdirs: mkdirs, copies: copies, deletes: deletes);
 }

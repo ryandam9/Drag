@@ -323,16 +323,26 @@ class SessionsNotifier extends Notifier<SessionsState> {
     return diff;
   }
 
-  /// Compute (but don't run) a mirror of one pane onto the other.
-  MirrorPlan mirrorPlan({required bool leftToRight, required bool deleteExtras}) {
+  /// Compute (but don't run) a recursive mirror of one pane's tree onto the
+  /// other, walking nested folders so differences at any depth are caught.
+  Future<MirrorPlan> mirrorPlan({required bool leftToRight, required bool deleteExtras}) {
     final src = leftToRight ? leftPane : rightPane;
     final dst = leftToRight ? rightPane : leftPane;
-    return planMirror(src.items, dst.items, leftToRight: leftToRight, deleteExtras: deleteExtras);
+    return planMirrorRecursive(
+      srcRoot: src.path,
+      dstRoot: dst.path,
+      listSrc: src.backend.list,
+      listDst: dst.backend.list,
+      joinSrc: src.backend.childPath,
+      joinDst: dst.backend.childPath,
+      leftToRight: leftToRight,
+      deleteExtras: deleteExtras,
+    );
   }
 
-  /// Run a previously-computed [plan]: copy the missing/different entries
-  /// (recursively for folders, overwriting on the destination) and optionally
-  /// delete the destination-only extras.
+  /// Run a previously-computed [plan]: remove blockers/extras, create the
+  /// destination directory structure, then queue every file copy (overwriting
+  /// on the destination). Deletes and mkdirs run first so copies land cleanly.
   Future<void> runMirror(MirrorPlan plan) async {
     final src = plan.leftToRight ? leftPane : rightPane;
     final dst = plan.leftToRight ? rightPane : leftPane;
@@ -341,24 +351,27 @@ class SessionsNotifier extends Notifier<SessionsState> {
       toasts.push('Not connected', 'Connect both endpoints first', ToastKind.error);
       return;
     }
-    final transfers = ref.read(transfersProvider.notifier);
-    for (final item in plan.copy) {
-      if (item.isDir) {
-        transfers.enqueueTree(src, dst, item); // recursive, overwrites
-      } else {
-        transfers.enqueue(src, dst, item, announce: false);
-      }
-    }
     var deleted = 0;
-    for (final d in plan.delete) {
+    for (final d in plan.deletes) {
       try {
-        await dst.backend.delete(dst.backend.childPath(dst.path, d.name, d.isDir), isDir: d.isDir);
+        await dst.backend.delete(d.dstPath, isDir: d.isDir);
         deleted++;
       } catch (_) {/* best-effort */}
     }
-    if (plan.delete.isNotEmpty) await dst.refresh();
-    toasts.push('Mirroring',
-        '${plan.copy.length} copied · $deleted deleted → ${dst.endpointLabel}', ToastKind.info);
+    for (final m in plan.mkdirs) {
+      try {
+        await dst.backend.makeDir(m.dstPath);
+      } catch (_) {/* may already exist */}
+    }
+    final transfers = ref.read(transfersProvider.notifier);
+    for (final c in plan.copies) {
+      transfers.enqueueFile(src, dst, c.srcPath, c.dstPath, c.name, c.sizeBytes, announce: false);
+    }
+    if (plan.deletes.isNotEmpty || plan.mkdirs.isNotEmpty) await dst.refresh();
+    toasts.push(
+        'Mirroring',
+        '${plan.copies.length} file(s) · ${plan.mkdirs.length} folder(s) · $deleted deleted → ${dst.endpointLabel}',
+        ToastKind.info);
   }
 
   /// Re-filter every pane after the "show hidden files" setting changes.

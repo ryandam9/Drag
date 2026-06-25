@@ -503,10 +503,20 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   Future<void> _showMirrorDialog() async {
     var leftToRight = true;
     var deleteExtras = false;
+    // Recompute the (recursive) plan only when an input changes; the latest
+    // resolved plan is what the Mirror button acts on.
+    String? planKey;
+    Future<MirrorPlan>? planFuture;
+    MirrorPlan? resolved;
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
-        final plan = _sessions.mirrorPlan(leftToRight: leftToRight, deleteExtras: deleteExtras);
+        final key = '$leftToRight/$deleteExtras';
+        if (key != planKey) {
+          planKey = key;
+          resolved = null;
+          planFuture = _sessions.mirrorPlan(leftToRight: leftToRight, deleteExtras: deleteExtras);
+        }
         final srcLabel = leftToRight ? _leftPane.endpointLabel : _rightPane.endpointLabel;
         final dstLabel = leftToRight ? _rightPane.endpointLabel : _leftPane.endpointLabel;
         Widget dirChip(String label, bool value) => GestureDetector(
@@ -532,13 +542,33 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [dirChip('Left → Right', true), const SizedBox(width: 8), dirChip('Right → Left', false)]),
             const SizedBox(height: 14),
-            Text('Make $dstLabel match $srcLabel (current folders):',
+            Text('Make $dstLabel match $srcLabel (recursively):',
                 style: FsType.sans(size: 12, color: FsColors.text2)),
             const SizedBox(height: 8),
-            Text('· ${plan.fileCopies} file(s) + ${plan.folderCopies} folder(s) to copy',
-                style: FsType.sans(size: 12, color: FsColors.text1)),
-            Text('· ${plan.delete.length} extra item(s) to delete on $dstLabel',
-                style: FsType.sans(size: 12, color: deleteExtras ? FsColors.red : FsColors.text3)),
+            FutureBuilder<MirrorPlan>(
+              future: planFuture,
+              builder: (c, snap) {
+                if (snap.connectionState != ConnectionState.done || !snap.hasData) {
+                  return Row(children: [
+                    SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
+                    const SizedBox(width: 10),
+                    Text('Scanning folders…', style: FsType.sans(size: 12, color: FsColors.text3)),
+                  ]);
+                }
+                final plan = resolved = snap.data!;
+                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('· ${plan.fileCount} file(s) to copy · ${formatBytes(plan.totalBytes)}',
+                      style: FsType.sans(size: 12, color: FsColors.text1)),
+                  Text('· ${plan.dirCount} folder(s) to create',
+                      style: FsType.sans(size: 12, color: FsColors.text1)),
+                  Text('· ${plan.deleteCount} item(s) to delete on $dstLabel',
+                      style: FsType.sans(size: 12, color: plan.deleteCount > 0 ? FsColors.red : FsColors.text3)),
+                ]);
+              },
+            ),
             const SizedBox(height: 10),
             GestureDetector(
               onTap: () => setLocal(() => deleteExtras = !deleteExtras),
@@ -562,7 +592,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             FsButton('Mirror',
                 kind: FsButtonKind.primary,
                 onTap: () {
+                  final plan = resolved;
                   Navigator.pop(ctx);
+                  if (plan == null) return; // still scanning
                   if (plan.isEmpty) {
                     _toast('Nothing to mirror', 'The folders already match', ToastKind.info);
                   } else {

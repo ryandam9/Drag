@@ -44,23 +44,106 @@ void main() {
     });
   });
 
-  group('planMirror', () {
-    test('copies missing/different entries and deletes extras', () {
-      final left = [_f('a', 1), _f('b', 2), _d('folder'), _f('common', 5)];
-      final right = [_f('b', 9), _f('c', 3), _f('common', 5)];
-      final plan = planMirror(left, right, leftToRight: true, deleteExtras: true);
+  group('planMirrorRecursive', () {
+    // Build a planner over two in-memory trees keyed by directory path
+    // ("/" rooted, "/" + name children). Empty/absent dirs list as nothing.
+    Future<MirrorPlan> plan(
+      Map<String, List<FileItem>> src,
+      Map<String, List<FileItem>> dst, {
+      bool deleteExtras = false,
+    }) {
+      String join(String path, String name, bool isDir) => path == '/' ? '/$name' : '$path/$name';
+      return planMirrorRecursive(
+        srcRoot: '/',
+        dstRoot: '/',
+        listSrc: (p) async => src[p] ?? const [],
+        listDst: (p) async => dst[p] ?? const [],
+        joinSrc: join,
+        joinDst: join,
+        leftToRight: true,
+        deleteExtras: deleteExtras,
+      );
+    }
 
-      expect(plan.copy.map((e) => e.name).toSet(), {'a', 'b', 'folder'}); // c-same skipped
-      expect(plan.fileCopies, 2); // a, b
-      expect(plan.folderCopies, 1); // folder
-      expect(plan.delete.map((e) => e.name).toList(), ['c']);
-      expect(plan.isEmpty, isFalse);
+    test('catches a difference nested inside a same-named folder', () async {
+      final p = await plan(
+        {
+          '/': [_f('top', 1), _d('sub')],
+          '/sub': [_f('nested', 10), _f('same', 3)],
+        },
+        {
+          '/': [_f('top', 1), _d('sub')],
+          '/sub': [_f('nested', 99), _f('same', 3)], // nested differs by size
+        },
+      );
+      // The shallow planner treated /sub as "same"; the recursive one descends.
+      expect(p.copies.map((c) => c.srcPath), ['/sub/nested']);
+      expect(p.copies.single.dstPath, '/sub/nested');
+      expect(p.dirCount, 0); // /sub already exists on both sides
     });
 
-    test('without deleteExtras, nothing is deleted', () {
-      final plan = planMirror([_f('a', 1)], [_f('b', 2)], leftToRight: true, deleteExtras: false);
-      expect(plan.copy.map((e) => e.name), ['a']);
-      expect(plan.delete, isEmpty);
+    test('creates missing folders and copies their contents', () async {
+      final p = await plan(
+        {
+          '/': [_d('sub')],
+          '/sub': [_f('a', 1), _d('deep')],
+          '/sub/deep': [_f('b', 2)],
+        },
+        {'/': const []},
+      );
+      expect(p.mkdirs.map((m) => m.dstPath), ['/sub', '/sub/deep']); // parents first
+      expect(p.copies.map((c) => c.dstPath).toSet(), {'/sub/a', '/sub/deep/b'});
+      expect(p.totalBytes, 3);
+    });
+
+    test('identical trees produce an empty plan', () async {
+      final tree = {
+        '/': [_f('a', 1), _d('sub')],
+        '/sub': [_f('b', 2)],
+      };
+      final p = await plan(tree, {
+        '/': [_f('a', 1), _d('sub')],
+        '/sub': [_f('b', 2)],
+      });
+      expect(p.isEmpty, isTrue);
+    });
+
+    test('deleteExtras removes destination-only entries at any depth', () async {
+      final p = await plan(
+        {
+          '/': [_d('sub')],
+          '/sub': [_f('keep', 1)],
+        },
+        {
+          '/': [_d('sub'), _f('topextra', 9)],
+          '/sub': [_f('keep', 1), _f('subextra', 4)],
+        },
+        deleteExtras: true,
+      );
+      expect(p.deletes.map((d) => d.dstPath).toSet(), {'/topextra', '/sub/subextra'});
+      expect(p.copies, isEmpty);
+    });
+
+    test('without deleteExtras, extras are left alone', () async {
+      final p = await plan(
+        {'/': [_f('a', 1)]},
+        {'/': [_f('a', 1), _f('extra', 2)]},
+      );
+      expect(p.isEmpty, isTrue);
+    });
+
+    test('resolves a type conflict (dst file where src has a folder)', () async {
+      final p = await plan(
+        {
+          '/': [_d('x')],
+          '/x': [_f('inside', 1)],
+        },
+        {'/': [_f('x', 5)]}, // x is a file on the destination
+      );
+      expect(p.deletes.single.dstPath, '/x');
+      expect(p.deletes.single.isDir, isFalse);
+      expect(p.mkdirs.map((m) => m.dstPath), ['/x']);
+      expect(p.copies.single.dstPath, '/x/inside');
     });
   });
 
@@ -74,6 +157,12 @@ void main() {
       addTearDown(() => r.delete(recursive: true));
       await File(p.join(l.path, 'a.txt')).writeAsString('A');
       await File(p.join(l.path, 'common.txt')).writeAsString('X');
+      // A nested folder present on both sides with a differing file inside —
+      // the shallow planner would have missed this.
+      await Directory(p.join(l.path, 'sub')).create();
+      await Directory(p.join(r.path, 'sub')).create();
+      await File(p.join(l.path, 'sub', 'deep.txt')).writeAsString('NEW-LONGER');
+      await File(p.join(r.path, 'sub', 'deep.txt')).writeAsString('OLD');
       await File(p.join(r.path, 'b.txt')).writeAsString('B'); // extra on the right
       await File(p.join(r.path, 'common.txt')).writeAsString('X');
 
@@ -87,16 +176,18 @@ void main() {
         ..path = r.path;
       await s.rightPane.refresh();
 
-      final plan = s.mirrorPlan(leftToRight: true, deleteExtras: true);
-      expect(plan.copy.map((e) => e.name), ['a.txt']); // common is identical
-      expect(plan.delete.map((e) => e.name), ['b.txt']);
+      final plan = await s.mirrorPlan(leftToRight: true, deleteExtras: true);
+      expect(plan.copies.map((c) => c.name).toSet(), {'a.txt', 'deep.txt'}); // common identical, deep differs
+      expect(plan.deletes.map((d) => d.dstPath), [p.join(r.path, 'b.txt')]);
       await s.runMirror(plan);
 
       final copied = File(p.join(r.path, 'a.txt'));
-      for (var i = 0; i < 200 && !copied.existsSync(); i++) {
+      final deep = File(p.join(r.path, 'sub', 'deep.txt'));
+      for (var i = 0; i < 200 && !(copied.existsSync() && await deep.readAsString() == 'NEW-LONGER'); i++) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       expect(await copied.readAsString(), 'A');
+      expect(await deep.readAsString(), 'NEW-LONGER'); // nested difference mirrored
       expect(File(p.join(r.path, 'b.txt')).existsSync(), isFalse); // extra deleted
       expect(await File(p.join(r.path, 'common.txt')).readAsString(), 'X');
     });
