@@ -1,6 +1,7 @@
 /// Barrel for the Riverpod state layer — one import for screens and widgets.
 library;
 
+export 'bookmarks_provider.dart';
 export 'compare.dart';
 export 'connection_log_provider.dart';
 export 'connections_provider.dart';

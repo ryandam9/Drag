@@ -102,10 +102,81 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     _toast('Copied', location, ToastKind.info);
   }
 
+  String _pathLabel(PaneController pane) {
+    final segs = pane.path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).toList();
+    return segs.isEmpty ? pane.displayPath : segs.last;
+  }
+
+  Future<void> _toggleBookmark(PaneController pane) async {
+    final bm = ref.read(bookmarksProvider.notifier);
+    final was = bm.isBookmarked(pane.connection?.id, pane.path);
+    await bm.toggle(pane.connection?.id, pane.path, _pathLabel(pane));
+    _toast(was ? 'Bookmark removed' : 'Bookmarked', pane.displayPath, ToastKind.info);
+  }
+
+  /// Quick-jump menu: this endpoint's bookmarks + recently visited paths.
+  Future<void> _showQuickJump(BuildContext ctx, PaneController pane) async {
+    final box = ctx.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final origin = box.localToGlobal(Offset(0, box.size.height), ancestor: overlay);
+    final connId = pane.connection?.id;
+    final bookmarks = ref.read(bookmarksProvider.notifier).forEndpoint(connId);
+    final recents = pane.recentPaths.take(6).toList();
+
+    PopupMenuItem<String> pathItem(String label, String path) => PopupMenuItem(
+          value: path,
+          child: SizedBox(
+            width: 260,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: FsType.sans(size: 12, color: FsColors.text1)),
+              Text(pane.backend.displayPath(path), maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: FsType.sans(size: 10, color: FsColors.text3)),
+            ]),
+          ),
+        );
+
+    final items = <PopupMenuEntry<String>>[];
+    if (bookmarks.isEmpty && recents.isEmpty) {
+      items.add(PopupMenuItem(enabled: false, child: _menuText('No bookmarks or recent paths')));
+    } else {
+      if (bookmarks.isNotEmpty) {
+        items.add(PopupMenuItem(enabled: false, height: 28, child: _menuHeader('BOOKMARKS')));
+        for (final b in bookmarks) {
+          items.add(pathItem(b.label, b.path));
+        }
+      }
+      if (recents.isNotEmpty) {
+        if (bookmarks.isNotEmpty) items.add(const PopupMenuDivider());
+        items.add(PopupMenuItem(enabled: false, height: 28, child: _menuHeader('RECENT')));
+        for (final r in recents) {
+          items.add(pathItem(_lastSegment(r), r));
+        }
+      }
+    }
+
+    final choice = await showMenu<String>(
+      context: context,
+      color: FsColors.bgPanel,
+      position: RelativeRect.fromLTRB(origin.dx, origin.dy, overlay.size.width - origin.dx - 240, 0),
+      items: items,
+    );
+    if (choice != null) await pane.navigateTo(choice);
+  }
+
+  String _lastSegment(String path) {
+    final segs = path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).toList();
+    return segs.isEmpty ? path : segs.last;
+  }
+
+  Widget _menuHeader(String t) => Text(t,
+      style: FsType.sans(size: 9, weight: FontWeight.w700, color: FsColors.text3, letterSpacing: 1));
+
   @override
   Widget build(BuildContext context) {
     final sessionsState = ref.watch(sessionsProvider);
     ref.watch(connectionsProvider); // endpoint pickers
+    ref.watch(bookmarksProvider); // star state + quick-jump menu
     final settings = ref.watch(settingsProvider);
     final showLog = _showLogOverride ?? settings.showLogOnStartup;
     return Focus(
@@ -608,6 +679,13 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           ),
         ),
         const SizedBox(width: 6),
+        _paneIconBtn(
+          ref.read(bookmarksProvider.notifier).isBookmarked(pane.connection?.id, pane.path) ? '★' : '☆',
+          onTap: () => _toggleBookmark(pane),
+        ),
+        const SizedBox(width: 4),
+        Builder(builder: (ctx) => _paneIconBtn('▾', onTap: () => _showQuickJump(ctx, pane))),
+        const SizedBox(width: 4),
         _paneIconBtn('📋', onTap: () => _copyLocation(pane.displayPath)),
         const SizedBox(width: 4),
         _paneIconBtn('↑', onTap: pane.goUp),

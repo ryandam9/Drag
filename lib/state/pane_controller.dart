@@ -134,6 +134,20 @@ class PaneController {
 
   Future<void> goUp() => _navigate(backend.parentPath(path));
 
+  /// Jump straight to [newPath] (e.g. a bookmark) on the current backend.
+  Future<void> navigateTo(String newPath) => _navigate(newPath);
+
+  /// Recently visited paths on this backend (most recent first, deduped, and
+  /// excluding the current path), for the quick-jump menu.
+  List<String> get recentPaths {
+    final seen = <String>{path};
+    final out = <String>[];
+    for (final p in _back.reversed) {
+      if (seen.add(p)) out.add(p);
+    }
+    return out;
+  }
+
   Future<void> _navigate(String newPath) async {
     if (newPath == path) return;
     _back.add(path);

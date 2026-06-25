@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/bookmark_store.dart';
 import '../data/connection_store.dart';
 import '../data/history_db.dart';
 import '../data/secret_store.dart';
@@ -23,6 +24,11 @@ final sessionStoreProvider = Provider<SessionStore?>((ref) => null);
 /// Where connection secrets are persisted (OS keychain). Null → secrets stay
 /// in memory only, as before keychain support existed.
 final secretStoreProvider = Provider<SecretStore?>((ref) => null);
+
+final bookmarkStoreProvider = Provider<BookmarkStore?>((ref) => null);
+
+/// Bookmarks loaded from [BookmarkStore] at startup (null → empty).
+final initialBookmarksProvider = Provider<List<Bookmark>?>((ref) => null);
 
 /// Settings loaded from [SettingsStore] at startup (null → defaults).
 final initialSettingsProvider = Provider<AppSettings?>((ref) => null);
