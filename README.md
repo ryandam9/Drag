@@ -324,12 +324,13 @@ all three targets are verified to compile on each change.
 ```bash
 flutter analyze
 flutter test                 # full hermetic unit/widget suite
-flutter test --coverage      # ~89% line coverage
+flutter test --coverage      # line coverage report → coverage/lcov.info
 ```
 
-Coverage spans the whole stack (≈89% of lines; the only thin spots are
-`main()`'s window-manager bootstrap and the live-SSH paths of `SftpBackend`,
-which need a real server). Test helpers live in `test/support/`:
+Coverage spans the whole stack (~82% of lines; **CI fails the build below an
+80% floor**). The only thin spots are `main()`'s window-manager bootstrap and
+the live-SSH paths of `SftpBackend`, which need a real server. Test helpers
+live in `test/support/`:
 `harness.dart` builds a `ProviderContainer` with the SQLite stores stubbed;
 `memory_backend.dart` is an in-memory `StorageBackend` for widget tests (real
 disk I/O can't resolve under `testWidgets`' fake-async clock);
