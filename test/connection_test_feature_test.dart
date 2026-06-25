@@ -88,6 +88,43 @@ void main() {
       expect(log.last.message, contains('s3-bad'));
     });
 
+    test('connect() verifies a reachable S3 endpoint before reporting online', () async {
+      final server = await _okS3();
+      addTearDown(() => server.close(force: true));
+      final c = makeContainer();
+      final conn = Connection(
+        name: 's3-connect',
+        protocol: Protocol.s3,
+        bucket: 'b',
+        region: 'us-east-1',
+        endpoint: '127.0.0.1:${server.port}',
+        useSsl: false,
+        accessKeyId: 'AKIA',
+        secretAccessKey: 'secret',
+      );
+      await c.read(sessionsProvider.notifier).connect(conn);
+      expect(conn.online, isTrue);
+      expect(c.read(toastsProvider).last.title, 'Session connected');
+      expect(c.read(toastsProvider).last.kind, ToastKind.success);
+    });
+
+    test('connect() reports failure and stays offline for an unreachable endpoint', () async {
+      final c = makeContainer();
+      final conn = Connection(
+        name: 's3-down',
+        protocol: Protocol.s3,
+        bucket: 'b',
+        region: 'us-east-1',
+        endpoint: '127.0.0.1:1',
+        useSsl: false,
+        accessKeyId: 'AKIA',
+        secretAccessKey: 'secret',
+      )..online = true;
+      await c.read(sessionsProvider.notifier).connect(conn);
+      expect(conn.online, isFalse);
+      expect(c.read(toastsProvider).last.title, 'Connection failed');
+    });
+
     test('clear() empties the connection log', () async {
       final c = makeContainer();
       final log = c.read(connectionLogProvider.notifier);
