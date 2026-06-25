@@ -42,6 +42,16 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
 
   TransfersNotifier? _transfersRef;
 
+  // Per-pane scroll controllers so keyboard navigation can keep the selected
+  // row in view. Rows are a fixed height so the scroll math stays exact.
+  static const double _kRowExtent = 32;
+  final ScrollController _leftScroll = ScrollController();
+  final ScrollController _rightScroll = ScrollController();
+
+  // Type-ahead: accumulate typed characters briefly so "re" jumps to "report".
+  String _typeAheadBuffer = '';
+  Timer? _typeAheadTimer;
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +64,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   void dispose() {
     // Use the cached notifier — `ref` is unsafe in dispose().
     _transfersRef?.setConflictResolver(null);
+    _typeAheadTimer?.cancel();
+    _leftScroll.dispose();
+    _rightScroll.dispose();
     super.dispose();
   }
 
@@ -213,9 +226,54 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   KeyEventResult _onKey(KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    // Ignore key-up; let held arrows/page keys auto-repeat (KeyRepeatEvent).
+    final isDown = event is KeyDownEvent;
+    if (!isDown && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+
+    final left = ref.read(sessionsProvider).focusedLeft;
     final pane = _focusedPane;
-    switch (event.logicalKey) {
+    final sc = left ? _leftScroll : _rightScroll;
+    final key = event.logicalKey;
+
+    // Movement keys repeat while held.
+    switch (key) {
+      case LogicalKeyboardKey.arrowDown:
+        pane.moveSelection(1);
+        _scrollToSelection(pane, sc);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowUp:
+        pane.moveSelection(-1);
+        _scrollToSelection(pane, sc);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.pageDown:
+        pane.moveSelection(_pageRows(sc));
+        _scrollToSelection(pane, sc);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.pageUp:
+        pane.moveSelection(-_pageRows(sc));
+        _scrollToSelection(pane, sc);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.home:
+        pane.selectEdge(last: false);
+        _scrollToSelection(pane, sc);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.end:
+        pane.selectEdge(last: true);
+        _scrollToSelection(pane, sc);
+        return KeyEventResult.handled;
+    }
+
+    // Everything below is one-shot (don't auto-repeat).
+    if (!isDown) return KeyEventResult.ignored;
+
+    switch (key) {
+      case LogicalKeyboardKey.enter:
+      case LogicalKeyboardKey.numpadEnter:
+        _activateSelection(pane, left, sc);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.tab:
+        _sessions.focusPane(!left); // Tab switches the focused pane
+        return KeyEventResult.handled;
       case LogicalKeyboardKey.f2:
         _renameSelected(pane);
         return KeyEventResult.handled;
@@ -223,10 +281,77 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         _deleteSelected(pane);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.backspace:
-        pane.goUp();
+        _navigate(pane.goUp(), sc);
         return KeyEventResult.handled;
-      default:
+      case LogicalKeyboardKey.escape:
+        _typeAheadBuffer = '';
         return KeyEventResult.ignored;
+    }
+
+    // Type-ahead: a printable character (no Ctrl/Cmd) jumps to a matching row.
+    final ch = event.character;
+    final kb = HardwareKeyboard.instance;
+    if (ch != null &&
+        ch.length == 1 &&
+        ch.codeUnitAt(0) >= 0x20 &&
+        !kb.isControlPressed &&
+        !kb.isMetaPressed) {
+      _typeAheadTimer?.cancel();
+      _typeAheadBuffer += ch;
+      _typeAheadTimer = Timer(const Duration(milliseconds: 700), () => _typeAheadBuffer = '');
+      if (pane.typeAhead(_typeAheadBuffer)) _scrollToSelection(pane, sc);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// Enter on a folder (or "..") opens it; on a file it does nothing beyond the
+  /// existing selection. A fresh listing scrolls back to the top.
+  void _activateSelection(PaneController pane, bool left, ScrollController sc) {
+    final item = _selectedAny(pane);
+    if (item == null) return;
+    if (item.isDir || item.isParent) _navigate(pane.open(item), sc);
+  }
+
+  /// Run a navigation [op] then reset the pane's scroll to the top once the new
+  /// listing has loaded.
+  void _navigate(Future<void> op, ScrollController sc) {
+    op.then((_) {
+      if (mounted && sc.hasClients) sc.jumpTo(0);
+    });
+  }
+
+  /// The selected entry including "..", or null if nothing is selected.
+  FileItem? _selectedAny(PaneController pane) {
+    final i = pane.selectedIndex;
+    if (i == null || i < 0 || i >= pane.items.length) return null;
+    return pane.items[i];
+  }
+
+  /// Rows visible in [sc]'s viewport, for PageUp/PageDown.
+  int _pageRows(ScrollController sc) {
+    if (!sc.hasClients) return 10;
+    final n = (sc.position.viewportDimension / _kRowExtent).floor();
+    return n < 1 ? 1 : n;
+  }
+
+  /// Scroll just enough to bring the selected row fully into view.
+  void _scrollToSelection(PaneController pane, ScrollController sc) {
+    if (!sc.hasClients) return;
+    final i = pane.selectedIndex;
+    if (i == null) return;
+    final top = i * _kRowExtent;
+    final bottom = top + _kRowExtent;
+    final vpTop = sc.offset;
+    final vpBottom = vpTop + sc.position.viewportDimension;
+    double? target;
+    if (top < vpTop) {
+      target = top;
+    } else if (bottom > vpBottom) {
+      target = bottom - sc.position.viewportDimension;
+    }
+    if (target != null) {
+      sc.jumpTo(target.clamp(sc.position.minScrollExtent, sc.position.maxScrollExtent));
     }
   }
 
@@ -863,7 +988,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         onAction: pane.refresh,
       );
     }
-    return _fileTable(pane, showPerms, left: left);
+    return _fileTable(pane, showPerms, left: left, scroll: left ? _leftScroll : _rightScroll);
   }
 
   Widget _placeholder({
@@ -907,13 +1032,16 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   // ── File table ──
-  Widget _fileTable(PaneController pane, bool showPerms, {required bool left}) {
+  Widget _fileTable(PaneController pane, bool showPerms,
+      {required bool left, required ScrollController scroll}) {
     return Container(
       color: FsColors.bgSurface,
       child: Column(children: [
         _tableHead(showPerms),
         Expanded(
           child: ListView.builder(
+            controller: scroll,
+            itemExtent: _kRowExtent,
             itemCount: pane.items.length,
             itemBuilder: (context, i) {
               final f = pane.items[i];

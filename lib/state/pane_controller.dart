@@ -199,6 +199,44 @@ class PaneController {
 
   bool isSelected(int index) => selection.contains(index);
 
+  /// Move the single selection by [delta] rows (negative = up), clamped to the
+  /// listing. Drives keyboard up/down and page navigation. With nothing
+  /// selected, a downward move lands on the first row and an upward move on the
+  /// last. No-op on an empty listing.
+  void moveSelection(int delta) {
+    if (items.isEmpty) return;
+    final cur = selectedIndex ?? (delta >= 0 ? -1 : items.length);
+    select((cur + delta).clamp(0, items.length - 1));
+  }
+
+  /// Select the first or last row (Home / End).
+  void selectEdge({required bool last}) {
+    if (items.isEmpty) return;
+    select(last ? items.length - 1 : 0);
+  }
+
+  /// Type-ahead: select the next entry whose name starts with [prefix]
+  /// (case-insensitive), wrapping around the listing. A single-character prefix
+  /// advances past the current row so repeated presses cycle through matches;
+  /// a longer prefix prefers to stay on the current row if it still matches.
+  /// Returns true when a match was selected.
+  bool typeAhead(String prefix) {
+    if (prefix.isEmpty || items.isEmpty) return false;
+    final q = prefix.toLowerCase();
+    final anchor = selectedIndex ?? -1;
+    final from = q.length <= 1 ? anchor + 1 : anchor;
+    final base = from < 0 ? 0 : from;
+    for (var k = 0; k < items.length; k++) {
+      final i = (base + k) % items.length;
+      final f = items[i];
+      if (!f.isParent && f.name.toLowerCase().startsWith(q)) {
+        select(i);
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// The selected, non-parent entries (in listing order).
   List<FileItem> selectedItems() {
     final idx = selection.where((i) => i >= 0 && i < items.length).toList()..sort();
