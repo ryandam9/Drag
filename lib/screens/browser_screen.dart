@@ -49,6 +49,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   final ScrollController _leftScroll = ScrollController();
   final ScrollController _rightScroll = ScrollController();
 
+  // The in-pane filter box (applies to whichever pane is focused).
+  final TextEditingController _filterCtl = TextEditingController();
+
   // Type-ahead: accumulate typed characters briefly so "re" jumps to "report".
   String _typeAheadBuffer = '';
   Timer? _typeAheadTimer;
@@ -68,6 +71,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     _typeAheadTimer?.cancel();
     _leftScroll.dispose();
     _rightScroll.dispose();
+    _filterCtl.dispose();
     super.dispose();
   }
 
@@ -759,7 +763,22 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         const SizedBox(width: 8),
         Text('Filter:', style: FsType.sans(size: 10, color: FsColors.text3)),
         const SizedBox(width: 6),
-        const FsTextField(hint: '*.log, *.conf…', width: 130, height: 26),
+        Builder(builder: (_) {
+          // Reflect the focused pane's filter (e.g. after switching panes)
+          // without clobbering the caret while typing in the same pane.
+          final pane = _focusedPane;
+          if (_filterCtl.text != pane.filterQuery) {
+            _filterCtl.text = pane.filterQuery;
+            _filterCtl.selection = TextSelection.collapsed(offset: _filterCtl.text.length);
+          }
+          return FsTextField(
+            controller: _filterCtl,
+            hint: 'name…',
+            width: 150,
+            height: 26,
+            onChanged: (v) => _focusedPane.setFilter(v),
+          );
+        }),
       ]),
     );
   }
@@ -814,7 +833,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             ),
             child: Column(children: [
               _paneHeader(pane, left: left),
-              _breadcrumb(pane.breadcrumb),
+              _breadcrumb(pane),
               Expanded(child: _paneBody(pane, showPerms, left: left)),
               _paneFooter(pane),
             ]),
@@ -959,18 +978,30 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         ),
       );
 
-  Widget _breadcrumb(List<String> segs) {
+  Widget _breadcrumb(PaneController pane) {
+    final segs = pane.breadcrumb;
     final children = <Widget>[];
     for (var i = 0; i < segs.length; i++) {
       final active = i == segs.length - 1;
-      children.add(Flexible(
-        child: Text(segs[i],
-            overflow: TextOverflow.ellipsis,
-            style: FsType.sans(
-                size: 11,
-                color: active ? FsColors.text1 : FsColors.text2,
-                weight: active ? FontWeight.w600 : FontWeight.w400)),
-      ));
+      // Each segment (except the synthetic head and the current dir) jumps up
+      // that many levels via repeated parentPath — backend-agnostic.
+      final levels = segs.length - 1 - i;
+      final clickable = i > 0 && levels > 0;
+      Widget seg = Text(segs[i],
+          overflow: TextOverflow.ellipsis,
+          style: FsType.sans(
+              size: 11,
+              color: active
+                  ? FsColors.text1
+                  : (clickable ? FsColors.accentHi : FsColors.text2),
+              weight: active ? FontWeight.w600 : FontWeight.w400));
+      if (clickable) {
+        seg = GestureDetector(
+          onTap: () => pane.goUpLevels(levels),
+          child: MouseRegion(cursor: SystemMouseCursors.click, child: seg),
+        );
+      }
+      children.add(Flexible(child: seg));
       if (i < segs.length - 1) {
         children.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1068,7 +1099,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     return Container(
       color: FsColors.bgSurface,
       child: Column(children: [
-        _tableHead(showPerms),
+        _tableHead(pane, showPerms),
         Expanded(
           child: ListView.builder(
             controller: scroll,
@@ -1100,16 +1131,41 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     );
   }
 
-  Widget _tableHead(bool showPerms) {
-    Widget cell(String t, int flex, {TextAlign align = TextAlign.left}) => Expanded(
-          flex: flex,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: Text(t,
-                textAlign: align,
-                style: FsType.sans(size: 10, weight: FontWeight.w600, color: FsColors.text3, letterSpacing: 0.6)),
+  Widget _tableHead(PaneController pane, bool showPerms) {
+    Widget head(String t, int flex, SortKey key, {TextAlign align = TextAlign.left}) {
+      final active = pane.sortKey == key;
+      final arrow = active ? (pane.sortAscending ? ' ↑' : ' ↓') : '';
+      return Expanded(
+        flex: flex,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => pane.setSort(key),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Row(
+                mainAxisAlignment:
+                    align == TextAlign.right ? MainAxisAlignment.end : MainAxisAlignment.start,
+                children: [
+                  Flexible(
+                    child: Text('$t$arrow',
+                        textAlign: align,
+                        overflow: TextOverflow.ellipsis,
+                        style: FsType.sans(
+                            size: 10,
+                            weight: FontWeight.w600,
+                            color: active ? FsColors.accentHi : FsColors.text3,
+                            letterSpacing: 0.6)),
+                  ),
+                ],
+              ),
+            ),
           ),
-        );
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -1117,10 +1173,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
       child: Row(children: [
-        cell('NAME', 40),
-        cell('SIZE', 15, align: TextAlign.right),
-        cell('MODIFIED', 25),
-        if (showPerms) cell('PERMS', 20, align: TextAlign.right),
+        head('NAME', 40, SortKey.name),
+        head('SIZE', 15, SortKey.size, align: TextAlign.right),
+        head('MODIFIED', 25, SortKey.modified),
+        if (showPerms) head('PERMS', 20, SortKey.perms, align: TextAlign.right),
       ]),
     );
   }

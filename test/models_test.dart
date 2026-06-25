@@ -49,6 +49,22 @@ void main() {
       const parent = FileItem(name: '..', isDir: true);
       expect(parent.isParent, isTrue);
     });
+
+    test('icon is type-specific by extension (case-insensitive)', () {
+      expect(const FileItem(name: 'pic.PNG').icon, '🖼');
+      expect(const FileItem(name: 'clip.mp4').icon, '🎬');
+      expect(const FileItem(name: 'song.flac').icon, '🎵');
+      expect(const FileItem(name: 'bundle.zip').icon, '🗜');
+      expect(const FileItem(name: 'report.pdf').icon, '📕');
+      expect(const FileItem(name: 'data.csv').icon, '📊');
+      expect(const FileItem(name: 'main.dart').icon, '📜');
+      expect(const FileItem(name: 'config.yaml').icon, '🧾');
+      // Unknown / no extension fall back to the generic document glyph.
+      expect(const FileItem(name: 'notes.txt').icon, '📄');
+      expect(const FileItem(name: 'README').icon, '📄');
+      // A directory is always a folder regardless of a dotted name.
+      expect(const FileItem(name: 'my.config', isDir: true).icon, '📁');
+    });
   });
 
   group('Connection', () {

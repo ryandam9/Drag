@@ -239,6 +239,36 @@ void main() {
     expect(find.text('Close'), findsNothing);
   });
 
+  testWidgets('clicking a column header sorts the focused pane', (tester) async {
+    final (c, _, _) = await setup(tester);
+    final pane = c.read(sessionsProvider.notifier).leftPane;
+    expect(pane.sortKey, SortKey.name);
+    expect(pane.sortAscending, isTrue);
+    // Tapping the active column flips the direction…
+    await tester.tap(find.textContaining('NAME').first); // left pane header
+    await tester.pump();
+    expect(pane.sortKey, SortKey.name);
+    expect(pane.sortAscending, isFalse);
+    // …a different column switches and resets to ascending.
+    await tester.tap(find.textContaining('SIZE').first);
+    await tester.pump();
+    expect(pane.sortKey, SortKey.size);
+    expect(pane.sortAscending, isTrue);
+  });
+
+  testWidgets('the filter box narrows the focused pane live', (tester) async {
+    final (c, _, _) = await setup(tester);
+    expect(find.text('alpha.txt'), findsOneWidget);
+    expect(find.text('beta.bin'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, 'beta');
+    await tester.pump();
+
+    expect(find.text('beta.bin'), findsOneWidget);
+    expect(find.text('alpha.txt'), findsNothing);
+    expect(c.read(sessionsProvider.notifier).leftPane.filterQuery, 'beta');
+  });
+
   testWidgets('type-ahead jumps to the matching row', (tester) async {
     final (c, _, _) = await setup(tester);
     final pane = c.read(sessionsProvider.notifier).leftPane;
