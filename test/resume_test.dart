@@ -48,8 +48,9 @@ void main() {
       final payload = List<int>.generate(1000, (i) => i % 256);
       final src = File('${dir.path}/src.bin')..writeAsBytesSync(payload);
       final dstPath = '${dir.path}/dst.bin';
-      // A partial left by a previous attempt: the first 400 bytes.
-      File(dstPath).writeAsBytesSync(payload.sublist(0, 400));
+      // A partial left by a previous attempt: the first 400 bytes, in the temp
+      // sibling the transfer stages writes in.
+      File('$dstPath.drag-partial').writeAsBytesSync(payload.sublist(0, 400));
 
       final t = download(attempts: 2); // a retry
       await TransferService().run(
@@ -64,6 +65,8 @@ void main() {
 
       expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
       expect(await File(dstPath).readAsBytes(), payload); // partial + tail == full
+      // The temp file is promoted (renamed), not left behind.
+      expect(File('$dstPath.drag-partial').existsSync(), isFalse);
     });
 
     test('a first attempt overwrites a stale file (no accidental resume)', () async {
@@ -88,11 +91,55 @@ void main() {
       expect(await File(dstPath).readAsBytes(), payload); // overwritten, not appended
     });
 
+    test('a successful local transfer leaves no .drag-partial behind', () async {
+      final payload = List<int>.generate(500, (i) => i % 256);
+      final src = File('${dir.path}/src.bin')..writeAsBytesSync(payload);
+      final dstPath = '${dir.path}/out.bin';
+
+      final t = download();
+      await TransferService().run(
+        t: t,
+        src: LocalBackend(),
+        srcPath: src.path,
+        dst: LocalBackend(),
+        dstPath: dstPath,
+        onStatus: () {},
+        verify: 'size',
+      );
+
+      expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
+      expect(await File(dstPath).readAsBytes(), payload);
+      expect(File('$dstPath.drag-partial').existsSync(), isFalse);
+    });
+
+    test('an aborted local overwrite preserves the existing file and cleans the temp', () async {
+      final src = File('${dir.path}/src.bin')..writeAsBytesSync(List<int>.generate(1000, (i) => i % 256));
+      final dstPath = '${dir.path}/keep.bin';
+      final original = List<int>.filled(64, 0xAB);
+      File(dstPath).writeAsBytesSync(original); // the file the user is overwriting
+
+      final t = download();
+      await TransferService().run(
+        t: t,
+        src: LocalBackend(),
+        srcPath: src.path,
+        dst: LocalBackend(),
+        dstPath: dstPath,
+        onStatus: () {},
+        control: TransferControl()..abort(), // pause/cancel before any bytes flow
+      );
+
+      expect(t.status, TransferStatus.paused);
+      // The original destination must be intact — never truncated or deleted.
+      expect(await File(dstPath).readAsBytes(), original);
+      expect(File('$dstPath.drag-partial').existsSync(), isFalse);
+    });
+
     test('checksum verification disables resume (hashes the whole file)', () async {
       final payload = List<int>.generate(1000, (i) => i % 256);
       final src = File('${dir.path}/src.bin')..writeAsBytesSync(payload);
       final dstPath = '${dir.path}/dst.bin';
-      File(dstPath).writeAsBytesSync(payload.sublist(0, 400));
+      File('$dstPath.drag-partial').writeAsBytesSync(payload.sublist(0, 400));
 
       final t = download(attempts: 2);
       await TransferService().run(

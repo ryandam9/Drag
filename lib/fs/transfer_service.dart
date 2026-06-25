@@ -92,11 +92,19 @@ class TransferService {
       }
     }
 
+    // In-place backends (local file, SFTP) stage bytes in a temp sibling and
+    // are promoted to the final path with an atomic rename only on success, so
+    // a pause/cancel or crash can never truncate or delete a pre-existing
+    // destination. Atomic backends (S3) publish only on completion, so they
+    // write straight to the final path.
+    final usePartial = !dst.atomicWrite;
+    final writePath = usePartial ? '$dstPath.drag-partial' : dstPath;
+
     try {
       // Resume an interrupted download: if a previous attempt left a partial
-      // local file, continue from its size via a ranged read + append, instead
+      // temp file, continue from its size via a ranged read + append, instead
       // of re-downloading from zero.
-      final resumeFrom = await _resumeOffset(t, src, dst, dstPath, verify);
+      final resumeFrom = await _resumeOffset(t, src, dst, writePath, verify);
       final handle =
           resumeFrom > 0 ? await src.openReadRange(srcPath, resumeFrom) : await src.openRead(srcPath);
       // handle.length is the *remaining* bytes when resuming; total is the full
@@ -130,24 +138,28 @@ class TransferService {
       }
 
       if (resumeFrom > 0 && dst is LocalBackend) {
-        await dst.writeResume(dstPath, pump(), from: resumeFrom, onProgress: (s) => report(s));
+        await dst.writeResume(writePath, pump(), from: resumeFrom, onProgress: (s) => report(s));
       } else {
-        await dst.write(dstPath, pump(), total, onProgress: (s) => report(s));
+        await dst.write(writePath, pump(), total, onProgress: (s) => report(s));
       }
       hasher?.close();
 
       if (verify != 'off') {
-        await _verify(verify, dst, dstPath, total, srcDigest, onStatus, t);
+        await _verify(verify, dst, writePath, total, srcDigest, onStatus, t);
       }
+
+      // Promote the completed (and verified) temp file to its final name.
+      if (usePartial) await _finalize(dst, writePath, dstPath);
 
       t.progress = 1.0;
       t.status = TransferStatus.done;
       t.eta = 'Done';
       if (t.speed == '—') t.speed = '${formatBytes(total)}/s';
     } on _Aborted {
-      // Stopped by the user (pause/cancel). Drop any partial bytes and settle
-      // as paused — the queue decides whether to resume or discard it.
-      await _safeDelete(dst, dstPath);
+      // Stopped by the user (pause/cancel). Remove only our temp file; the real
+      // destination (possibly a file we were about to overwrite) is left
+      // untouched. Atomic backends never wrote a partial, so nothing to clean.
+      if (usePartial) await _safeDelete(dst, writePath);
       t.status = TransferStatus.paused;
       t.speed = '—';
       t.eta = '—';
@@ -216,6 +228,19 @@ class TransferService {
       await dst.delete(path, isDir: false);
     } catch (_) {
       // Backend may not support delete, or there's nothing to remove.
+    }
+  }
+
+  /// Promote the completed temp file [partial] to its final name, replacing any
+  /// existing destination. The complete bytes already live in [partial], so if
+  /// rename can't clobber an existing target we delete it and retry — a crash
+  /// in that window leaves the data recoverable in the temp file, never lost.
+  Future<void> _finalize(StorageBackend dst, String partial, String finalPath) async {
+    try {
+      await dst.rename(partial, finalPath);
+    } catch (_) {
+      await _safeDelete(dst, finalPath);
+      await dst.rename(partial, finalPath);
     }
   }
 

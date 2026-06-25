@@ -62,6 +62,14 @@ abstract class StorageBackend {
   /// HTTP Range), so an interrupted download continues instead of restarting.
   bool get supportsResume => false;
 
+  /// Whether a [write] publishes the destination atomically — the final path
+  /// only becomes visible/complete when the write finishes (e.g. S3's single
+  /// PUT and multipart upload). For atomic backends the transfer writes
+  /// straight to the destination; for in-place backends (local file, SFTP)
+  /// the transfer stages bytes in a temp sibling and renames on success, so a
+  /// pause/cancel/crash can never truncate or delete a pre-existing file.
+  bool get atomicWrite => false;
+
   /// Opens a read of [path] starting [start] bytes in. The returned handle's
   /// length is the *remaining* byte count. Only meaningful when
   /// [supportsResume]; the base default ignores [start] and reads from 0.
@@ -439,6 +447,11 @@ class S3Backend extends StorageBackend {
 
   @override
   bool get supportsResume => true;
+
+  // S3 publishes an object only when the PUT / multipart upload completes, so
+  // an interrupted upload never leaves a partial or clobbers the prior object.
+  @override
+  bool get atomicWrite => true;
 
   @override
   Future<ReadHandle> openReadRange(String path, int start) async {

@@ -75,6 +75,12 @@ class MemoryBackend extends StorageBackend {
     return ReadHandle(Stream<Uint8List>.value(bytes), bytes.length);
   }
 
+  // The map entry is assigned only after the whole stream is consumed, so a
+  // write either fully replaces the destination or leaves it untouched — like
+  // S3. Lets transfer tests model an atomic destination.
+  @override
+  bool get atomicWrite => true;
+
   @override
   Future<void> write(String path, Stream<Uint8List> data, int length,
       {void Function(int sent)? onProgress}) async {

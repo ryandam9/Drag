@@ -15,10 +15,11 @@ Transfer _t() => Transfer(
     );
 
 void main() {
-  test('an aborted control stops the transfer and removes the partial file', () async {
+  test('an aborted transfer leaves a pre-existing destination untouched', () async {
     final src = MemoryBackend(files: {'/f.bin': Uint8List(1000)});
-    // A stale/partial destination file that the abort cleanup should remove.
-    final dst = MemoryBackend(files: {'/f.bin': Uint8List.fromList([1, 2, 3])});
+    // A file the user is about to overwrite. A pause/cancel must NOT destroy it.
+    final original = Uint8List.fromList([1, 2, 3]);
+    final dst = MemoryBackend(files: {'/f.bin': original});
     final t = _t();
     final control = TransferControl()..abort();
 
@@ -33,7 +34,10 @@ void main() {
     );
 
     expect(t.status, TransferStatus.paused);
-    expect((await dst.list('/')).any((e) => e.name == 'f.bin'), isFalse);
+    // The original is preserved (MemoryBackend is atomic, like S3).
+    expect((await dst.list('/')).any((e) => e.name == 'f.bin'), isTrue);
+    final kept = await dst.openRead('/f.bin');
+    expect(await kept.stream.expand((c) => c).toList(), [1, 2, 3]);
   });
 
   test('without an abort the transfer completes normally', () async {
