@@ -108,9 +108,12 @@ class TransferService {
       final handle =
           resumeFrom > 0 ? await src.openReadRange(srcPath, resumeFrom) : await src.openRead(srcPath);
       // handle.length is the *remaining* bytes when resuming; total is the full
-      // object size. Fall back to whatever the queue knew.
-      final remaining = handle.length > 0 ? handle.length : (t.sizeBytes - resumeFrom);
-      final total = resumeFrom + remaining;
+      // object size. Prefer the handle's size, else what the queue knew; null
+      // when the source can't report a size at all (distinct from a known 0).
+      final hl = handle.length;
+      final int? total = hl != null
+          ? resumeFrom + hl
+          : (t.sizeBytes > 0 ? t.sizeBytes : null);
       sent = resumeFrom; // progress already covers the bytes on disk
 
       // For a checksum verify, hash the source bytes as they stream past so we
@@ -139,8 +142,12 @@ class TransferService {
 
       if (resumeFrom > 0 && dst is LocalBackend) {
         await dst.writeResume(writePath, pump(), from: resumeFrom, onProgress: (s) => report(s));
+      } else if (total == null && dst is S3Backend) {
+        // Unknown source size → stream the S3 upload via multipart instead of
+        // declaring a (wrong) Content-Length. Local/SFTP writes ignore length.
+        await dst.writeUnsized(writePath, pump(), onProgress: (s) => report(s));
       } else {
-        await dst.write(writePath, pump(), total, onProgress: (s) => report(s));
+        await dst.write(writePath, pump(), total ?? 0, onProgress: (s) => report(s));
       }
       hasher?.close();
 
@@ -154,7 +161,7 @@ class TransferService {
       t.progress = 1.0;
       t.status = TransferStatus.done;
       t.eta = 'Done';
-      if (t.speed == '—') t.speed = '${formatBytes(total)}/s';
+      if (t.speed == '—') t.speed = '${formatBytes(total ?? sent)}/s';
     } on _Aborted {
       // Stopped by the user (pause/cancel). Remove only our temp file; the real
       // destination (possibly a file we were about to overwrite) is left
@@ -178,7 +185,7 @@ class TransferService {
     String level,
     StorageBackend dst,
     String dstPath,
-    int total,
+    int? total,
     Digest? srcDigest,
     void Function() onStatus,
     Transfer t,
@@ -186,11 +193,13 @@ class TransferService {
     t.eta = 'Verifying…';
     onStatus();
 
-    final destSize = await dst.sizeOf(dstPath);
+    // Skip the size check when the source size was unknown — there's nothing
+    // to compare against. A checksum verify still runs below.
+    final destSize = total == null ? null : await dst.sizeOf(dstPath);
     if (destSize != null && destSize != total) {
       throw Exception(
           'Verification failed: destination is ${formatBytes(destSize)}, '
-          'expected ${formatBytes(total)}');
+          'expected ${formatBytes(total!)}');
     }
 
     if (level == 'checksum' && srcDigest != null) {

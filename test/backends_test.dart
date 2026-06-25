@@ -43,7 +43,7 @@ void main() {
 
       final outPath = p.join(dir.path, 'copy.bin');
       var lastSent = 0;
-      await backend.write(outPath, handle.stream, handle.length, onProgress: (s) => lastSent = s);
+      await backend.write(outPath, handle.stream, handle.length!, onProgress: (s) => lastSent = s);
       expect(lastSent, 2048);
       expect(await File(outPath).readAsBytes(), List.filled(2048, 7));
     });
