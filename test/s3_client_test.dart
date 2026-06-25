@@ -879,16 +879,18 @@ void main() {
       expect(deleted, isFalse, reason: 'the source must survive a failed copy');
     });
 
-    test('delete (recursive) lists the prefix and deletes each object', () async {
+    test('delete (recursive) lists the prefix and batch-deletes the keys', () async {
       var listed = false;
-      final deleted = <String>[];
+      var batchDeletes = 0;
+      String? deleteBody;
       final mock = await MockS3.start((req, res) {
         if (req.query.containsKey('list-type')) {
           listed = true;
           xml(res, listingXml(contents: [(key: 'dir/a', size: 1), (key: 'dir/b', size: 1)]));
-        } else if (req.method == 'DELETE') {
-          deleted.add(req.path);
-          res.statusCode = 204;
+        } else if (req.method == 'POST' && req.query.containsKey('delete')) {
+          batchDeletes++;
+          deleteBody = utf8.decode(req.body);
+          xml(res, '<?xml version="1.0"?><DeleteResult></DeleteResult>'); // quiet: all ok
         } else {
           res.statusCode = 200;
         }
@@ -898,7 +900,23 @@ void main() {
       addTearDown(b.dispose);
       await b.delete('dir/', isDir: true);
       expect(listed, isTrue);
-      expect(deleted, containsAll(['/bk/dir/a', '/bk/dir/b']));
+      expect(batchDeletes, 1, reason: 'one DeleteObjects call, not one DELETE per key');
+      expect(deleteBody, contains('<Key>dir/a</Key>'));
+      expect(deleteBody, contains('<Key>dir/b</Key>'));
+    });
+
+    test('deleteObjects returns the keys S3 reports as failed', () async {
+      final mock = await MockS3.start((req, res) {
+        xml(res, '<?xml version="1.0"?><DeleteResult>'
+            '<Error><Key>dir/b</Key><Code>AccessDenied</Code></Error></DeleteResult>');
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+      final failed = await c.deleteObjects(['dir/a', 'dir/b']);
+      expect(failed, ['dir/b']);
+      // The request carried a Content-MD5 of the body (required by S3).
+      expect(mock.last.headers.value('content-md5'), isNotNull);
     });
 
     test('openRead → write round-trips bytes through the server', () async {

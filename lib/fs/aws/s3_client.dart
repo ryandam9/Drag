@@ -122,7 +122,12 @@ class S3Client {
   late final String _host;
   int? _port;
 
-  final HttpClient _http = HttpClient();
+  /// Caps how long a request may take to establish a TCP connection and how
+  /// long an idle (stalled) connection is kept, so a hung S3 endpoint can't
+  /// leave a list/get/put/delete pending indefinitely.
+  final HttpClient _http = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 20)
+    ..idleTimeout = const Duration(seconds: 30);
 
   /// A signer bound to the credentials current at call time.
   SigV4Signer get _signer =>
@@ -545,6 +550,53 @@ class S3Client {
     }
     await resp.drain<void>();
   }
+
+  // ── DeleteObjects (batch — up to 1000 keys per request) ──
+  /// Deletes [keys] in one DeleteObjects call and returns the keys that failed
+  /// (empty on full success). At most 1000 keys per AWS limits; the caller
+  /// pages larger sets. Far cheaper than one DeleteObject per key.
+  Future<List<String>> deleteObjects(List<String> keys) async {
+    if (keys.isEmpty) return const [];
+    final body = StringBuffer('<?xml version="1.0" encoding="UTF-8"?><Delete>');
+    for (final k in keys) {
+      body.write('<Object><Key>${_xmlEscape(k)}</Key></Object>');
+    }
+    body.write('<Quiet>true</Quiet></Delete>'); // quiet ⇒ response carries only errors
+    final bytes = utf8.encode(body.toString());
+    // DeleteObjects requires a Content-MD5 of the body (it's signed too).
+    final contentMd5 = base64.encode(md5.convert(bytes).bytes);
+
+    final canonicalUri = '/${awsUriEncode(bucket, encodeSlash: true)}';
+    const query = {'delete': ''};
+    final headers = _signer.sign(
+      method: 'POST',
+      host: _hostHeader,
+      canonicalUri: canonicalUri,
+      query: query,
+      headers: {'content-md5': contentMd5},
+      payloadHash: sha256.convert(bytes).toString(),
+    );
+    final req = await _http.postUrl(_uri(canonicalUri, query));
+    headers.forEach(req.headers.set);
+    req.headers.contentLength = bytes.length;
+    req.add(bytes);
+    final resp = await req.close();
+    final respBody = await resp.transform(utf8.decoder).join();
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, respBody, op: 'DeleteObjects');
+
+    final failed = <String>[];
+    try {
+      final root = XmlDocument.parse(respBody).rootElement;
+      for (final e in root.findElements('Error')) {
+        final k = e.getElement('Key')?.innerText;
+        if (k != null) failed.add(k);
+      }
+    } catch (_) {/* empty/quiet success body */}
+    return failed;
+  }
+
+  static String _xmlEscape(String s) =>
+      s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
   // ── CopyObject (server-side copy within the bucket) ──
   Future<void> copyObject(String srcKey, String dstKey) async {
