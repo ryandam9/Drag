@@ -1261,8 +1261,8 @@ class _FindDialogState extends State<_FindDialog> {
           const SizedBox(height: 8),
           Text(
             _searching
-                ? 'Searching… ${_scanned} scanned · ${_results.length} found'
-                : (_results.isEmpty ? '${_scanned} scanned' : '${_results.length} match(es)'),
+                ? 'Searching… $_scanned scanned · ${_results.length} found'
+                : (_results.isEmpty ? '$_scanned scanned' : '${_results.length} match(es)'),
             style: FsType.sans(size: 11, color: FsColors.text3),
           ),
           const SizedBox(height: 8),

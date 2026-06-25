@@ -350,7 +350,7 @@ void main() {
 
     // Sets up Local→Local panes where the destination already holds a file of
     // the same name, with a conflict resolver returning [action].
-    Future<(SessionsNotifier, Directory)> _conflictSetup(
+    Future<(SessionsNotifier, Directory)> conflictSetup(
         ProviderContainer c, ConflictAction action) async {
       final s = c.read(sessionsProvider.notifier);
       c
@@ -376,7 +376,7 @@ void main() {
 
     test('conflict: Skip leaves the destination untouched and enqueues nothing', () async {
       final c = makeContainer();
-      final (s, dst) = await _conflictSetup(c, ConflictAction.skip);
+      final (s, dst) = await conflictSetup(c, ConflictAction.skip);
       final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
       s.dropTransfer(DragPayload(item, true), false);
       await Future<void>.delayed(const Duration(milliseconds: 120));
@@ -386,7 +386,7 @@ void main() {
 
     test('conflict: Overwrite replaces the destination file', () async {
       final c = makeContainer();
-      final (s, dst) = await _conflictSetup(c, ConflictAction.overwrite);
+      final (s, dst) = await conflictSetup(c, ConflictAction.overwrite);
       final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
       s.dropTransfer(DragPayload(item, true), false);
       final f = File(p.join(dst.path, 'dup.txt'));
@@ -398,7 +398,7 @@ void main() {
 
     test('conflict: Rename writes a non-colliding copy and keeps the original', () async {
       final c = makeContainer();
-      final (s, dst) = await _conflictSetup(c, ConflictAction.rename);
+      final (s, dst) = await conflictSetup(c, ConflictAction.rename);
       final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
       s.dropTransfer(DragPayload(item, true), false);
       final renamed = File(p.join(dst.path, 'dup (1).txt'));
