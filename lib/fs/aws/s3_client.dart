@@ -199,6 +199,7 @@ class S3Client {
     String prefix = '',
     String delimiter = '/',
     String? continuationToken,
+    int? maxKeys,
   }) async {
     final query = <String, String>{
       'list-type': '2',
@@ -206,6 +207,7 @@ class S3Client {
       'delimiter': delimiter,
     };
     if (continuationToken != null) query['continuation-token'] = continuationToken;
+    if (maxKeys != null) query['max-keys'] = '$maxKeys';
 
     final canonicalUri = '/${awsUriEncode(bucket, encodeSlash: true)}';
     final headers = _signer.sign(
@@ -245,18 +247,44 @@ class S3Client {
     return S3Listing(objects, prefixes, next);
   }
 
-  /// Lists every page and merges the results.
-  Future<S3Listing> listAll({String prefix = '', String delimiter = '/'}) async {
-    final objects = <S3Object>[];
-    final prefixes = <String>[];
+  /// Lazily yields each page of a listing as it arrives, following
+  /// continuation tokens. Lets callers render the first page immediately and
+  /// keep streaming, instead of buffering a whole (possibly huge) prefix before
+  /// showing anything. [pageSize] maps to S3's `max-keys` (≤ 1000).
+  Stream<S3Listing> listPages({
+    String prefix = '',
+    String delimiter = '/',
+    int? pageSize,
+  }) async* {
     String? token;
     do {
-      final page = await listObjects(prefix: prefix, delimiter: delimiter, continuationToken: token);
-      objects.addAll(page.objects);
-      prefixes.addAll(page.commonPrefixes);
+      final page = await listObjects(
+        prefix: prefix,
+        delimiter: delimiter,
+        continuationToken: token,
+        maxKeys: pageSize,
+      );
+      yield page;
       token = page.nextContinuationToken;
     } while (token != null);
-    return S3Listing(objects, prefixes, null);
+  }
+
+  /// Lists every page and merges the results. Pass [maxKeys] to stop early once
+  /// that many objects have been collected (the result's `isTruncated` is true
+  /// when more remain), so a caller can bound work on a huge prefix.
+  Future<S3Listing> listAll({String prefix = '', String delimiter = '/', int? maxKeys}) async {
+    final objects = <S3Object>[];
+    final prefixes = <String>[];
+    var more = false;
+    await for (final page in listPages(prefix: prefix, delimiter: delimiter)) {
+      objects.addAll(page.objects);
+      prefixes.addAll(page.commonPrefixes);
+      if (maxKeys != null && objects.length >= maxKeys) {
+        more = page.nextContinuationToken != null || objects.length > maxKeys;
+        break;
+      }
+    }
+    return S3Listing(objects, prefixes, more ? '' : null);
   }
 
   // ── GetObject (streamed; optional Range for resume) ──

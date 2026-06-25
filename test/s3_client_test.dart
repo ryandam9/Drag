@@ -131,6 +131,55 @@ void main() {
       expect(mock.requests.length, 2);
     });
 
+    test('listPages yields each page lazily, following continuation tokens', () async {
+      final mock = await MockS3.start((req, res) {
+        final token = req.query['continuation-token'];
+        if (token == null) {
+          xml(res, listingXml(contents: [(key: 'a', size: 1)], truncated: true, nextToken: 'T2'));
+        } else {
+          expect(token, 'T2');
+          xml(res, listingXml(contents: [(key: 'b', size: 2)]));
+        }
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      final pages = await c.listPages(prefix: '').toList();
+      expect(pages.length, 2);
+      expect(pages.first.objects.single.key, 'a');
+      expect(pages.last.objects.single.key, 'b');
+    });
+
+    test('pageSize is sent as max-keys', () async {
+      final mock = await MockS3.start((req, res) => xml(res, listingXml(contents: [])));
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+      await c.listPages(prefix: 'p/', pageSize: 250).toList();
+      expect(mock.last.query['max-keys'], '250');
+    });
+
+    test('listAll with maxKeys stops early and flags truncation', () async {
+      final mock = await MockS3.start((req, res) {
+        final token = req.query['continuation-token'];
+        if (token == null) {
+          xml(res, listingXml(contents: [(key: 'a', size: 1), (key: 'b', size: 2)],
+              truncated: true, nextToken: 'T2'));
+        } else {
+          xml(res, listingXml(contents: [(key: 'c', size: 3)]));
+        }
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      final capped = await c.listAll(prefix: '', maxKeys: 2);
+      expect(capped.objects.map((o) => o.key), ['a', 'b']); // stopped after page 1
+      expect(capped.isTruncated, isTrue); // signals more remain
+      expect(mock.requests.length, 1, reason: 'did not fetch the second page');
+    });
+
     test('non-2xx with an XML error body throws a parsed S3Exception', () async {
       final mock = await MockS3.start((req, res) {
         xml(res, '<Error><Code>AccessDenied</Code><Message>nope</Message></Error>', status: 403);
