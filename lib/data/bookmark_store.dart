@@ -1,5 +1,7 @@
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'db_migrations.dart';
+
 /// A saved (endpoint, path) shortcut. [connId] is the connection id the path
 /// belongs to, or null for the Local endpoint.
 class Bookmark {
@@ -41,6 +43,7 @@ class BookmarkStore {
       dbPath,
       options: OpenDatabaseOptions(
         version: 1,
+        onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
         onCreate: (db, _) => db.execute('''
           CREATE TABLE $_table (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,3 +74,7 @@ class BookmarkStore {
 
   Future<void> close() => _db.close();
 }
+
+/// Schema migrations keyed by the version they bring the database *to*.
+/// Empty today (schema v1); add an entry and bump `version` for each change.
+final _migrations = <int, Migration>{};
