@@ -68,7 +68,9 @@ actual error (`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
 > S3 connections can instead use the **AWS credential chain** — environment
 > variables (`AWS_ACCESS_KEY_ID` / …) take precedence, falling back to the named
 > `~/.aws/credentials` profile — resolved per request so rotated temporary
-> credentials are picked up automatically.
+> credentials are picked up automatically. A connection can also **assume an IAM
+> role** (STS `AssumeRole`): set a role ARN and the base credentials are
+> exchanged for temporary, auto-refreshed credentials scoped to that role.
 
 > SFTP host keys are verified **trust-on-first-use**: the server's key is
 > remembered on first connect (SQLite) and a later change is rejected as a
