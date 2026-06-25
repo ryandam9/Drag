@@ -14,6 +14,7 @@ import 'data/session_store.dart';
 import 'data/settings_store.dart';
 import 'fs/host_key_verifier.dart';
 import 'models/app_font.dart';
+import 'platform/desktop_notifications.dart';
 import 'models/connection.dart';
 import 'state/app.dart';
 import 'theme.dart';
@@ -114,6 +115,17 @@ Future<void> main() async {
     } catch (_) {
       // Headless / unsupported environments: carry on without window control.
     }
+
+    // OS desktop notifications (best-effort; a failure never blocks startup).
+    try {
+      final notifier = DesktopNotifications();
+      await notifier.setup();
+      gDesktopNotifications = notifier;
+      gFocusWindow = () {
+        windowManager.show();
+        windowManager.focus();
+      };
+    } catch (_) {/* notifications unavailable */}
   }
 
   runApp(ProviderScope(
@@ -185,6 +197,14 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener, WidgetsB
 
   @override
   void onWindowMoved() => _persistWindow();
+
+  // Track focus so transfer-finished notifications only fire when the app is
+  // in the background.
+  @override
+  void onWindowFocus() => gWindowFocused = true;
+
+  @override
+  void onWindowBlur() => gWindowFocused = false;
 
   @override
   Widget build(BuildContext context) {
