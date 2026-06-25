@@ -526,10 +526,26 @@ class S3Backend extends StorageBackend {
       return;
     }
     // Recursively delete everything under the prefix (and the placeholder).
+    // Page the listing and batch-delete (up to 1000 keys/request) so a large
+    // prefix doesn't issue one request per object or buffer the whole listing.
     final prefix = key.endsWith('/') ? key : '$key/';
-    final result = await client.listAll(prefix: prefix, delimiter: '');
-    for (final obj in result.objects) {
-      await client.deleteObject(obj.key);
+    final failed = <String>[];
+    final batch = <String>[];
+    Future<void> flush() async {
+      if (batch.isEmpty) return;
+      failed.addAll(await client.deleteObjects(batch));
+      batch.clear();
+    }
+
+    await for (final page in client.listPages(prefix: prefix, delimiter: '')) {
+      for (final obj in page.objects) {
+        batch.add(obj.key);
+        if (batch.length >= 1000) await flush();
+      }
+    }
+    await flush();
+    if (failed.isNotEmpty) {
+      throw S3Exception(0, 'Failed to delete ${failed.length} object(s): ${failed.take(3).join(', ')}');
     }
   }
 
