@@ -229,6 +229,103 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   Widget _menuText(String t, {Color? color}) =>
       Text(t, style: FsType.sans(size: 12, color: color ?? FsColors.text1));
 
+  /// A small dot showing how an entry compares to the other pane (after
+  /// Compare). Blue = only here, amber = differs, green = identical.
+  Widget _compareDot(PaneController pane, FileItem f) {
+    if (f.isParent || pane.compareMarks.isEmpty) return const SizedBox.shrink();
+    final mark = pane.compareMarks[f.name];
+    if (mark == null) return const SizedBox(width: 14);
+    final (color, tip) = switch (mark) {
+      CompareMark.onlyHere => (FsColors.accent, 'Only here'),
+      CompareMark.differs => (FsColors.amber, 'Differs from the other pane'),
+      CompareMark.same => (FsColors.green, 'Identical'),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Tooltip(
+        message: tip,
+        child: Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+      ),
+    );
+  }
+
+  /// Mirror dialog: pick a direction, preview what it'll do, optionally delete
+  /// destination-only extras, then run.
+  Future<void> _showMirrorDialog() async {
+    var leftToRight = true;
+    var deleteExtras = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+        final plan = _sessions.mirrorPlan(leftToRight: leftToRight, deleteExtras: deleteExtras);
+        final srcLabel = leftToRight ? _leftPane.endpointLabel : _rightPane.endpointLabel;
+        final dstLabel = leftToRight ? _rightPane.endpointLabel : _leftPane.endpointLabel;
+        Widget dirChip(String label, bool value) => GestureDetector(
+              onTap: () => setLocal(() => leftToRight = value),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: leftToRight == value ? FsColors.bgActive : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: FsColors.border),
+                ),
+                child: Text(label,
+                    style: FsType.sans(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: leftToRight == value ? FsColors.accentHi : FsColors.text2)),
+              ),
+            );
+        return AlertDialog(
+          backgroundColor: FsColors.bgPanel,
+          title: Text('Mirror folders',
+              style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [dirChip('Left → Right', true), const SizedBox(width: 8), dirChip('Right → Left', false)]),
+            const SizedBox(height: 14),
+            Text('Make $dstLabel match $srcLabel (current folders):',
+                style: FsType.sans(size: 12, color: FsColors.text2)),
+            const SizedBox(height: 8),
+            Text('· ${plan.fileCopies} file(s) + ${plan.folderCopies} folder(s) to copy',
+                style: FsType.sans(size: 12, color: FsColors.text1)),
+            Text('· ${plan.delete.length} extra item(s) to delete on $dstLabel',
+                style: FsType.sans(size: 12, color: deleteExtras ? FsColors.red : FsColors.text3)),
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: () => setLocal(() => deleteExtras = !deleteExtras),
+              child: Row(children: [
+                SizedBox(
+                  width: 18, height: 18,
+                  child: Checkbox(
+                    value: deleteExtras,
+                    onChanged: (v) => setLocal(() => deleteExtras = v ?? false),
+                    activeColor: FsColors.accent,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text('Delete destination-only extras', style: FsType.sans(size: 12, color: FsColors.text2)),
+              ]),
+            ),
+          ]),
+          actions: [
+            FsButton('Cancel', onTap: () => Navigator.pop(ctx)),
+            FsButton('Mirror',
+                kind: FsButtonKind.primary,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (plan.isEmpty) {
+                    _toast('Nothing to mirror', 'The folders already match', ToastKind.info);
+                  } else {
+                    _sessions.runMirror(plan);
+                  }
+                }),
+          ],
+        );
+      }),
+    );
+  }
+
   // ── Dialogs ──
   Future<String?> _promptText({
     required String title,
@@ -391,7 +488,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
               ToolButton('→ Fwd', onTap: pane.canGoForward ? pane.goForward : null),
               ToolButton('↑ Up', onTap: pane.goUp),
               const ToolSep(),
-              const ToolButton('⇄ Sync', active: true),
+              ToolButton('⇄ Compare', onTap: () => _sessions.compareActivePanes()),
+              ToolButton('⇉ Mirror', onTap: _showMirrorDialog),
               ToolButton('↯ Queue', onTap: () => _go(AppScreen.queue)),
               ToolButton('📋 Log',
                   active: _showLogOverride ?? showLogOnStartup,
@@ -795,6 +893,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
               Expanded(
                 flex: 40,
                 child: Row(children: [
+                  _compareDot(pane, f),
                   Text(f.icon, style: const TextStyle(fontSize: 14)),
                   const SizedBox(width: 6),
                   Expanded(
