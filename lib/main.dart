@@ -8,9 +8,11 @@ import 'app_shell.dart';
 import 'data/bookmark_store.dart';
 import 'data/connection_store.dart';
 import 'data/history_db.dart';
+import 'data/known_hosts_store.dart';
 import 'data/secret_store.dart';
 import 'data/session_store.dart';
 import 'data/settings_store.dart';
+import 'fs/host_key_verifier.dart';
 import 'models/app_font.dart';
 import 'models/connection.dart';
 import 'state/app.dart';
@@ -70,6 +72,16 @@ Future<void> main() async {
     bookmarks = null;
   }
 
+  // Trusted SSH host keys (TOFU). Wire the global verifier so SFTP connections
+  // remember keys and reject changed ones.
+  KnownHostsStore? knownHostsStore;
+  try {
+    knownHostsStore = await KnownHostsStore.open();
+    globalHostKeyVerifier = HostKeyVerifier(knownHostsStore);
+  } catch (_) {
+    knownHostsStore = null;
+  }
+
   // Apply the persisted theme + fonts to the global palette before the first frame.
   if (settings != null) {
     FsColors.applyTheme(birdThemeByName(settings.themeName),
@@ -112,6 +124,7 @@ Future<void> main() async {
       sessionStoreProvider.overrideWithValue(sessionStore),
       secretStoreProvider.overrideWithValue(KeychainSecretStore()),
       bookmarkStoreProvider.overrideWithValue(bookmarkStore),
+      knownHostsStoreProvider.overrideWithValue(knownHostsStore),
       initialBookmarksProvider.overrideWithValue(bookmarks),
       initialSettingsProvider.overrideWithValue(settings),
       initialConnectionsProvider.overrideWithValue(connections),

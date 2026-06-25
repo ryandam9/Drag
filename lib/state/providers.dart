@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/bookmark_store.dart';
 import '../data/connection_store.dart';
 import '../data/history_db.dart';
+import '../data/known_hosts_store.dart';
 import '../data/secret_store.dart';
 import '../data/session_store.dart';
 import '../data/settings_store.dart';
@@ -26,6 +27,9 @@ final sessionStoreProvider = Provider<SessionStore?>((ref) => null);
 final secretStoreProvider = Provider<SecretStore?>((ref) => null);
 
 final bookmarkStoreProvider = Provider<BookmarkStore?>((ref) => null);
+
+/// Trusted SSH host keys (TOFU). Null → host keys aren't persisted.
+final knownHostsStoreProvider = Provider<KnownHostsStore?>((ref) => null);
 
 /// Bookmarks loaded from [BookmarkStore] at startup (null → empty).
 final initialBookmarksProvider = Provider<List<Bookmark>?>((ref) => null);

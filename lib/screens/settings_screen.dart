@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../data/known_hosts_store.dart';
 import '../models/app_font.dart';
 import '../state/app.dart';
 import '../theme.dart';
@@ -7,13 +8,14 @@ import '../widgets/common.dart';
 
 /// The categories shown in the Settings sidebar. Each maps to a pane of real,
 /// working controls — there are no decorative placeholders.
-enum SettingsSection { appearance, browser, transfers }
+enum SettingsSection { appearance, browser, transfers, fingerprints }
 
 extension on SettingsSection {
   String get label => switch (this) {
         SettingsSection.appearance => 'Appearance',
         SettingsSection.browser => 'Browser',
         SettingsSection.transfers => 'Transfers',
+        SettingsSection.fingerprints => 'Fingerprints',
       };
 }
 
@@ -26,6 +28,9 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   SettingsSection _section = SettingsSection.appearance;
+
+  /// Bumped to reload the known-hosts list after a remove / forget-all.
+  int _khRefresh = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -111,6 +116,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           SettingsSection.appearance => _appearance(settings, notifier, toast),
           SettingsSection.browser => _browser(settings, notifier),
           SettingsSection.transfers => _transfers(settings, notifier),
+          SettingsSection.fingerprints => _fingerprints(),
         },
         const SizedBox(height: 20),
         Row(children: [
@@ -389,6 +395,84 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ]),
     ];
+  }
+
+  List<Widget> _fingerprints() {
+    final store = ref.watch(knownHostsStoreProvider);
+    return [
+      _card(children: [
+        Row(children: [
+          Expanded(
+            child: Text('Trusted SSH host keys',
+                style: FsType.sans(size: 15, weight: FontWeight.w700, color: FsColors.text1)),
+          ),
+          if (store != null)
+            FsButton('Forget all', kind: FsButtonKind.danger, fontSize: 11, onTap: () async {
+              await store.clear();
+              if (mounted) setState(() => _khRefresh++);
+            }),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          'Drag remembers each SFTP server\'s key the first time you connect and '
+          'refuses to connect if it later changes (a possible man-in-the-middle). '
+          'Forget an entry to be re-prompted, e.g. after a legitimate key rotation.',
+          style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
+        ),
+        const SizedBox(height: 14),
+        if (store == null)
+          Text('Host-key storage is unavailable.', style: FsType.sans(size: 12, color: FsColors.text3))
+        else
+          FutureBuilder<List<KnownHost>>(
+            key: ValueKey(_khRefresh),
+            future: store.load(),
+            builder: (ctx, snap) {
+              if (!snap.hasData) {
+                return Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
+                );
+              }
+              final hosts = snap.data!;
+              if (hosts.isEmpty) {
+                return Text('No trusted hosts yet — connect to an SFTP server to add one.',
+                    style: FsType.sans(size: 12, color: FsColors.text3));
+              }
+              return Column(children: [for (final h in hosts) _hostRow(store, h)]);
+            },
+          ),
+      ]),
+    ];
+  }
+
+  Widget _hostRow(KnownHostsStore store, KnownHost h) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: FsColors.bgScaffold,
+        borderRadius: BorderRadius.circular(FsColors.rField),
+        border: Border.all(color: FsColors.border),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${h.endpoint}  ·  ${h.type}',
+                style: FsType.sans(size: 12, weight: FontWeight.w600, color: FsColors.text1)),
+            const SizedBox(height: 2),
+            SelectableText(h.fingerprint, style: FsType.mono(size: 11, color: FsColors.text2)),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        FsButton('Forget', fontSize: 11, onTap: () async {
+          if (h.id != null) await store.remove(h.id!);
+          if (mounted) setState(() => _khRefresh++);
+        }),
+      ]),
+    );
   }
 
   Widget _select(String value, List<String> options, ValueChanged<String> onChanged) {
