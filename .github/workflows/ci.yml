@@ -69,7 +69,9 @@ jobs:
       - name: Build ${{ matrix.platform }}
         run: flutter build ${{ matrix.platform }} --release
 
-      # Exercise the .deb packaging on every run so the script can't silently rot.
+      # Exercise the packaging on every run so the scripts/commands can't
+      # silently rot. These produce the same artifacts the release workflow
+      # publishes (unsigned in CI — signing/notarisation happens on release).
       - name: Package .deb (Linux)
         if: matrix.platform == 'linux'
         run: |
@@ -77,6 +79,21 @@ jobs:
           chmod +x scripts/package-linux-deb.sh
           scripts/package-linux-deb.sh build/linux/x64/release/bundle "$VERSION" drag-linux-x64.deb
           dpkg-deb -I drag-linux-x64.deb
+
+      - name: Package .dmg (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          hdiutil create -volname Drag \
+            -srcfolder "build/macos/Build/Products/Release/Drag.app" \
+            -ov -format UDZO drag-macos.dmg
+          ls -lh drag-macos.dmg
+
+      - name: Package portable zip (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath drag-windows-x64.zip -Force
+          Get-Item drag-windows-x64.zip | Select-Object Name, Length
 
       - name: Upload ${{ matrix.platform }} artifact
         uses: actions/upload-artifact@v4
