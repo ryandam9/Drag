@@ -191,6 +191,34 @@ void main() {
       expect(File(p.join(r.path, 'b.txt')).existsSync(), isFalse); // extra deleted
       expect(await File(p.join(r.path, 'common.txt')).readAsString(), 'X');
     });
+
+    test('reports prep failures instead of silently swallowing them', () async {
+      final c = makeContainer();
+      final s = c.read(sessionsProvider.notifier);
+      final l = await Directory.systemTemp.createTemp('mir_fl');
+      final r = await Directory.systemTemp.createTemp('mir_fr');
+      addTearDown(() => l.delete(recursive: true));
+      addTearDown(() => r.delete(recursive: true));
+
+      s.leftPane
+        ..backend = LocalBackend()
+        ..path = l.path;
+      s.rightPane
+        ..backend = LocalBackend()
+        ..connection = null
+        ..path = r.path;
+
+      // A delete of a path that doesn't exist fails — runMirror must surface it.
+      final plan = MirrorPlan(leftToRight: true, deletes: [
+        MirrorDelete(p.join(r.path, 'ghost.txt'), false),
+      ]);
+      await s.runMirror(plan);
+
+      final toast = c.read(toastsProvider).last;
+      expect(toast.kind, ToastKind.error);
+      expect(toast.title, contains('problem'));
+      expect(toast.detail, isNotNull);
+    });
   });
 
   group('compareActivePanes', () {

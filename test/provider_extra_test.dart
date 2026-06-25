@@ -33,6 +33,21 @@ void main() {
     });
   });
 
+  group('transfer speed limit', () {
+    test('a changed limit updates the shared limiter live', () {
+      final c = makeContainer();
+      final transfers = c.read(transfersProvider.notifier);
+      // fireImmediately wired the default (Unlimited) cap.
+      expect(transfers.currentRateCap, isNull);
+
+      c.read(settingsProvider.notifier).setTransferLimitKbps(512);
+      expect(transfers.currentRateCap, 512 * 1024); // applied without a restart
+
+      c.read(settingsProvider.notifier).setTransferLimitKbps(0);
+      expect(transfers.currentRateCap, isNull); // back to unlimited
+    });
+  });
+
   group('settings', () {
     test('setters update the in-memory state', () {
       final c = makeContainer();

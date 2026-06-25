@@ -370,26 +370,56 @@ class SessionsNotifier extends Notifier<SessionsState> {
       return;
     }
     var deleted = 0;
+    final failures = <String>[]; // human descriptions of failed prep ops
     for (final d in plan.deletes) {
       try {
         await dst.backend.delete(d.dstPath, isDir: d.isDir);
         deleted++;
-      } catch (_) {/* best-effort */}
+      } catch (e) {
+        failures.add('delete ${d.dstPath}: ${_short(e)}');
+      }
     }
+    final failedDirs = <String>{}; // dirs we couldn't create
     for (final m in plan.mkdirs) {
       try {
         await dst.backend.makeDir(m.dstPath);
-      } catch (_) {/* may already exist */}
+      } catch (e) {
+        // A genuine failure (not "already exists") blocks copies landing here.
+        failedDirs.add(m.dstPath);
+        failures.add('create ${m.dstPath}: ${_short(e)}');
+      }
     }
+    // Don't queue copies whose parent directory couldn't be created — they'd
+    // only fail one-by-one in the queue. Report them as blocked instead.
     final transfers = ref.read(transfersProvider.notifier);
+    var queued = 0, blocked = 0;
     for (final c in plan.copies) {
+      if (failedDirs.any((dir) => c.dstPath.startsWith('$dir/'))) {
+        blocked++;
+        continue;
+      }
       transfers.enqueueFile(src, dst, c.srcPath, c.dstPath, c.name, c.sizeBytes, announce: false);
+      queued++;
     }
     if (plan.deletes.isNotEmpty || plan.mkdirs.isNotEmpty) await dst.refresh();
-    toasts.push(
-        'Mirroring',
-        '${plan.copies.length} file(s) · ${plan.mkdirs.length} folder(s) · $deleted deleted → ${dst.endpointLabel}',
-        ToastKind.info);
+
+    if (failures.isEmpty) {
+      toasts.push(
+          'Mirroring',
+          '$queued file(s) · ${plan.mkdirs.length} folder(s) · $deleted deleted → ${dst.endpointLabel}',
+          ToastKind.info);
+    } else {
+      final detail = [
+        if (blocked > 0) '$blocked copy(ies) skipped (parent folder unavailable)',
+        ...failures.take(8),
+        if (failures.length > 8) '…and ${failures.length - 8} more',
+      ].join('\n');
+      toasts.push(
+          'Mirror finished with ${failures.length} problem(s)',
+          '$queued queued · $deleted deleted · ${failures.length} failed on ${dst.endpointLabel}',
+          ToastKind.error,
+          detail: detail);
+    }
   }
 
   /// Re-filter every pane after the "show hidden files" setting changes.
