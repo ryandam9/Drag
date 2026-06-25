@@ -59,7 +59,10 @@ actual error (`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
 
 > The SigV4 implementation is verified against AWS's published signing-key test
 > vector, and the full client is exercised end-to-end (upload/list/download +
-> cross-bucket copy) in `test/s3_integration_test.dart`.
+> cross-bucket copy) in `test/s3_integration_test.dart`. Large objects upload via
+> **multipart** (CreateMultipartUpload → UploadPart → Complete, with
+> AbortMultipartUpload on failure) above a size threshold; smaller objects use a
+> single PUT.
 
 > Typed secrets are held in memory for the session and are not persisted to disk.
 

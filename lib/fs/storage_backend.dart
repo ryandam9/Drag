@@ -371,7 +371,8 @@ class S3Backend extends StorageBackend {
   }) async {
     final (bucket, key) = _split(path);
     final client = await _clientFor(bucket);
-    await client.putObject(key, data, length, onProgress: onProgress);
+    // Picks a single PUT or a multipart upload based on the object size.
+    await client.put(key, data, length, onProgress: onProgress);
   }
 
   @override
