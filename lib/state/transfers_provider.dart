@@ -156,6 +156,13 @@ class TransfersNotifier extends Notifier<TransfersState> {
 
   /// Run [t] once; on failure schedule an automatic retry with backoff until
   /// [maxAttempts] is reached, then settle as Error.
+  /// The configured aggregate bandwidth cap in bytes/second, or null when the
+  /// "Transfer speed limit" setting is Unlimited (0 KiB/s).
+  int? get _transferBytesPerSecond {
+    final kbps = ref.read(settingsProvider).transferLimitKbps;
+    return kbps <= 0 ? null : kbps * 1024;
+  }
+
   void _runOnce(Transfer t, PaneController src, String srcPath, PaneController dst, String dstPath) {
     t.attempts++;
     _service
@@ -168,6 +175,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
       onStatus: () => _emit(_list),
       onProgress: t.touchLive, // progress repaints only the progress widgets
       verify: ref.read(settingsProvider).verifyLevel,
+      bytesPerSecond: _transferBytesPerSecond,
     )
         .then((_) {
       if (_disposed) return;

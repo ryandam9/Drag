@@ -18,6 +18,7 @@ class AppSettings {
     this.showLogOnStartup = false,
     this.confirmOverwrite = true,
     this.verifyLevel = 'size',
+    this.transferLimitKbps = 0,
     this.sidebarCollapsed = false,
     this.windowWidth,
     this.windowHeight,
@@ -55,6 +56,10 @@ class AppSettings {
   /// (compare MD5 digests). A mismatch fails the transfer so it can retry.
   String verifyLevel;
 
+  /// Aggregate transfer bandwidth cap in KiB/second, shared across all active
+  /// transfers. `0` means unlimited.
+  int transferLimitKbps;
+
   /// Whether the left navigation sidebar is collapsed to icons only.
   bool sidebarCollapsed;
 
@@ -77,6 +82,7 @@ class AppSettings {
     bool? showLogOnStartup,
     bool? confirmOverwrite,
     String? verifyLevel,
+    int? transferLimitKbps,
     bool? sidebarCollapsed,
     double? windowWidth,
     double? windowHeight,
@@ -96,6 +102,7 @@ class AppSettings {
         showLogOnStartup: showLogOnStartup ?? this.showLogOnStartup,
         confirmOverwrite: confirmOverwrite ?? this.confirmOverwrite,
         verifyLevel: verifyLevel ?? this.verifyLevel,
+        transferLimitKbps: transferLimitKbps ?? this.transferLimitKbps,
         sidebarCollapsed: sidebarCollapsed ?? this.sidebarCollapsed,
         windowWidth: windowWidth ?? this.windowWidth,
         windowHeight: windowHeight ?? this.windowHeight,
@@ -116,6 +123,7 @@ class AppSettings {
         'showLogOnStartup': showLogOnStartup,
         'confirmOverwrite': confirmOverwrite,
         'verifyLevel': verifyLevel,
+        'transferLimitKbps': transferLimitKbps,
         'sidebarCollapsed': sidebarCollapsed,
         'windowWidth': windowWidth,
         'windowHeight': windowHeight,
@@ -138,6 +146,7 @@ class AppSettings {
       showLogOnStartup: (j['showLogOnStartup'] as bool?) ?? false,
       confirmOverwrite: (j['confirmOverwrite'] as bool?) ?? true,
       verifyLevel: (j['verifyLevel'] as String?) ?? 'size',
+      transferLimitKbps: (j['transferLimitKbps'] as num?)?.toInt() ?? 0,
       sidebarCollapsed: (j['sidebarCollapsed'] as bool?) ?? false,
       windowWidth: d(j['windowWidth']),
       windowHeight: d(j['windowHeight']),

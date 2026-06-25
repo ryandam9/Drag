@@ -331,6 +331,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     'checksum': 'Checksum (MD5)',
   };
 
+  // Aggregate transfer speed caps, in KiB/second (0 = unlimited).
+  static const _speedLimits = <String, int>{
+    'Unlimited': 0,
+    '512 KB/s': 512,
+    '1 MB/s': 1024,
+    '5 MB/s': 5120,
+    '10 MB/s': 10240,
+    '25 MB/s': 25600,
+    '50 MB/s': 51200,
+  };
+
+  String _speedLabel(int kbps) => _speedLimits.entries
+      .firstWhere((e) => e.value == kbps, orElse: () => const MapEntry('Unlimited', 0))
+      .key;
+
   List<Widget> _transfers(AppSettings settings, SettingsNotifier notifier) {
     return [
       _card(children: [
@@ -354,6 +369,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         Text(
           'After each file copies, confirm the destination matches the source. '
           'A mismatch fails the transfer so it can retry.',
+          style: FsType.sans(size: 11, color: FsColors.text3),
+        ),
+      ]),
+      const SizedBox(height: 16),
+      _card(children: [
+        FormField2(
+          'Transfer speed limit',
+          _select(
+            _speedLabel(settings.transferLimitKbps),
+            _speedLimits.keys.toList(),
+            (v) => notifier.setTransferLimitKbps(_speedLimits[v] ?? 0),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Caps the combined throughput of all active transfers. Unlimited by default.',
           style: FsType.sans(size: 11, color: FsColors.text3),
         ),
       ]),

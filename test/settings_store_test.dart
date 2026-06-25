@@ -26,6 +26,7 @@ void main() {
         showPermsColumn: false,
         showLogOnStartup: true,
         confirmOverwrite: false,
+        transferLimitKbps: 5120,
         windowWidth: 1200,
         windowHeight: 800,
         windowX: 40,
@@ -43,6 +44,7 @@ void main() {
       expect(back.showPermsColumn, isFalse);
       expect(back.showLogOnStartup, isTrue);
       expect(back.confirmOverwrite, isFalse);
+      expect(back.transferLimitKbps, 5120);
       expect(back.windowWidth, 1200);
       expect(back.windowHeight, 800);
       expect(back.windowX, 40);
@@ -53,6 +55,7 @@ void main() {
       final s = AppSettings.fromJson(const {});
       expect(s.themeName, 'Rainbow Bee-eater');
       expect(s.brightnessMode, 'system');
+      expect(s.transferLimitKbps, 0); // unlimited by default
       expect(s.accentHiValue, 0xFF06ABDF);
       expect(s.showHiddenFiles, isTrue);
       expect(s.windowWidth, isNull);
