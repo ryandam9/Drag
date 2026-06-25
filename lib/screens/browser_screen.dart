@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../fs/file_preview.dart';
 import '../fs/file_search.dart';
 import '../fs/storage_backend.dart';
 import '../models/connection.dart';
@@ -274,6 +275,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       case LogicalKeyboardKey.tab:
         _sessions.focusPane(!left); // Tab switches the focused pane
         return KeyEventResult.handled;
+      case LogicalKeyboardKey.space:
+        final f = _selectedAny(pane);
+        if (f != null && !f.isDir && !f.isParent) _showPreview(pane, f);
+        return KeyEventResult.handled;
       case LogicalKeyboardKey.f2:
         _renameSelected(pane);
         return KeyEventResult.handled;
@@ -404,6 +409,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       position: RelativeRect.fromLTRB(pos.dx, pos.dy, overlay.size.width - pos.dx, 0),
       items: [
         PopupMenuItem(value: 'transfer', child: _menuText(left ? '⬆ Upload to other pane' : '⬇ Download to other pane')),
+        if (!item.isDir) PopupMenuItem(value: 'preview', child: _menuText('👁 Preview')),
         PopupMenuItem(value: 'rename', child: _menuText('✎ Rename')),
         PopupMenuItem(value: 'delete', child: _menuText('⊗ Delete', color: FsColors.red)),
         const PopupMenuDivider(),
@@ -414,6 +420,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     switch (choice) {
       case 'transfer':
         _sessions.dropTransfer(DragPayload(item, left), !left);
+      case 'preview':
+        await _showPreview(pane, item);
       case 'rename':
         final name = await _promptText(title: 'Rename', initial: item.name, confirm: 'Rename');
         if (name != null) await _sessions.renameItem(pane, item, name);
@@ -448,6 +456,21 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       child: Tooltip(
         message: tip,
         child: Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+      ),
+    );
+  }
+
+  /// Quick-preview the selected file in a popup — bounded text excerpt, inline
+  /// image, or a metadata notice for binary / oversized files.
+  Future<void> _showPreview(PaneController pane, FileItem item) async {
+    if (item.isDir || item.isParent) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _PreviewDialog(
+        backend: pane.backend,
+        path: pane.backend.childPath(pane.path, item.name, false),
+        item: item,
+        endpointLabel: pane.endpointLabel,
       ),
     );
   }
@@ -711,6 +734,14 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
               ToolButton('↑ Up', onTap: pane.goUp),
               const ToolSep(),
               ToolButton('🔍 Find', onTap: () => _showFindDialog(_focusedPane)),
+              ToolButton('👁 Preview', onTap: () {
+                final f = _selected(_focusedPane);
+                if (f == null) {
+                  _toast('Nothing selected', 'Select a file to preview', ToastKind.info);
+                } else {
+                  _showPreview(_focusedPane, f);
+                }
+              }),
               ToolButton('⇄ Compare', onTap: () => _sessions.compareActivePanes()),
               ToolButton('⇉ Mirror', onTap: _showMirrorDialog),
               ToolButton('↯ Queue', onTap: () => _go(AppScreen.queue)),
@@ -1439,4 +1470,144 @@ class _FindDialogState extends State<_FindDialog> {
       actions: [FsButton('Close', onTap: () => Navigator.pop(context))],
     );
   }
+}
+
+/// A popup that peeks at a file: a bounded monospace text excerpt, an inline
+/// image, or a metadata notice for binary / oversized files. Content is loaded
+/// once via [loadPreview], which streams only a bounded amount from the backend.
+class _PreviewDialog extends StatefulWidget {
+  final StorageBackend backend;
+  final String path;
+  final FileItem item;
+  final String endpointLabel;
+  const _PreviewDialog({
+    required this.backend,
+    required this.path,
+    required this.item,
+    required this.endpointLabel,
+  });
+
+  @override
+  State<_PreviewDialog> createState() => _PreviewDialogState();
+}
+
+class _PreviewDialogState extends State<_PreviewDialog> {
+  late final Future<FilePreview> _future =
+      loadPreview(widget.backend, widget.path, widget.item);
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final sizeLabel = item.sizeBytes != null ? formatBytes(item.sizeBytes!) : '—';
+    return AlertDialog(
+      backgroundColor: FsColors.bgPanel,
+      title: Row(children: [
+        Text(item.icon, style: const TextStyle(fontSize: 16)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(item.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+        ),
+      ]),
+      content: SizedBox(
+        width: 640,
+        height: 460,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${widget.endpointLabel} · $sizeLabel${item.modified.isNotEmpty ? ' · ${item.modified}' : ''}',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 11, color: FsColors.text3)),
+          const SizedBox(height: 10),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: FsColors.bgScaffold,
+                borderRadius: BorderRadius.circular(FsColors.rField),
+                border: Border.all(color: FsColors.border),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: FutureBuilder<FilePreview>(
+                future: _future,
+                builder: (ctx, snap) {
+                  if (!snap.hasData) {
+                    return Center(
+                      child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
+                    );
+                  }
+                  return _previewBody(snap.data!);
+                },
+              ),
+            ),
+          ),
+        ]),
+      ),
+      actions: [FsButton('Close', onTap: () => Navigator.pop(context))],
+    );
+  }
+
+  Widget _previewBody(FilePreview p) {
+    switch (p.kind) {
+      case PreviewKind.text:
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (p.truncated)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              color: FsColors.badgePausedBg,
+              child: Text('Showing the first part of a larger file.',
+                  style: FsType.sans(size: 10, color: FsColors.badgePausedFg)),
+            ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: SelectableText(
+                p.text!.isEmpty ? '(empty)' : p.text!,
+                style: FsType.mono(size: 11, color: FsColors.text2, height: 1.45),
+              ),
+            ),
+          ),
+        ]);
+      case PreviewKind.image:
+        return InteractiveViewer(
+          maxScale: 6,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Image.memory(
+                p.bytes!,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (_, _, _) => _notice(Icons.broken_image_outlined, 'Could not decode this image.'),
+              ),
+            ),
+          ),
+        );
+      case PreviewKind.tooLarge:
+        return _notice(Icons.unfold_more, p.message ?? 'Too large to preview.');
+      case PreviewKind.binary:
+        return _notice(Icons.description_outlined, p.message ?? 'No inline preview.');
+      case PreviewKind.empty:
+        return _notice(Icons.insert_drive_file_outlined, 'This file is empty.');
+      case PreviewKind.error:
+        return _notice(Icons.error_outline, p.message ?? 'Could not read this file.');
+    }
+  }
+
+  Widget _notice(IconData icon, String message) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 34, color: FsColors.text3),
+            const SizedBox(height: 12),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
+          ]),
+        ),
+      );
 }
