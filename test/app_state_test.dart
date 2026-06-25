@@ -319,6 +319,67 @@ void main() {
       expect(c.read(transfersProvider).transfers.length, 2);
     });
 
+    // Sets up Local→Local panes where the destination already holds a file of
+    // the same name, with a conflict resolver returning [action].
+    Future<(SessionsNotifier, Directory)> _conflictSetup(
+        ProviderContainer c, ConflictAction action) async {
+      final s = c.read(sessionsProvider.notifier);
+      c
+          .read(transfersProvider.notifier)
+          .setConflictResolver((_) async => ConflictResolution(action));
+      final src = await Directory.systemTemp.createTemp('cf_src');
+      final dst = await Directory.systemTemp.createTemp('cf_dst');
+      addTearDown(() => src.delete(recursive: true));
+      addTearDown(() => dst.delete(recursive: true));
+      await File(p.join(src.path, 'dup.txt')).writeAsString('SRC');
+      await File(p.join(dst.path, 'dup.txt')).writeAsString('DST');
+      s.leftPane
+        ..backend = LocalBackend()
+        ..path = src.path;
+      await s.leftPane.refresh();
+      s.rightPane
+        ..backend = LocalBackend()
+        ..connection = null
+        ..path = dst.path;
+      await s.rightPane.refresh();
+      return (s, dst);
+    }
+
+    test('conflict: Skip leaves the destination untouched and enqueues nothing', () async {
+      final c = makeContainer();
+      final (s, dst) = await _conflictSetup(c, ConflictAction.skip);
+      final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
+      s.dropTransfer(DragPayload(item, true), false);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(c.read(transfersProvider).transfers, isEmpty);
+      expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
+    });
+
+    test('conflict: Overwrite replaces the destination file', () async {
+      final c = makeContainer();
+      final (s, dst) = await _conflictSetup(c, ConflictAction.overwrite);
+      final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
+      s.dropTransfer(DragPayload(item, true), false);
+      final f = File(p.join(dst.path, 'dup.txt'));
+      for (var i = 0; i < 200 && (await f.readAsString()) != 'SRC'; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await f.readAsString(), 'SRC');
+    });
+
+    test('conflict: Rename writes a non-colliding copy and keeps the original', () async {
+      final c = makeContainer();
+      final (s, dst) = await _conflictSetup(c, ConflictAction.rename);
+      final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
+      s.dropTransfer(DragPayload(item, true), false);
+      final renamed = File(p.join(dst.path, 'dup (1).txt'));
+      for (var i = 0; i < 200 && !renamed.existsSync(); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await renamed.readAsString(), 'SRC');
+      expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
+    });
+
     test('rejects when destination endpoint is not ready', () async {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
@@ -402,7 +463,13 @@ void main() {
       final dragged = s.leftPane.items.firstWhere((e) => e.name == 'f1.bin');
       s.dropTransfer(DragPayload(dragged, true), false);
 
-      expect(c.read(transfersProvider).transfers.where((t) => t.name == 'f1.bin' || t.name == 'f2.bin').length, 2);
+      // dropTransfer enqueues asynchronously now (it resolves conflicts first).
+      int selectedCount() =>
+          c.read(transfersProvider).transfers.where((t) => t.name == 'f1.bin' || t.name == 'f2.bin').length;
+      for (var i = 0; i < 100 && selectedCount() < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(selectedCount(), 2);
 
       for (var i = 0; i < 200; i++) {
         final pending = c.read(transfersProvider).transfers

@@ -245,20 +245,9 @@ class SessionsNotifier extends Notifier<SessionsState> {
       return;
     }
 
-    final files = entries.where((f) => !f.isDir).toList();
-    final folders = entries.where((f) => f.isDir).toList();
-
-    final transfers = ref.read(transfersProvider.notifier);
-    final single = entries.length == 1 && folders.isEmpty;
-    for (final item in files) {
-      transfers.enqueue(src, dst, item, announce: single);
-    }
-    for (final folder in folders) {
-      transfers.enqueueTree(src, dst, folder); // async — files appear as they're walked
-    }
-    if (files.length > 1 && folders.isEmpty) {
-      toasts.push('Transferring', '${files.length} files → ${dst.endpointLabel}', ToastKind.info);
-    }
+    // Files transfer immediately; folders are walked recursively. Destination
+    // name clashes are resolved by the transfers layer (Skip/Overwrite/Rename).
+    ref.read(transfersProvider.notifier).transferSelection(src, dst, entries);
   }
 
   /// Actually verify a connection: open a fresh backend with the current
