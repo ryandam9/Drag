@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -69,6 +71,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
   TransfersState build() {
     ref.onDispose(() {
       _disposed = true;
+      _runners.clear();
       for (final t in _current) {
         t.dispose();
       }
@@ -131,6 +134,28 @@ class TransfersNotifier extends Notifier<TransfersState> {
     if (announce) {
       _toast('Transfer started', '$name → ${dst.endpointLabel}', ToastKind.info);
     }
+
+    // Remember how to (re)run this transfer so manual/auto retry can replay it.
+    void start() => _runOnce(t, src, srcPath, dst, dstPath);
+    _runners[t] = start;
+    start();
+  }
+
+  /// Total attempts before a live transfer gives up and stays failed.
+  static const maxAttempts = 3;
+
+  /// How to re-run each live transfer (keyed by the transfer instance).
+  final Map<Transfer, void Function()> _runners = {};
+
+  /// Backoff before an automatic retry (exponential: 2s, 4s). Overridable in
+  /// tests so they don't have to wait real seconds.
+  @visibleForTesting
+  Duration Function(int attempts) backoffFor = (attempts) => Duration(seconds: 1 << attempts);
+
+  /// Run [t] once; on failure schedule an automatic retry with backoff until
+  /// [maxAttempts] is reached, then settle as Error.
+  void _runOnce(Transfer t, PaneController src, String srcPath, PaneController dst, String dstPath) {
+    t.attempts++;
     _service
         .run(
       t: t,
@@ -143,12 +168,25 @@ class TransfersNotifier extends Notifier<TransfersState> {
     )
         .then((_) {
       if (_disposed) return;
-      ref.read(historyProvider.notifier).record(t);
       if (t.status == TransferStatus.done) {
+        ref.read(historyProvider.notifier).record(t);
         _completionToast(t);
         dst.refresh();
       } else if (t.status == TransferStatus.error) {
-        _toast('Transfer failed', '$name: ${t.errorMessage ?? 'error'}', ToastKind.error);
+        if (t.attempts < maxAttempts) {
+          // Transient — back off (2s, 4s) and try again automatically.
+          final delay = backoffFor(t.attempts);
+          t.status = TransferStatus.queued;
+          t.progress = 0;
+          _emit(_list);
+          Timer(delay, () {
+            if (_disposed || t.status != TransferStatus.queued) return;
+            _runOnce(t, src, srcPath, dst, dstPath);
+          });
+        } else {
+          ref.read(historyProvider.notifier).record(t);
+          _toast('Transfer failed', '${t.name}: ${t.errorMessage ?? 'error'}', ToastKind.error);
+        }
       }
     });
   }
@@ -316,7 +354,11 @@ class TransfersNotifier extends Notifier<TransfersState> {
     _emit(_list);
   }
 
-  void clearDone() => _emit(_list.where((t) => t.status != TransferStatus.done).toList());
+  void clearDone() {
+    final kept = _list.where((t) => t.status != TransferStatus.done).toList();
+    _runners.removeWhere((t, _) => t.status == TransferStatus.done);
+    _emit(kept);
+  }
 
   void togglePause(Transfer t) {
     switch (t.status) {
@@ -333,11 +375,26 @@ class TransfersNotifier extends Notifier<TransfersState> {
     _emit(_list);
   }
 
+  /// Re-run a failed transfer from scratch (resets the attempt counter). A
+  /// transfer with no stored runner (e.g. seeded in tests) just resets to queued.
   void retry(Transfer t) {
-    t.status = TransferStatus.queued;
     t.errorMessage = null;
     t.progress = 0;
+    t.attempts = 0;
+    t.status = TransferStatus.queued;
     _emit(_list);
+    _runners[t]?.call();
+  }
+
+  /// Retry every currently-failed transfer.
+  void retryAllFailed() {
+    final failed = _list.where((t) => t.status == TransferStatus.error).toList();
+    for (final t in failed) {
+      retry(t);
+    }
+    if (failed.isNotEmpty) {
+      _toast('Retrying', '${failed.length} failed ${failed.length == 1 ? 'transfer' : 'transfers'}', ToastKind.info);
+    }
   }
 
   /// Rich "transfer completed" notification: destination path, size, time.

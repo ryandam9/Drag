@@ -47,6 +47,7 @@ class TransferQueueScreen extends ConsumerWidget {
             const Spacer(),
             TbButton('⏸ Pause all', onTap: n.pauseAll),
             TbButton('▶ Resume all', onTap: n.resumeAll),
+            if (s.errorCount > 0) TbButton('↺ Retry failed', onTap: n.retryAllFailed),
             TbButton('⊗ Clear done', onTap: n.clearDone),
           ]),
           const SizedBox(height: 14),
@@ -264,7 +265,12 @@ class TransferQueueScreen extends ConsumerWidget {
             Expanded(
               flex: 20,
               child: t.status == TransferStatus.error
-                  ? Text(t.errorMessage ?? 'Error', style: FsType.sans(size: 10, color: FsColors.red))
+                  ? Text(
+                      '${t.errorMessage ?? 'Error'} · ${t.attempts}/${TransfersNotifier.maxAttempts} tries',
+                      style: FsType.sans(size: 10, color: FsColors.red))
+                  : (t.status == TransferStatus.queued && t.attempts > 0)
+                      ? Text('Retrying… (attempt ${t.attempts + 1}/${TransfersNotifier.maxAttempts})',
+                          style: FsType.sans(size: 10, color: FsColors.amber))
                   : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       SizedBox(
                         width: 120,
@@ -300,7 +306,7 @@ class TransferQueueScreen extends ConsumerWidget {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: t.status == TransferStatus.error
-                    ? StatusBadge(badge.label, bg: badge.bg, fg: badge.fg, onTap: () => app.retry(t))
+                    ? StatusBadge('↺ Retry', bg: badge.bg, fg: badge.fg, onTap: () => app.retry(t))
                     : StatusBadge(badge.label, bg: badge.bg, fg: badge.fg, onTap: () => app.togglePause(t)),
               ),
             ),
