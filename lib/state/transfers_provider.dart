@@ -76,6 +76,8 @@ class TransfersNotifier extends Notifier<TransfersState> {
     ref.onDispose(() {
       _disposed = true;
       _runners.clear();
+      _controls.clear();
+      _deferred.clear();
       for (final t in _current) {
         t.dispose();
       }
@@ -94,7 +96,10 @@ class TransfersNotifier extends Notifier<TransfersState> {
   void _toast(String title, String sub, ToastKind kind, {String? detail}) =>
       ref.read(toastsProvider.notifier).push(title, sub, kind, detail: detail);
 
-  void setMaxThreads(int v) => _emit(_list, maxThreads: v.clamp(1, 16));
+  void setMaxThreads(int v) {
+    _emit(_list, maxThreads: v.clamp(1, 16));
+    _pump(); // a higher limit may let more queued transfers start
+  }
 
   /// Seed the queue with prebuilt transfers (tests only — production transfers
   /// are created exclusively via [enqueue]).
@@ -139,10 +144,10 @@ class TransfersNotifier extends Notifier<TransfersState> {
       _toast('Transfer started', '$name → ${dst.endpointLabel}', ToastKind.info);
     }
 
-    // Remember how to (re)run this transfer so manual/auto retry can replay it.
-    void start() => _runOnce(t, src, srcPath, dst, dstPath);
-    _runners[t] = start;
-    start();
+    // Remember how to (re)run this transfer so the scheduler and manual/auto
+    // retry can replay it; the limiter starts it when a slot is free.
+    _runners[t] = () => _runOnce(t, src, srcPath, dst, dstPath);
+    _pump();
   }
 
   /// Total attempts before a live transfer gives up and stays failed.
@@ -154,6 +159,30 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// The abort handle for each transfer's in-flight run (present only while
   /// active). Pause/cancel abort through this to stop the byte stream.
   final Map<Transfer, TransferControl> _controls = {};
+
+  /// Queued transfers waiting out a retry backoff — excluded from [_pump] until
+  /// their timer fires, so the concurrency limiter doesn't restart them early.
+  final Set<Transfer> _deferred = {};
+
+  /// Starts queued transfers (oldest first) until [TransfersState.maxThreads]
+  /// are active. Called whenever a slot might free up (enqueue, completion,
+  /// pause/cancel, resume, retry, thread-count change). Transfers with no
+  /// runner (e.g. seeded in tests) or still in retry backoff are skipped.
+  void _pump() {
+    if (_disposed) return;
+    final limit = state.maxThreads;
+    final snapshot = _list;
+    var active = snapshot.where((t) => t.status == TransferStatus.active).length;
+    if (active >= limit) return;
+    for (final t in snapshot.reversed) {
+      if (active >= limit) break;
+      if (t.status != TransferStatus.queued || _deferred.contains(t)) continue;
+      final runner = _runners[t];
+      if (runner == null) continue;
+      active++;
+      runner(); // synchronously flips the transfer to active
+    }
+  }
 
   /// Backoff before an automatic retry (exponential: 2s, 4s). Overridable in
   /// tests so they don't have to wait real seconds.
@@ -192,6 +221,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
       // Aborted (paused/cancelled) — the queue already set the desired state.
       if (t.status == TransferStatus.paused) {
         _emit(_list);
+        _pump(); // a paused transfer frees a slot for queued ones
         return;
       }
       if (t.status == TransferStatus.done) {
@@ -199,21 +229,27 @@ class TransfersNotifier extends Notifier<TransfersState> {
         _completionToast(t);
         _maybeNotify(t, success: true);
         dst.refresh();
+        _pump();
       } else if (t.status == TransferStatus.error) {
         if (t.attempts < maxAttempts) {
-          // Transient — back off (2s, 4s) and try again automatically.
+          // Transient — back off (2s, 4s) and re-queue. Deferred meanwhile so
+          // the scheduler doesn't restart it before the backoff elapses.
           final delay = backoffFor(t.attempts);
           t.status = TransferStatus.queued;
           t.progress = 0;
+          _deferred.add(t);
           _emit(_list);
+          _pump(); // the freed slot can start a different queued transfer
           Timer(delay, () {
+            _deferred.remove(t);
             if (_disposed || t.status != TransferStatus.queued) return;
-            _runOnce(t, src, srcPath, dst, dstPath);
+            _pump();
           });
         } else {
           ref.read(historyProvider.notifier).record(t);
           _toast('Transfer failed', '${t.name}: ${t.errorMessage ?? 'error'}', ToastKind.error);
           _maybeNotify(t, success: false);
+          _pump();
         }
       }
     });
@@ -423,21 +459,24 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// queued transfer simply won't start.
   void pause(Transfer t) {
     _controls[t]?.abort();
+    _deferred.remove(t);
     t.status = TransferStatus.paused;
     t.speed = '—';
     t.eta = '—';
     _emit(_list);
+    _pump(); // pausing frees a concurrency slot
   }
 
   /// Resume a paused transfer by re-running it from the start (a fresh attempt,
-  /// so pausing never eats into the auto-retry budget).
+  /// so pausing never eats into the auto-retry budget). The scheduler starts it
+  /// when a slot is free.
   void resume(Transfer t) {
     if (t.status != TransferStatus.paused) return;
     t.status = TransferStatus.queued;
     t.progress = 0;
     t.attempts = 0;
     _emit(_list);
-    _runners[t]?.call();
+    _pump();
   }
 
   /// Cancel [t]: abort any in-flight stream (which discards the partial
@@ -446,8 +485,10 @@ class TransfersNotifier extends Notifier<TransfersState> {
     _controls[t]?.abort();
     _controls.remove(t);
     _runners.remove(t);
+    _deferred.remove(t);
     _emit(_list.where((x) => !identical(x, t)).toList());
     t.dispose();
+    _pump(); // a cancelled active transfer frees a slot
   }
 
   void togglePause(Transfer t) {
@@ -465,8 +506,9 @@ class TransfersNotifier extends Notifier<TransfersState> {
     t.progress = 0;
     t.attempts = 0;
     t.status = TransferStatus.queued;
+    _deferred.remove(t);
     _emit(_list);
-    _runners[t]?.call();
+    _pump();
   }
 
   /// Retry every currently-failed transfer.

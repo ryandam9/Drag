@@ -110,6 +110,9 @@ written to the SQLite history database.
   the `attendance-register` app, with Inter + JetBrains Mono via `google_fonts`.
 - Resizable split between the two file panes.
 - Pause / resume / clear-done queue controls and per-row pause/retry.
+- **Concurrency limiter**: at most *N* transfers (the "Threads" setting) run at
+  once; the rest queue and start as slots free. Raising the limit starts more
+  immediately; pausing/cancelling an active one frees a slot.
 
 ## Project layout
 
