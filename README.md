@@ -185,8 +185,20 @@ sudo apt-get install -y \
   clang cmake ninja-build pkg-config \
   libgtk-3-dev liblzma-dev \
   libsqlite3-0 libsqlite3-dev \    # SQLite is used for history/connections/settings/sessions
-  libsecret-1-dev                  # OS keychain for connection secrets (flutter_secure_storage)
+  libsecret-1-dev \                # OS keychain for connection secrets (flutter_secure_storage)
+  libnotify-dev                    # desktop notifications (local_notifier)
 ```
+
+**Build a `.deb` installer** (installs to `/usr/lib/drag` with a launcher,
+`.desktop` entry and icon):
+
+```bash
+flutter build linux --release
+scripts/package-linux-deb.sh build/linux/x64/release/bundle 1.0.0 drag-linux-x64.deb
+```
+
+Tagged releases (`v*`) attach both `drag-linux-x64.tar.gz` and
+`drag-linux-x64.deb` via the release workflow.
 
 **Run from source:**
 

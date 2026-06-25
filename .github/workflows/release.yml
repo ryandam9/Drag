@@ -46,18 +46,28 @@ jobs:
           cd build/linux/x64/release/bundle
           tar -czf "$GITHUB_WORKSPACE/drag-linux-x64.tar.gz" .
 
+      - name: Package installer (.deb)
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          chmod +x scripts/package-linux-deb.sh
+          scripts/package-linux-deb.sh build/linux/x64/release/bundle "$VERSION" "$GITHUB_WORKSPACE/drag-linux-x64.deb"
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: drag-linux-x64
-          path: drag-linux-x64.tar.gz
+          path: |
+            drag-linux-x64.tar.gz
+            drag-linux-x64.deb
           if-no-files-found: error
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: drag-linux-x64.tar.gz
+          files: |
+            drag-linux-x64.tar.gz
+            drag-linux-x64.deb
 
   # ── 🍎 macOS ────────────────────────────────────────────────────
   macos:

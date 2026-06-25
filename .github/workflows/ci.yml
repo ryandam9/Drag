@@ -69,6 +69,15 @@ jobs:
       - name: Build ${{ matrix.platform }}
         run: flutter build ${{ matrix.platform }} --release
 
+      # Exercise the .deb packaging on every run so the script can't silently rot.
+      - name: Package .deb (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          chmod +x scripts/package-linux-deb.sh
+          scripts/package-linux-deb.sh build/linux/x64/release/bundle "$VERSION" drag-linux-x64.deb
+          dpkg-deb -I drag-linux-x64.deb
+
       - name: Upload ${{ matrix.platform }} artifact
         uses: actions/upload-artifact@v4
         with:
