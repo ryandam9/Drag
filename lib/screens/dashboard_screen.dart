@@ -8,17 +8,40 @@ import '../data/history_csv.dart';
 import '../data/history_db.dart';
 import '../models/file_item.dart';
 import '../state/app.dart';
+import '../state/history_filter.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  final _search = TextEditingController();
+  String _query = '';
+  HistoryStatusFilter _status = HistoryStatusFilter.all;
+  HistoryDirectionFilter _direction = HistoryDirectionFilter.all;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final history = ref.watch(historyProvider);
     final notifier = ref.read(historyProvider.notifier);
     final s = history.stats;
+    final filtered =
+        filterHistory(history.records, query: _query, status: _status, direction: _direction);
+    final breakdown = breakdownByEndpoint(history.records);
+    final filtering = _query.trim().isNotEmpty ||
+        _status != HistoryStatusFilter.all ||
+        _direction != HistoryDirectionFilter.all;
     return Container(
       color: FsColors.bgScaffold,
       child: Column(
@@ -65,10 +88,23 @@ class DashboardScreen extends ConsumerWidget {
             ]),
           ),
 
+          // ── Per-endpoint breakdown (only when there's more than one) ──
+          if (breakdown.length > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: _breakdownBar(breakdown),
+            ),
+
+          // ── Filter / search bar ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: _filterBar(filtered.length, filtering),
+          ),
+
           // ── History table ──
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
               child: Container(
                 decoration: BoxDecoration(
                   color: FsColors.bgSurface,
@@ -77,11 +113,96 @@ class DashboardScreen extends ConsumerWidget {
                   boxShadow: FsColors.cardShadow,
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: _HistoryTable(records: history.records),
+                child: _HistoryTable(records: filtered, filtering: filtering),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _filterBar(int shown, bool filtering) {
+    return Row(children: [
+      SizedBox(
+        width: 240,
+        child: FsTextField(
+          controller: _search,
+          hint: 'Search name, path or endpoint…',
+          height: 34,
+          onChanged: (v) => setState(() => _query = v),
+        ),
+      ),
+      const SizedBox(width: 10),
+      _dropdown<HistoryStatusFilter>(_status, const {
+        HistoryStatusFilter.all: 'All status',
+        HistoryStatusFilter.succeeded: 'Succeeded',
+        HistoryStatusFilter.failed: 'Failed',
+      }, (v) => setState(() => _status = v)),
+      const SizedBox(width: 8),
+      _dropdown<HistoryDirectionFilter>(_direction, const {
+        HistoryDirectionFilter.all: 'All directions',
+        HistoryDirectionFilter.upload: 'Uploads',
+        HistoryDirectionFilter.download: 'Downloads',
+      }, (v) => setState(() => _direction = v)),
+      const Spacer(),
+      if (filtering)
+        Text('$shown match${shown == 1 ? '' : 'es'}',
+            style: FsType.sans(size: 11, color: FsColors.text3)),
+    ]);
+  }
+
+  Widget _dropdown<T>(T value, Map<T, String> options, ValueChanged<T> onChanged) {
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: FsColors.bgSurface,
+        borderRadius: BorderRadius.circular(FsColors.rField),
+        border: Border.all(color: FsColors.border),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          value: value,
+          isDense: true,
+          dropdownColor: FsColors.bgPanel,
+          icon: Icon(Icons.expand_more, size: 16, color: FsColors.text2),
+          style: FsType.sans(size: 12, color: FsColors.text1),
+          items: [for (final e in options.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _breakdownBar(List<EndpointStat> stats) {
+    return SizedBox(
+      height: 30,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: stats.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final e = stats[i];
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: FsColors.bgSurface,
+              borderRadius: BorderRadius.circular(FsColors.rPill),
+              border: Border.all(color: FsColors.border),
+            ),
+            child: Row(children: [
+              Icon(Icons.dns_outlined, size: 13, color: FsColors.accentHi),
+              const SizedBox(width: 6),
+              Text(e.endpoint, style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.text1)),
+              const SizedBox(width: 8),
+              Text('${e.count} · ${formatBytes(e.totalBytes)}',
+                  style: FsType.sans(size: 11, color: FsColors.text3, tabular: true)),
+            ]),
+          );
+        },
       ),
     );
   }
@@ -163,11 +284,13 @@ class _StatCard extends StatelessWidget {
 
 class _HistoryTable extends StatelessWidget {
   final List<TransferRecord> records;
-  const _HistoryTable({required this.records});
+  final bool filtering;
+  const _HistoryTable({required this.records, this.filtering = false});
 
   @override
   Widget build(BuildContext context) {
     if (records.isEmpty) {
+      final noMatches = filtering;
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
@@ -177,12 +300,13 @@ class _HistoryTable extends StatelessWidget {
               color: Color.lerp(FsColors.accent, FsColors.bgSurface, 0.82),
               borderRadius: BorderRadius.circular(FsColors.rField),
             ),
-            child: Icon(Icons.history, size: 28, color: FsColors.accent),
+            child: Icon(noMatches ? Icons.search_off : Icons.history, size: 28, color: FsColors.accent),
           ),
           const SizedBox(height: 14),
-          Text('No transfers yet', style: FsType.sans(size: 16, weight: FontWeight.w700, color: FsColors.text1)),
+          Text(noMatches ? 'No matching transfers' : 'No transfers yet',
+              style: FsType.sans(size: 16, weight: FontWeight.w700, color: FsColors.text1)),
           const SizedBox(height: 6),
-          Text('Completed transfers will appear here.',
+          Text(noMatches ? 'Try adjusting the search or filters.' : 'Completed transfers will appear here.',
               style: FsType.sans(size: 13, color: FsColors.text2)),
         ]),
       );
