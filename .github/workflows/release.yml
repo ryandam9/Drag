@@ -18,9 +18,40 @@ permissions:
   contents: write
 
 jobs:
+  # ── ✅ Validate (analyze + tests + coverage) ────────────────────
+  # Gates packaging: the exact source being released must pass the same
+  # quality bar as CI before any artifact is built or published.
+  validate:
+    name: Validate (analyze, test, coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-0 libsqlite3-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test (with coverage)
+        run: flutter test --coverage
+      - name: Enforce coverage floor
+        run: |
+          pct=$(awk -F: '/^LF:/{lf+=$2} /^LH:/{lh+=$2} END{ if (lf>0) printf "%.1f", (lh/lf)*100; else print "0" }' coverage/lcov.info)
+          min=80.0
+          echo "Line coverage: ${pct}% (floor ${min}%)"
+          awk -v p="$pct" -v m="$min" 'BEGIN{ if (p+0 < m+0) { printf "::error::Line coverage %.1f%% is below the %.1f%% floor\n", p, m; exit 1 } }'
+
   # ── 🐧 Linux (x64) ──────────────────────────────────────────────
   linux:
     name: Build Linux (x64)
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,6 +103,7 @@ jobs:
   # ── 🍎 macOS ────────────────────────────────────────────────────
   macos:
     name: Build macOS
+    needs: validate
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,6 +157,7 @@ jobs:
   # ── 🪟 Windows (x64) ────────────────────────────────────────────
   windows:
     name: Build Windows (x64)
+    needs: validate
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
