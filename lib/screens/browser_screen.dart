@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../fs/file_preview.dart';
 import '../fs/file_search.dart';
+import '../fs/host_key_verifier.dart';
 import '../fs/storage_backend.dart';
 import '../models/connection.dart';
 import '../models/file_item.dart';
@@ -62,12 +63,15 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     // Transfers ask us to resolve destination name clashes via a dialog.
     _transfersRef = ref.read(transfersProvider.notifier);
     _transfersRef!.setConflictResolver(_resolveConflict);
+    // SFTP connects ask us to confirm an unknown host's fingerprint.
+    globalHostKeyVerifier?.prompt = _promptHostKey;
   }
 
   @override
   void dispose() {
     // Use the cached notifier — `ref` is unsafe in dispose().
     _transfersRef?.setConflictResolver(null);
+    globalHostKeyVerifier?.prompt = null;
     _typeAheadTimer?.cancel();
     _leftScroll.dispose();
     _rightScroll.dispose();
@@ -118,6 +122,51 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         ),
       ),
     );
+  }
+
+  /// Shows an unknown SFTP host's fingerprint and asks whether to trust it.
+  /// Defaults to Cancel (reject) if the screen is gone.
+  Future<HostKeyDecision> _promptHostKey(HostKeyInfo info) async {
+    if (!mounted) return HostKeyDecision.cancel;
+    final decision = await showDialog<HostKeyDecision>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: FsColors.bgPanel,
+        title: Text('Unknown SFTP host key',
+            style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text("You're connecting to a host Drag hasn't seen before. Verify its "
+              'fingerprint out-of-band before trusting it — an unexpected key can '
+              'mean a man-in-the-middle.',
+              style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: FsColors.bgScaffold,
+              borderRadius: BorderRadius.circular(FsColors.rField),
+              border: Border.all(color: FsColors.border),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${info.host}:${info.port}  ·  ${info.type}',
+                  style: FsType.sans(size: 12, weight: FontWeight.w600, color: FsColors.text1)),
+              const SizedBox(height: 4),
+              SelectableText(info.fingerprint, style: FsType.mono(size: 11, color: FsColors.text2)),
+            ]),
+          ),
+        ]),
+        actions: [
+          FsButton('Cancel', onTap: () => Navigator.pop(ctx, HostKeyDecision.cancel)),
+          FsButton('Trust once', onTap: () => Navigator.pop(ctx, HostKeyDecision.trustOnce)),
+          FsButton('Trust & remember',
+              kind: FsButtonKind.primary,
+              onTap: () => Navigator.pop(ctx, HostKeyDecision.trustAndRemember)),
+        ],
+      ),
+    );
+    return decision ?? HostKeyDecision.cancel;
   }
 
   /// Copy a full endpoint location (s3://… , sftp://… , or a local absolute

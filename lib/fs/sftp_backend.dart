@@ -63,9 +63,9 @@ class SftpBackend extends StorageBackend {
         onPasswordRequest: connection.auth == AuthMethod.password
             ? () => connection.password
             : null,
-        // Trust-on-first-use host-key verification: remember the key on first
-        // connect, reject a changed key (possible MITM). Null verifier (e.g.
-        // tests) falls back to accepting the key.
+        // Host-key verification: prompt to confirm an unknown host's
+        // fingerprint on first connect, accept a matching one, reject a changed
+        // key (possible MITM). A null verifier (e.g. tests) accepts the key.
         onVerifyHostKey: _verifyHostKey,
       );
       _client = client;
