@@ -42,6 +42,11 @@ class Connection {
   bool keepAlive;
   bool openInNewTab;
   ConnGroup group;
+
+  /// Optional user label for grouping the connection list (e.g. an environment
+  /// like "Production" or "Staging"). Blank → shown under "Ungrouped".
+  String tag;
+
   String details; // e.g. "Ubuntu 22.04 · OpenSSH 9.3"
   String lastConnected;
 
@@ -91,6 +96,7 @@ class Connection {
     this.keepAlive = true,
     this.openInNewTab = false,
     this.group = ConnGroup.saved,
+    this.tag = '',
     this.details = '',
     this.lastConnected = '',
     this.accessKeyId = '',
@@ -125,6 +131,7 @@ class Connection {
         'keepAlive': keepAlive,
         'openInNewTab': openInNewTab,
         'group': group.name,
+        'tag': tag,
         'details': details,
         'lastConnected': lastConnected,
         'accessKeyId': accessKeyId,
@@ -154,6 +161,7 @@ class Connection {
       keepAlive: (m['keepAlive'] as bool?) ?? true,
       openInNewTab: (m['openInNewTab'] as bool?) ?? false,
       group: byName(ConnGroup.values, m['group'], ConnGroup.saved),
+      tag: (m['tag'] as String?) ?? '',
       details: (m['details'] as String?) ?? '',
       lastConnected: (m['lastConnected'] as String?) ?? '',
       accessKeyId: (m['accessKeyId'] as String?) ?? '',

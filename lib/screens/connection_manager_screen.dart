@@ -2,14 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/connection.dart';
 import '../state/app.dart';
+import '../state/connection_filter.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-class ConnectionManagerScreen extends ConsumerWidget {
+class ConnectionManagerScreen extends ConsumerStatefulWidget {
   const ConnectionManagerScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ConnectionManagerScreen> createState() => _ConnectionManagerScreenState();
+}
+
+class _ConnectionManagerScreenState extends ConsumerState<ConnectionManagerScreen> {
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(connectionsProvider);
     final selected = state.selected;
     return Row(
@@ -67,6 +82,14 @@ class ConnectionManagerScreen extends ConsumerWidget {
     );
   }
 
+  Widget _sidebarNote(String text) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(text,
+              textAlign: TextAlign.center, style: FsType.sans(size: 11, color: FsColors.text3)),
+        ),
+      );
+
   // ── Saved sessions sidebar ──
   Widget _sidebar(WidgetRef ref, ConnectionsState state) {
     Widget groupLabel(String t) => Padding(
@@ -116,33 +139,37 @@ class ConnectionManagerScreen extends ConsumerWidget {
       });
     }
 
-    final recent = state.connections.where((c) => c.group == ConnGroup.recent).toList();
-    final saved = state.connections.where((c) => c.group == ConnGroup.saved).toList();
+    // Live search filter, then group by user tag (untagged last).
+    final groups = groupConnections(filterConnections(state.connections, _query));
+
+    Widget body;
+    if (state.connections.isEmpty) {
+      body = _sidebarNote('No saved connections');
+    } else if (groups.isEmpty) {
+      body = _sidebarNote('No matches for “${_query.trim()}”');
+    } else {
+      body = ListView(padding: EdgeInsets.zero, children: [
+        for (final g in groups) ...[
+          groupLabel(g.label.toUpperCase()),
+          ...g.items.map(connItem),
+        ],
+      ]);
+    }
 
     return Container(
       color: FsColors.bgDeep,
       child: Column(children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(12, 14, 12, 4),
-          child: FsTextField(hint: 'Search sessions…', mono: false, height: 34),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
+          child: FsTextField(
+            controller: _search,
+            hint: 'Search sessions…',
+            mono: false,
+            height: 34,
+            onChanged: (v) => setState(() => _query = v),
+          ),
         ),
-        Expanded(
-          child: state.connections.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text('No saved connections',
-                        textAlign: TextAlign.center,
-                        style: FsType.sans(size: 11, color: FsColors.text3)),
-                  ),
-                )
-              : ListView(padding: EdgeInsets.zero, children: [
-                  if (recent.isNotEmpty) groupLabel('RECENT'),
-                  ...recent.map(connItem),
-                  if (saved.isNotEmpty) groupLabel('SAVED'),
-                  ...saved.map(connItem),
-                ]),
-        ),
+        Expanded(child: body),
         Padding(
           padding: const EdgeInsets.all(12),
           child: SizedBox(
@@ -173,6 +200,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   Connection get c => widget.connection;
 
   late final _name = TextEditingController(text: c.name);
+  late final _tag = TextEditingController(text: c.tag);
   late final _host = TextEditingController(text: c.host);
   late final _port = TextEditingController(text: '${c.port}');
   late final _user = TextEditingController(text: c.username);
@@ -207,7 +235,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   @override
   void dispose() {
     _nameFocus.dispose();
-    for (final ctl in [_name, _host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token, _awsProfile]) {
+    for (final ctl in [_name, _tag, _host, _port, _user, _timeout, _keyFile, _passphrase, _password, _remotePath, _localPath, _region, _bucket, _endpoint, _akid, _secret, _token, _awsProfile]) {
       ctl.dispose();
     }
     super.dispose();
@@ -326,6 +354,13 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
                   // Refresh the header here and the sidebar list (same name shown).
                   ref.read(connectionsProvider.notifier).touch();
                 }, hint: 'e.g. Prod SFTP, Data bucket', icon: Icons.badge_outlined, focusNode: _nameFocus)),
+            const SizedBox(height: 16),
+            FormField2('Group / tag (optional)',
+                _field(_tag, (v) {
+                  c.tag = v;
+                  // Regroup the sidebar live as the tag changes.
+                  ref.read(connectionsProvider.notifier).touch();
+                }, hint: 'e.g. Production, Staging', icon: Icons.sell_outlined)),
             const SizedBox(height: 16),
             FormField2('Protocol', _protocolSelect()),
           ]),
