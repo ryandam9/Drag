@@ -13,8 +13,11 @@ import 'storage_backend.dart';
 /// reuses the session for subsequent operations, so it composes with the
 /// streamed [TransferService] (SFTP↔Local, SFTP↔S3) like the other backends.
 ///
-/// Auth: password or private key (with optional passphrase). Host-key
-/// verification is currently accept-on-connect — see issue #17.
+/// Auth: password or private key (with optional passphrase). Host keys are
+/// checked trust-on-first-use via [globalHostKeyVerifier]: the first key seen
+/// for a host is remembered and accepted, a later mismatch is rejected. When
+/// no verifier is wired (e.g. the known-hosts store failed to open) the key is
+/// accepted — see [_verifyHostKey].
 class SftpBackend extends StorageBackend {
   SftpBackend(this.connection);
 
