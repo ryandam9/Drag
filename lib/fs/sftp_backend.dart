@@ -158,8 +158,9 @@ class SftpBackend extends StorageBackend {
     final sftp = await _ensure();
     final file = await sftp.open(path);
     final stat = await file.stat();
-    final length = stat.size ?? 0;
-    return ReadHandle(file.read(), length);
+    // Pass the size through as-is: null means the server didn't report one, so
+    // the transfer streams the upload instead of declaring a 0-byte length.
+    return ReadHandle(file.read(), stat.size);
   }
 
   @override

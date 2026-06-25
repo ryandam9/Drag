@@ -13,7 +13,11 @@ import 'aws/sts_client.dart';
 /// A readable handle: the byte stream plus the total size (for progress/ETA).
 class ReadHandle {
   final Stream<Uint8List> stream;
-  final int length;
+
+  /// Byte count of the stream, or null when the backend can't report a size
+  /// (e.g. an SFTP server that omits it). Null means "unknown" — distinct from
+  /// 0, which is a known-empty file.
+  final int? length;
   const ReadHandle(this.stream, this.length);
 }
 
@@ -473,6 +477,19 @@ class S3Backend extends StorageBackend {
     final client = await _clientFor(bucket);
     // Picks a single PUT or a multipart upload based on the object size.
     await client.put(key, data, length, onProgress: onProgress);
+  }
+
+  /// Upload a stream whose total size isn't known up front. A single PUT needs
+  /// an accurate Content-Length, so we always stream via multipart here —
+  /// avoiding a `Content-Length: 0` that would truncate a non-empty upload.
+  Future<void> writeUnsized(
+    String path,
+    Stream<Uint8List> data, {
+    void Function(int sent)? onProgress,
+  }) async {
+    final (bucket, key) = _split(path);
+    final client = await _clientFor(bucket);
+    await client.putObjectMultipart(key, data, onProgress: onProgress);
   }
 
   @override

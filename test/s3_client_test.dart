@@ -7,8 +7,23 @@ import 'package:drag/fs/aws/aws_profile.dart';
 import 'package:drag/fs/aws/s3_client.dart';
 import 'package:drag/fs/aws/sigv4.dart';
 import 'package:drag/fs/storage_backend.dart';
+import 'package:drag/fs/transfer_service.dart';
 import 'package:drag/models/connection.dart';
+import 'package:drag/models/transfer.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/memory_backend.dart';
+
+/// A source whose reads report no size (like an SFTP server that omits it),
+/// so the transfer can't declare a Content-Length up front.
+class _UnsizedSource extends MemoryBackend {
+  _UnsizedSource(Map<String, Uint8List> files) : super(files: files);
+  @override
+  Future<ReadHandle> openRead(String path) async {
+    final h = await super.openRead(path);
+    return ReadHandle(h.stream, null); // hide the length
+  }
+}
 
 /// A captured inbound request (for assertions on what the client sent).
 class Captured {
@@ -412,6 +427,47 @@ void main() {
       seen.clear();
       await c.put('small.bin', Stream.value(Uint8List(5)), 5); // ≤ threshold ⇒ single PUT
       expect(seen, ['PUT plain']);
+    });
+
+    test('an unknown-length source uploads via multipart, not Content-Length 0', () async {
+      final partBodies = <int, List<int>>{};
+      var singlePut = false;
+      final mock = await MockS3.start((req, res) {
+        final q = req.query;
+        if (req.method == 'POST' && q.containsKey('uploads')) {
+          xml(res, '<InitiateMultipartUploadResult><UploadId>U</UploadId></InitiateMultipartUploadResult>');
+        } else if (req.method == 'PUT' && q.containsKey('partNumber')) {
+          partBodies[int.parse(q['partNumber']!)] = req.body;
+          res.headers.set('ETag', '"e${q['partNumber']}"');
+          res.statusCode = 200;
+        } else if (req.method == 'POST' && q.containsKey('uploadId')) {
+          xml(res, '<CompleteMultipartUploadResult><ETag>"f"</ETag></CompleteMultipartUploadResult>');
+        } else if (req.method == 'PUT') {
+          singlePut = true; // a plain PUT would carry the bogus Content-Length
+          res.statusCode = 200;
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+
+      final payload = Uint8List.fromList(List<int>.generate(40, (i) => i));
+      final src = _UnsizedSource({'/f.bin': payload});
+      final dst = S3Backend(Connection(
+        name: 's3', protocol: Protocol.s3, bucket: 'bk', region: 'us-east-1',
+        endpoint: mock.endpoint, useSsl: false, accessKeyId: 'AKIA', secretAccessKey: 's'));
+      addTearDown(dst.dispose);
+
+      final t = Transfer(
+        name: 'f.bin', route: 'r', direction: TransferDirection.upload,
+        sizeBytes: 0, session: 's'); // size unknown to the queue too
+      await TransferService().run(
+        t: t, src: src, srcPath: '/f.bin', dst: dst, dstPath: 'f.bin', onStatus: () {});
+
+      expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
+      expect(singlePut, isFalse, reason: 'must not fall back to a single PUT');
+      final assembled = [for (final k in (partBodies.keys.toList()..sort())) ...partBodies[k]!];
+      expect(assembled, payload); // every byte arrived via multipart
     });
 
     test('retries a transient part failure, then completes', () async {
@@ -863,7 +919,7 @@ void main() {
 
       final handle = await b.openRead('src.bin');
       expect(handle.length, payload.length);
-      await b.write('dst.bin', handle.stream.map(Uint8List.fromList), handle.length);
+      await b.write('dst.bin', handle.stream.map(Uint8List.fromList), handle.length!);
       expect(stored, payload);
     });
   });
