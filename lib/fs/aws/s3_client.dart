@@ -31,12 +31,41 @@ class S3GetResponse {
   const S3GetResponse(this.stream, this.contentLength);
 }
 
+/// A failed S3 request. Beyond the HTTP [statusCode] and human [message], this
+/// surfaces the fields AWS returns in the error XML — [code] (e.g.
+/// `AccessDenied`), [requestId] and [hostId] — plus the [operation] and
+/// [bucket] the client was acting on, so failures can actually be diagnosed
+/// (and quoted in a support ticket) rather than guessed at.
 class S3Exception implements Exception {
   final int statusCode;
   final String message;
-  S3Exception(this.statusCode, this.message);
+  final String? code;
+  final String? requestId;
+  final String? hostId;
+  final String? operation;
+  final String? bucket;
+  const S3Exception(
+    this.statusCode,
+    this.message, {
+    this.code,
+    this.requestId,
+    this.hostId,
+    this.operation,
+    this.bucket,
+  });
+
   @override
-  String toString() => 'S3 error $statusCode: $message';
+  String toString() {
+    final head = StringBuffer(operation != null ? '$operation failed' : 'S3 error');
+    if (code != null && code!.isNotEmpty) head.write(': $code');
+    final detail = <String>[
+      'HTTP $statusCode',
+      if (bucket != null && bucket!.isNotEmpty) 'bucket=$bucket',
+      if (requestId != null && requestId!.isNotEmpty) 'requestId=$requestId',
+      if (message.isNotEmpty) message,
+    ].join(' · ');
+    return '$head ($detail)';
+  }
 }
 
 /// A minimal Amazon S3 client implementing exactly what Drag needs
@@ -52,6 +81,7 @@ class S3Client {
     this.useSsl = true,
     this.multipartThreshold = 16 * 1024 * 1024,
     this.partSize = 8 * 1024 * 1024,
+    this.maxPartAttempts = 3,
   })  : _resolveCredentials = credentials,
         _scheme = useSsl ? 'https' : 'http' {
     var host = endpoint.isNotEmpty
@@ -74,6 +104,15 @@ class S3Client {
   /// use a single PUT. Each part is [partSize] bytes (except the last).
   final int multipartThreshold;
   final int partSize;
+
+  /// How many times to try uploading a single multipart part before giving up
+  /// (and aborting the whole upload). A transient network blip on one part no
+  /// longer dooms a large upload.
+  final int maxPartAttempts;
+
+  /// Backoff before retrying a failed part. Overridable in tests so they don't
+  /// wait real seconds.
+  Duration Function(int attempt) partBackoff = (attempt) => Duration(seconds: 1 << attempt);
 
   /// Resolves the credentials to sign with. Called once per request, so a
   /// rotated ~/.aws profile / session token is picked up automatically.
@@ -121,7 +160,7 @@ class S3Client {
     headers.forEach(req.headers.set);
     final resp = await req.close();
     final body = await resp.transform(utf8.decoder).join();
-    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body);
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body, op: 'ListBuckets');
 
     return XmlDocument.parse(body)
         .rootElement
@@ -148,7 +187,7 @@ class S3Client {
     headers.forEach(req.headers.set);
     final resp = await req.close();
     final body = await resp.transform(utf8.decoder).join();
-    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body);
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body, op: 'GetBucketLocation');
     final loc = XmlDocument.parse(body).rootElement.innerText.trim();
     if (loc.isEmpty) return 'us-east-1';
     if (loc == 'EU') return 'eu-west-1';
@@ -182,7 +221,7 @@ class S3Client {
     headers.forEach(req.headers.set);
     final resp = await req.close();
     final body = await resp.transform(utf8.decoder).join();
-    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body);
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body, op: 'ListObjectsV2');
 
     final doc = XmlDocument.parse(body);
     final root = doc.rootElement;
@@ -238,7 +277,7 @@ class S3Client {
     final resp = await req.close();
     if (resp.statusCode ~/ 100 != 2) {
       final body = await resp.transform(utf8.decoder).join();
-      throw _error(resp.statusCode, body);
+      throw _error(resp.statusCode, body, op: 'GetObject');
     }
     // For a 206 the content length is the remaining (ranged) byte count.
     final len = resp.contentLength < 0 ? 0 : resp.contentLength;
@@ -275,7 +314,7 @@ class S3Client {
     final resp = await req.close();
     if (resp.statusCode ~/ 100 != 2) {
       final body = await resp.transform(utf8.decoder).join();
-      throw _error(resp.statusCode, body);
+      throw _error(resp.statusCode, body, op: 'PutObject');
     }
     await resp.drain<void>();
   }
@@ -314,7 +353,7 @@ class S3Client {
 
     Future<void> flush(Uint8List bytes) async {
       final n = parts.length + 1;
-      final etag = await uploadPart(key, uploadId, n, bytes);
+      final etag = await _uploadPartWithRetry(key, uploadId, n, bytes);
       parts.add((part: n, etag: etag));
       uploaded += bytes.length;
       onProgress?.call(uploaded);
@@ -356,7 +395,7 @@ class S3Client {
     req.headers.contentLength = 0;
     final resp = await req.close();
     final body = await resp.transform(utf8.decoder).join();
-    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body);
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body, op: 'CreateMultipartUpload');
     final id = XmlDocument.parse(body).rootElement.getElement('UploadId')?.innerText;
     if (id == null || id.isEmpty) throw S3Exception(resp.statusCode, 'missing UploadId');
     return id;
@@ -380,7 +419,7 @@ class S3Client {
     final resp = await req.close();
     if (resp.statusCode ~/ 100 != 2) {
       final body = await resp.transform(utf8.decoder).join();
-      throw _error(resp.statusCode, body);
+      throw _error(resp.statusCode, body, op: 'UploadPart');
     }
     final etag = resp.headers.value('etag') ?? resp.headers.value('ETag');
     await resp.drain<void>();
@@ -388,6 +427,19 @@ class S3Client {
       throw S3Exception(resp.statusCode, 'missing ETag for part $partNumber');
     }
     return etag;
+  }
+
+  /// [uploadPart] with bounded retry + backoff. Retries up to [maxPartAttempts]
+  /// times; the final failure propagates (and the caller aborts the upload).
+  Future<String> _uploadPartWithRetry(String key, String uploadId, int partNumber, Uint8List data) async {
+    for (var attempt = 1;; attempt++) {
+      try {
+        return await uploadPart(key, uploadId, partNumber, data);
+      } catch (_) {
+        if (attempt >= maxPartAttempts) rethrow;
+        await Future<void>.delayed(partBackoff(attempt));
+      }
+    }
   }
 
   Future<void> completeMultipartUpload(
@@ -415,9 +467,9 @@ class S3Client {
     req.add(bytes);
     final resp = await req.close();
     final respBody = await resp.transform(utf8.decoder).join();
-    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, respBody);
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, respBody, op: 'CompleteMultipartUpload');
     // S3 can return 200 with an <Error> body if completion fails mid-stream.
-    if (respBody.contains('<Error')) throw _error(resp.statusCode, respBody);
+    if (respBody.contains('<Error')) throw _error(resp.statusCode, respBody, op: 'CompleteMultipartUpload');
   }
 
   Future<void> abortMultipartUpload(String key, String uploadId) async {
@@ -461,7 +513,7 @@ class S3Client {
     final resp = await req.close();
     if (resp.statusCode ~/ 100 != 2) {
       final body = await resp.transform(utf8.decoder).join();
-      throw _error(resp.statusCode, body);
+      throw _error(resp.statusCode, body, op: 'DeleteObject');
     }
     await resp.drain<void>();
   }
@@ -485,17 +537,32 @@ class S3Client {
     final resp = await req.close();
     if (resp.statusCode ~/ 100 != 2) {
       final body = await resp.transform(utf8.decoder).join();
-      throw _error(resp.statusCode, body);
+      throw _error(resp.statusCode, body, op: 'CopyObject');
     }
     await resp.drain<void>();
   }
 
-  S3Exception _error(int status, String body) {
-    String message = body;
+  S3Exception _error(int status, String body, {String? op}) {
+    String? code, message, requestId, hostId;
     try {
-      message = XmlDocument.parse(body).rootElement.getElement('Message')?.innerText ?? body;
-    } catch (_) {/* not XML */}
-    return S3Exception(status, message.isEmpty ? 'request failed' : message);
+      final root = XmlDocument.parse(body).rootElement;
+      code = root.getElement('Code')?.innerText;
+      message = root.getElement('Message')?.innerText;
+      requestId = root.getElement('RequestId')?.innerText;
+      hostId = root.getElement('HostId')?.innerText;
+    } catch (_) {/* not XML — keep the raw body as the message */}
+    final msg = (message != null && message.isNotEmpty)
+        ? message
+        : (body.trim().isEmpty ? 'request failed' : body.trim());
+    return S3Exception(
+      status,
+      msg,
+      code: code,
+      requestId: requestId,
+      hostId: hostId,
+      operation: op,
+      bucket: bucket,
+    );
   }
 
   void close() => _http.close(force: true);

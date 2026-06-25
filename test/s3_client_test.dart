@@ -364,6 +364,114 @@ void main() {
       await c.put('small.bin', Stream.value(Uint8List(5)), 5); // ≤ threshold ⇒ single PUT
       expect(seen, ['PUT plain']);
     });
+
+    test('retries a transient part failure, then completes', () async {
+      final attemptsByPart = <int, int>{};
+      var completed = false;
+      final mock = await MockS3.start((req, res) {
+        final q = req.query;
+        if (req.method == 'POST' && q.containsKey('uploads')) {
+          xml(res, '<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>');
+        } else if (req.method == 'PUT' && q.containsKey('partNumber')) {
+          final n = int.parse(q['partNumber']!);
+          attemptsByPart[n] = (attemptsByPart[n] ?? 0) + 1;
+          // Part 2 fails on its first attempt, succeeds on the retry.
+          if (n == 2 && attemptsByPart[n] == 1) {
+            xml(res, '<Error><Code>InternalError</Code><Message>blip</Message></Error>', status: 500);
+          } else {
+            res.headers.set('ETag', '"e$n"');
+            res.statusCode = 200;
+          }
+        } else if (req.method == 'POST' && q.containsKey('uploadId')) {
+          completed = true;
+          xml(res, '<CompleteMultipartUploadResult><ETag>"final"</ETag></CompleteMultipartUploadResult>');
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+      final c = client(mock)..partBackoff = (_) => Duration.zero;
+      addTearDown(c.close);
+
+      await c.putObjectMultipart('big.bin', Stream.value(Uint8List(25)), partSize: 10);
+      expect(attemptsByPart[2], 2, reason: 'part 2 retried once');
+      expect(completed, isTrue);
+    });
+
+    test('aborts after exhausting part retries', () async {
+      var attempts = 0;
+      var aborted = false;
+      final mock = await MockS3.start((req, res) {
+        final q = req.query;
+        if (req.method == 'POST' && q.containsKey('uploads')) {
+          xml(res, '<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>');
+        } else if (req.method == 'PUT' && q.containsKey('partNumber')) {
+          attempts++;
+          xml(res, '<Error><Code>InternalError</Code><Message>down</Message></Error>', status: 500);
+        } else if (req.method == 'DELETE' && q.containsKey('uploadId')) {
+          aborted = true;
+          res.statusCode = 204;
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+      final c = S3Client(
+        bucket: 'bk',
+        region: 'us-east-1',
+        endpoint: mock.endpoint,
+        useSsl: false,
+        credentials: () => const AwsCredentials('AKIA', 'secret'),
+        maxPartAttempts: 2,
+      )..partBackoff = (_) => Duration.zero;
+      addTearDown(c.close);
+
+      await expectLater(
+        c.putObjectMultipart('big.bin', Stream.value(Uint8List(25)), partSize: 10),
+        throwsA(isA<S3Exception>()),
+      );
+      expect(attempts, 2, reason: 'tried exactly maxPartAttempts times before giving up');
+      expect(aborted, isTrue);
+    });
+  });
+
+  group('S3Exception — rich error parsing', () {
+    test('parses Code/Message/RequestId/HostId and tags operation + bucket', () async {
+      final mock = await MockS3.start((req, res) {
+        xml(
+          res,
+          '<Error><Code>AccessDenied</Code><Message>Access Denied</Message>'
+          '<RequestId>REQ123</RequestId><HostId>HOST456</HostId></Error>',
+          status: 403,
+        );
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      await expectLater(
+        c.putObject('data/file.csv', Stream.value(Uint8List(1)), 1),
+        throwsA(isA<S3Exception>()
+            .having((e) => e.statusCode, 'statusCode', 403)
+            .having((e) => e.code, 'code', 'AccessDenied')
+            .having((e) => e.message, 'message', 'Access Denied')
+            .having((e) => e.requestId, 'requestId', 'REQ123')
+            .having((e) => e.hostId, 'hostId', 'HOST456')
+            .having((e) => e.operation, 'operation', 'PutObject')
+            .having((e) => e.bucket, 'bucket', 'bk')),
+      );
+    });
+
+    test('toString surfaces operation, code and diagnostics', () {
+      const e = S3Exception(403, 'Access Denied',
+          code: 'AccessDenied', requestId: 'REQ123', operation: 'PutObject', bucket: 'bk');
+      final s = e.toString();
+      expect(s, contains('PutObject failed'));
+      expect(s, contains('AccessDenied'));
+      expect(s, contains('HTTP 403'));
+      expect(s, contains('bucket=bk'));
+      expect(s, contains('requestId=REQ123'));
+    });
   });
 
   group('S3Client — credential refresh', () {

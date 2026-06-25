@@ -319,7 +319,7 @@ all three targets are verified to compile on each change.
 
 ```bash
 flutter analyze
-flutter test                 # 195 hermetic tests
+flutter test                 # full hermetic unit/widget suite
 flutter test --coverage      # ~89% line coverage
 ```
 
