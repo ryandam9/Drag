@@ -7,6 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class AppSettings {
   AppSettings({
     this.themeName = 'Rainbow Bee-eater',
+    this.brightnessMode = 'system',
     this.accentValue = 0xFF007CBF,
     this.accentHiValue = 0xFF06ABDF,
     this.uiFontSize = 13,
@@ -25,6 +26,9 @@ class AppSettings {
   });
 
   String themeName;
+
+  /// UI brightness: `'light'`, `'dark'`, or `'system'` (follow the OS).
+  String brightnessMode;
 
   /// The accent color as a 32-bit ARGB value.
   int accentValue;
@@ -62,6 +66,7 @@ class AppSettings {
 
   AppSettings copyWith({
     String? themeName,
+    String? brightnessMode,
     int? accentValue,
     int? accentHiValue,
     double? uiFontSize,
@@ -80,6 +85,7 @@ class AppSettings {
   }) =>
       AppSettings(
         themeName: themeName ?? this.themeName,
+        brightnessMode: brightnessMode ?? this.brightnessMode,
         accentValue: accentValue ?? this.accentValue,
         accentHiValue: accentHiValue ?? this.accentHiValue,
         uiFontSize: uiFontSize ?? this.uiFontSize,
@@ -99,6 +105,7 @@ class AppSettings {
 
   Map<String, Object?> toJson() => {
         'themeName': themeName,
+        'brightnessMode': brightnessMode,
         'accentValue': accentValue,
         'accentHiValue': accentHiValue,
         'uiFontSize': uiFontSize,
@@ -120,6 +127,7 @@ class AppSettings {
     double? d(Object? v) => (v as num?)?.toDouble();
     return AppSettings(
       themeName: (j['themeName'] as String?) ?? 'Rainbow Bee-eater',
+      brightnessMode: (j['brightnessMode'] as String?) ?? 'system',
       accentValue: (j['accentValue'] as num?)?.toInt() ?? 0xFF007CBF,
       accentHiValue: (j['accentHiValue'] as num?)?.toInt() ?? 0xFF06ABDF,
       uiFontSize: d(j['uiFontSize']) ?? 13,

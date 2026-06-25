@@ -225,6 +225,20 @@ void main() {
     expect(c.read(sessionsProvider).focusedLeft, isFalse);
   });
 
+  testWidgets('Space opens a preview popup for the selected file', (tester) async {
+    await setup(tester);
+    await tester.tap(find.text('alpha.txt'));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pumpAndSettle();
+    // The popup shows the file name as a title and a Close action.
+    expect(find.text('alpha.txt'), findsWidgets); // row + dialog title
+    expect(find.text('Close'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close'), findsNothing);
+  });
+
   testWidgets('type-ahead jumps to the matching row', (tester) async {
     final (c, _, _) = await setup(tester);
     final pane = c.read(sessionsProvider.notifier).leftPane;

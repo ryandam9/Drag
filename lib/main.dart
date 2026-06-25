@@ -72,7 +72,8 @@ Future<void> main() async {
 
   // Apply the persisted theme + fonts to the global palette before the first frame.
   if (settings != null) {
-    FsColors.applyTheme(birdThemeByName(settings.themeName));
+    FsColors.applyTheme(birdThemeByName(settings.themeName),
+        brightness: resolveBrightness(settings.brightnessMode));
     FsType.uiFontFamily = AppFont.resolve(settings.uiFont, mono: false);
     FsType.monoFontFamily = AppFont.resolve(settings.monospaceFont, mono: true);
   }
@@ -127,17 +128,29 @@ class DragApp extends ConsumerStatefulWidget {
   ConsumerState<DragApp> createState() => _DragAppState();
 }
 
-class _DragAppState extends ConsumerState<DragApp> with WindowListener {
+class _DragAppState extends ConsumerState<DragApp> with WindowListener, WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
     if (_isDesktop) windowManager.addListener(this);
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     if (_isDesktop) windowManager.removeListener(this);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// The OS flipped light/dark. In `'system'` mode, re-derive the palette and
+  /// rebuild so the resolved brightness flows into the shell key below.
+  @override
+  void didChangePlatformBrightness() {
+    if (ref.read(settingsProvider).brightnessMode == 'system') {
+      ref.read(settingsProvider.notifier).reapplyGlobals();
+      setState(() {});
+    }
   }
 
   // ── Persist window geometry on resize / move ──
@@ -170,6 +183,8 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener {
     final themeName = ref.watch(settingsProvider.select((s) => s.themeName));
     final uiFont = ref.watch(settingsProvider.select((s) => s.uiFont));
     final monoFont = ref.watch(settingsProvider.select((s) => s.monospaceFont));
+    final brightnessMode = ref.watch(settingsProvider.select((s) => s.brightnessMode));
+    final brightness = resolveBrightness(brightnessMode);
 
     return MaterialApp(
       title: 'Drag',
@@ -187,7 +202,7 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener {
       // whole tree, forcing every widget to re-read the global FsColors ramp.
       // Session/tab state lives in Riverpod providers, so it survives the
       // remount — only ephemeral widget state (scroll offsets) resets.
-      home: AppShell(key: ValueKey('$themeName:$accentValue:$uiFont:$monoFont')),
+      home: AppShell(key: ValueKey('$themeName:$accentValue:$uiFont:$monoFont:${brightness.name}')),
     );
   }
 }

@@ -127,8 +127,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  static const _brightnessModes = [
+    ('light', 'Light', Icons.light_mode_outlined),
+    ('dark', 'Dark', Icons.dark_mode_outlined),
+    ('system', 'System', Icons.brightness_auto_outlined),
+  ];
+
   List<Widget> _appearance(AppSettings settings, SettingsNotifier notifier, void Function(String, String, ToastKind) toast) {
     return [
+      _card(children: [
+        Text('Mode', style: FsType.sans(size: 15, weight: FontWeight.w700, color: FsColors.text1)),
+        const SizedBox(height: 4),
+        Text('Light or dark surfaces, or follow your operating system.',
+            style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4)),
+        const SizedBox(height: 16),
+        Row(children: [
+          for (final (value, label, icon) in _brightnessModes) ...[
+            _brightnessChip(label, icon,
+                selected: settings.brightnessMode == value,
+                onTap: () {
+                  notifier.setBrightnessMode(value);
+                  toast('Display mode', label, ToastKind.info);
+                }),
+            const SizedBox(width: 8),
+          ],
+        ]),
+      ]),
+      const SizedBox(height: 16),
       _card(children: [
         Text('Theme', style: FsType.sans(size: 15, weight: FontWeight.w700, color: FsColors.text1)),
         const SizedBox(height: 4),
@@ -210,6 +235,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   /// A clickable theme card: the three signature colours as a swatch plus the
   /// bird name, ringed in the theme accent when selected.
+  Widget _brightnessChip(String label, IconData icon,
+      {required bool selected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? FsColors.bgActive : FsColors.bgSurface,
+            borderRadius: BorderRadius.circular(FsColors.rField),
+            border: Border.all(
+                color: selected ? FsColors.accent : FsColors.border, width: selected ? 2 : 1),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 16, color: selected ? FsColors.accentHi : FsColors.text2),
+            const SizedBox(width: 8),
+            Text(label,
+                style: FsType.sans(
+                    size: 12,
+                    weight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? FsColors.accentHi : FsColors.text2)),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _themeSwatch(BirdTheme t, {required bool selected, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,

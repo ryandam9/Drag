@@ -1,3 +1,5 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -53,9 +55,16 @@ class FsColors {
         BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6)),
       ];
 
-  /// Regenerates the whole light palette from [t]'s primary colour via M3.
-  static void applyTheme(BirdTheme t) {
-    final cs = ColorScheme.fromSeed(seedColor: t.primary, brightness: Brightness.light);
+  /// The brightness the ramp was last generated for.
+  static Brightness brightness = Brightness.light;
+
+  /// Regenerates the whole palette from [t]'s primary colour via M3, at the
+  /// requested [brightness]. The same surfaceContainer* / onSurface role mapping
+  /// works for both brightnesses, so each bird palette gets a coherent light and
+  /// dark variant.
+  static void applyTheme(BirdTheme t, {Brightness brightness = Brightness.light}) {
+    FsColors.brightness = brightness;
+    final cs = ColorScheme.fromSeed(seedColor: t.primary, brightness: brightness);
     scheme = cs;
     accent = cs.primary;
     accentHi = cs.onSecondaryContainer;
@@ -135,6 +144,21 @@ const List<BirdTheme> kBirdThemes = [
 BirdTheme birdThemeByName(String name) =>
     kBirdThemes.firstWhere((t) => t.name == name,
         orElse: () => kBirdThemes.first);
+
+/// Resolves a brightness-mode string (`'light'` / `'dark'` / `'system'`) to a
+/// concrete [Brightness]. `'system'` reads the current OS preference.
+Brightness resolveBrightness(String mode) {
+  switch (mode) {
+    case 'light':
+      return Brightness.light;
+    case 'dark':
+      return Brightness.dark;
+    default:
+      // PlatformDispatcher.instance is available without an initialized
+      // WidgetsBinding, so this is safe to call very early in main().
+      return PlatformDispatcher.instance.platformBrightness;
+  }
+}
 
 class FsType {
   /// The active UI (proportional) and monospace font families. Mutable so the

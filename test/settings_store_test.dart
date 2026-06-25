@@ -1,3 +1,5 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:drag/data/settings_store.dart';
 import 'package:drag/models/app_font.dart';
 import 'package:drag/state/app.dart';
@@ -15,6 +17,7 @@ void main() {
     test('round-trips all fields', () {
       final s = AppSettings(
         themeName: 'Light',
+        brightnessMode: 'dark',
         accentValue: 0xFF22C55E,
         uiFontSize: 14,
         uiFont: 'Poppins',
@@ -30,6 +33,7 @@ void main() {
       );
       final back = AppSettings.fromJson(s.toJson());
       expect(back.themeName, 'Light');
+      expect(back.brightnessMode, 'dark');
       expect(back.accentValue, 0xFF22C55E);
       expect(back.accentHiValue, 0xFF06ABDF);
       expect(back.uiFontSize, 14);
@@ -48,6 +52,7 @@ void main() {
     test('fromJson tolerates missing keys with defaults', () {
       final s = AppSettings.fromJson(const {});
       expect(s.themeName, 'Rainbow Bee-eater');
+      expect(s.brightnessMode, 'system');
       expect(s.accentHiValue, 0xFF06ABDF);
       expect(s.showHiddenFiles, isTrue);
       expect(s.windowWidth, isNull);
@@ -112,6 +117,37 @@ void main() {
       expect(FsColors.accent, cs.primary);
       expect(FsColors.bgScaffold, cs.surfaceContainerLow);
       expect(FsColors.text1, cs.onSurface);
+    });
+
+    test('resolveBrightness maps modes (and system reads the platform)', () {
+      expect(resolveBrightness('light'), Brightness.light);
+      expect(resolveBrightness('dark'), Brightness.dark);
+      // 'system' / anything else defers to the OS preference.
+      expect(resolveBrightness('system'),
+          PlatformDispatcher.instance.platformBrightness);
+    });
+
+    test('setBrightnessMode regenerates the palette at the chosen brightness', () {
+      final c = makeContainer();
+      final n = c.read(settingsProvider.notifier);
+
+      n.setBrightnessMode('light');
+      expect(c.read(settingsProvider).brightnessMode, 'light');
+      expect(FsColors.brightness, Brightness.light);
+      expect(FsColors.scheme.brightness, Brightness.light);
+      final lightScaffold = FsColors.bgScaffold;
+      final lightText = FsColors.text1;
+
+      n.setBrightnessMode('dark');
+      expect(c.read(settingsProvider).brightnessMode, 'dark');
+      expect(FsColors.brightness, Brightness.dark);
+      expect(FsColors.scheme.brightness, Brightness.dark);
+      // The dark ramp differs from the light one (same seed, opposite surfaces).
+      expect(FsColors.bgScaffold, isNot(lightScaffold));
+      expect(FsColors.text1, isNot(lightText));
+      // Dark text sits on dark surfaces → light foreground.
+      expect(FsColors.text1.computeLuminance(),
+          greaterThan(FsColors.bgScaffold.computeLuminance()));
     });
 
     test('birdThemeByName falls back to the default for an unknown name', () {

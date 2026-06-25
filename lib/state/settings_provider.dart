@@ -27,12 +27,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   void _applyGlobals(AppSettings s) {
-    // Generate the whole light palette from the active theme's seed colour.
-    FsColors.applyTheme(birdThemeByName(s.themeName));
+    // Generate the whole palette from the active theme's seed colour, at the
+    // resolved brightness (light / dark / follow-the-OS).
+    FsColors.applyTheme(birdThemeByName(s.themeName),
+        brightness: resolveBrightness(s.brightnessMode));
     // Apply the chosen fonts (sanitised against the known families).
     FsType.uiFontFamily = AppFont.resolve(s.uiFont, mono: false);
     FsType.monoFontFamily = AppFont.resolve(s.monospaceFont, mono: true);
   }
+
+  /// Re-derive the global palette for the current settings — used when the OS
+  /// brightness changes while in `'system'` mode (the value itself is unchanged).
+  void reapplyGlobals() => _applyGlobals(state);
 
   void _update(AppSettings next) {
     state = next;
@@ -41,6 +47,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   void setThemeName(String v) => _update(state.copyWith(themeName: v));
+
+  /// Set the UI brightness mode (`'light'` / `'dark'` / `'system'`).
+  void setBrightnessMode(String v) => _update(state.copyWith(brightnessMode: v));
 
   /// Apply a named bird theme. Its primary seeds the light Material 3 palette;
   /// the resolved accent is persisted too (for the pre-frame paint in main).
