@@ -563,11 +563,17 @@ class S3Client {
     headers.forEach(req.headers.set);
     req.headers.contentLength = 0;
     final resp = await req.close();
+    final body = await resp.transform(utf8.decoder).join();
     if (resp.statusCode ~/ 100 != 2) {
-      final body = await resp.transform(utf8.decoder).join();
       throw _error(resp.statusCode, body, op: 'CopyObject');
     }
-    await resp.drain<void>();
+    // S3 can return HTTP 200 with an <Error> in the body for a failed copy
+    // (the status reflects "request received", not "copy succeeded"). Treat
+    // that as failure so a rename built on copy+delete never deletes the
+    // source after a copy that didn't actually complete.
+    if (body.contains('<Error')) {
+      throw _error(resp.statusCode, body, op: 'CopyObject');
+    }
   }
 
   S3Exception _error(int status, String body, {String? op}) {
