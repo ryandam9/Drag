@@ -207,10 +207,12 @@ class SessionsNotifier extends Notifier<SessionsState> {
     _scheduleSave();
   }
 
-  /// Connect to [c]: rebuild its backend with fresh credentials and open/focus
-  /// a tab. S3 connections need credentials first.
+  /// Connect to [c]: rebuild its backend with fresh credentials, open/focus a
+  /// tab, then **verify with a real listing** before reporting the session as
+  /// online — so the status reflects an actual login, not just intent. S3
+  /// connections need credentials first.
   Future<void> connect(Connection c) async {
-    c.online = c.isS3 ? c.hasS3Credentials : true;
+    c.online = false; // not online until a real listing succeeds
     evictBackend(c); // pick up freshly entered credentials
     ref.read(connectionsProvider.notifier).touch();
     final toast = ref.read(toastsProvider.notifier);
@@ -221,10 +223,26 @@ class SessionsNotifier extends Notifier<SessionsState> {
       log.error('${c.name}: missing AWS credentials (set a profile or access key/secret)');
       return;
     }
+    // Open the tab immediately so the user sees it, then verify in the
+    // background; the pane shows its own loading/error state meanwhile.
     openSession(c);
-    toast.push('Session connected', '${c.name} · ${c.protocol.label}', ToastKind.info);
-    log.success('Opened session for "${c.name}" — ${_target(c)}');
     ref.read(navProvider.notifier).go(AppScreen.browser);
+    toast.push('Connecting…', '${c.name} · ${c.protocol.label}', ToastKind.info);
+    log.info('Opening "${c.name}" — ${_target(c)}');
+
+    final backend = backendFor(c); // same cached backend the pane uses
+    try {
+      final items = await backend.list(backend.initialPath);
+      c.online = true;
+      toast.push('Session connected', '${c.name} is reachable', ToastKind.success);
+      log.success('${c.name}: connected — listed ${items.length} '
+          '${items.length == 1 ? 'entry' : 'entries'}');
+    } catch (e) {
+      c.online = false;
+      toast.push('Connection failed', _short(e), ToastKind.error);
+      log.error('${c.name}: failed — ${_short(e)}');
+    }
+    ref.read(connectionsProvider.notifier).touch();
   }
 
   /// Handle a drag from one pane dropped onto another → start transfer(s).

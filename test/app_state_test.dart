@@ -152,32 +152,38 @@ void main() {
       expect(s.rightPane.isReady, isFalse); // no creds yet
     });
 
-    test('connect() flags S3 online only with credentials', () async {
+    test('connect() refuses S3 without credentials', () async {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
       final s3 = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
       await s.connect(s3);
       expect(s3.online, isFalse);
       expect(c.read(toastsProvider).last.kind, ToastKind.error);
+    });
 
-      s3
+    test('connect() verifies and stays offline against an unreachable endpoint', () async {
+      final c = makeContainer(connections: sampleConnections());
+      final s = c.read(sessionsProvider.notifier);
+      final s3 = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3)
         ..accessKeyId = 'AKIA'
         ..secretAccessKey = 'sec'
         ..bucket = 'b'
-        ..endpoint = '127.0.0.1:1';
+        ..endpoint = '127.0.0.1:1'; // closed port → the real listing fails
       await s.connect(s3);
-      expect(s3.online, isTrue);
-      expect(c.read(toastsProvider).last.kind, ToastKind.info);
+      // No longer optimistically "online" — verification failed.
+      expect(s3.online, isFalse);
+      expect(c.read(toastsProvider).last.title, 'Connection failed');
     });
 
-    test('connect() marks SFTP connections online', () async {
+    test('connect() stays offline for an unreachable SFTP host', () async {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
       final sftp = c.read(connectionsProvider).connections.firstWhere((x) => x.kind == EndpointKind.sftp)
         ..host = '127.0.0.1'
         ..port = 1;
       await s.connect(sftp);
-      expect(sftp.online, isTrue);
+      expect(sftp.online, isFalse);
+      expect(c.read(toastsProvider).last.title, 'Connection failed');
     });
   });
 
