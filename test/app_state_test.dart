@@ -380,6 +380,94 @@ void main() {
       expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
     });
 
+    test('auto-retries a transient failure and then succeeds', () async {
+      final c = makeContainer();
+      c.read(transfersProvider.notifier).backoffFor = (_) => Duration.zero;
+      final s = c.read(sessionsProvider.notifier);
+      final src = await Directory.systemTemp.createTemp('rt_src');
+      final dst = await Directory.systemTemp.createTemp('rt_dst');
+      addTearDown(() => src.delete(recursive: true));
+      addTearDown(() => dst.delete(recursive: true));
+      await File(p.join(src.path, 'x.bin')).writeAsBytes(List.filled(512, 7));
+
+      final flaky = _FlakyLocal()..failsLeft = 2; // fail first 2 reads, succeed on the 3rd
+      s.leftPane
+        ..backend = flaky
+        ..path = src.path;
+      await s.leftPane.refresh();
+      s.rightPane
+        ..backend = LocalBackend()
+        ..connection = null
+        ..path = dst.path;
+      await s.rightPane.refresh();
+
+      final item = s.leftPane.items.firstWhere((e) => e.name == 'x.bin');
+      s.dropTransfer(DragPayload(item, true), false);
+
+      // Transient errors (attempts < max) shouldn't end the poll — only a
+      // success or an exhausted failure is terminal.
+      Transfer? t;
+      for (var i = 0; i < 300; i++) {
+        final list = c.read(transfersProvider).transfers;
+        t = list.isEmpty ? null : list.first;
+        if (t != null &&
+            (t.status == TransferStatus.done ||
+                (t.status == TransferStatus.error && t.attempts >= TransfersNotifier.maxAttempts))) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(t!.status, TransferStatus.done, reason: t.errorMessage ?? '');
+      expect(t.attempts, 3);
+      expect(File(p.join(dst.path, 'x.bin')).existsSync(), isTrue);
+    });
+
+    test('manual retry re-runs an exhausted transfer', () async {
+      final c = makeContainer();
+      final n = c.read(transfersProvider.notifier)..backoffFor = (_) => Duration.zero;
+      final s = c.read(sessionsProvider.notifier);
+      final src = await Directory.systemTemp.createTemp('mr_src');
+      final dst = await Directory.systemTemp.createTemp('mr_dst');
+      addTearDown(() => src.delete(recursive: true));
+      addTearDown(() => dst.delete(recursive: true));
+      await File(p.join(src.path, 'x.bin')).writeAsBytes(List.filled(512, 7));
+
+      final flaky = _FlakyLocal()..failsLeft = 99; // fail every attempt for now
+      s.leftPane
+        ..backend = flaky
+        ..path = src.path;
+      await s.leftPane.refresh();
+      s.rightPane
+        ..backend = LocalBackend()
+        ..connection = null
+        ..path = dst.path;
+      await s.rightPane.refresh();
+
+      final item = s.leftPane.items.firstWhere((e) => e.name == 'x.bin');
+      s.dropTransfer(DragPayload(item, true), false);
+
+      Transfer? t;
+      for (var i = 0; i < 300; i++) {
+        final list = c.read(transfersProvider).transfers;
+        t = list.isEmpty ? null : list.first;
+        if (t != null && t.status == TransferStatus.error && t.attempts >= TransfersNotifier.maxAttempts) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(t!.status, TransferStatus.error);
+      expect(t.attempts, TransfersNotifier.maxAttempts);
+
+      // Fix the source and retry manually.
+      flaky.failsLeft = 0;
+      n.retry(t);
+      for (var i = 0; i < 300 && t.status != TransferStatus.done; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
+      expect(File(p.join(dst.path, 'x.bin')).existsSync(), isTrue);
+    });
+
     test('rejects when destination endpoint is not ready', () async {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
@@ -524,3 +612,17 @@ void main() {
 
 /// Minimal const FileItems for drop-decision tests.
 const _file = FileItem(name: 'note.txt', sizeBytes: 10);
+
+/// A LocalBackend whose [openRead] fails the first [failsLeft] times — used to
+/// exercise transfer retry/backoff against real temp files.
+class _FlakyLocal extends LocalBackend {
+  int failsLeft = 0;
+  @override
+  Future<ReadHandle> openRead(String path) {
+    if (failsLeft > 0) {
+      failsLeft--;
+      throw Exception('flaky read');
+    }
+    return super.openRead(path);
+  }
+}

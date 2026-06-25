@@ -16,6 +16,10 @@ class Transfer {
   TransferStatus status;
   String? errorMessage;
 
+  /// How many times this transfer has been (re)attempted — drives auto-retry
+  /// backoff and is shown on the queue row.
+  int attempts;
+
   /// Real (S3 / local) transfers are driven by [TransferService]; simulated
   /// ones (seed data, SFTP demo) are advanced by the AppState ticker.
   final bool live;
@@ -50,6 +54,7 @@ class Transfer {
     required this.session,
     this.status = TransferStatus.queued,
     this.errorMessage,
+    this.attempts = 0,
     this.live = false,
     this.sourcePath = '',
     this.destPath = '',
