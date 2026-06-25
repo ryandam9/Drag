@@ -204,6 +204,35 @@ void main() {
     expect(find.text('inner.txt'), findsOneWidget);
   });
 
+  testWidgets('arrow keys move the selection and Enter opens a folder', (tester) async {
+    final (c, _, _) = await setup(tester);
+    final pane = c.read(sessionsProvider.notifier).leftPane;
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(pane.selectedIndex, 0);
+    expect(pane.items[0].name, 'nested'); // dirs sort first
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(pane.path, '/nested');
+    expect(find.text('inner.txt'), findsOneWidget);
+  });
+
+  testWidgets('Tab switches the focused pane', (tester) async {
+    final (c, _, _) = await setup(tester);
+    expect(c.read(sessionsProvider).focusedLeft, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    expect(c.read(sessionsProvider).focusedLeft, isFalse);
+  });
+
+  testWidgets('type-ahead jumps to the matching row', (tester) async {
+    final (c, _, _) = await setup(tester);
+    final pane = c.read(sessionsProvider.notifier).leftPane;
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pump();
+    expect(pane.items[pane.selectedIndex!].name, 'beta.bin');
+  });
+
   testWidgets('dragging a file onto the other pane transfers it', (tester) async {
     final (c, _, right) = await setup(tester);
     expect((await right.list('/')).any((e) => e.name == 'alpha.txt'), isFalse);
