@@ -805,12 +805,16 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(children: [
-              ToolButton('← Back', onTap: pane.canGoBack ? pane.goBack : null),
-              ToolButton('→ Fwd', onTap: pane.canGoForward ? pane.goForward : null),
-              ToolButton('↑ Up', onTap: pane.goUp),
+              ToolButton('← Back',
+                  tooltip: 'Back to the previous folder', onTap: pane.canGoBack ? pane.goBack : null),
+              ToolButton('→ Fwd',
+                  tooltip: 'Forward to the next folder',
+                  onTap: pane.canGoForward ? pane.goForward : null),
+              ToolButton('↑ Up', tooltip: 'Go up one folder (Backspace)', onTap: pane.goUp),
               const ToolSep(),
-              ToolButton('🔍 Find', onTap: () => _showFindDialog(_focusedPane)),
-              ToolButton('👁 Preview', onTap: () {
+              ToolButton('🔍 Find',
+                  tooltip: 'Search files in this pane', onTap: () => _showFindDialog(_focusedPane)),
+              ToolButton('👁 Preview', tooltip: 'Quick-preview the selected file (Space)', onTap: () {
                 final f = _selected(_focusedPane);
                 if (f == null) {
                   _toast('Nothing selected', 'Select a file to preview', ToastKind.info);
@@ -818,17 +822,25 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                   _showPreview(_focusedPane, f);
                 }
               }),
-              ToolButton('⇄ Compare', onTap: () => _sessions.compareActivePanes()),
-              ToolButton('⇉ Mirror', onTap: _showMirrorDialog),
-              ToolButton('↯ Queue', onTap: () => _go(AppScreen.queue)),
+              ToolButton('⇄ Compare',
+                  tooltip: 'Compare the two panes\' folders', onTap: () => _sessions.compareActivePanes()),
+              ToolButton('⇉ Mirror',
+                  tooltip: 'Mirror one pane onto the other', onTap: _showMirrorDialog),
+              ToolButton('↯ Queue', tooltip: 'Open the transfer queue', onTap: () => _go(AppScreen.queue)),
               ToolButton('📋 Log',
+                  tooltip: 'Toggle the log console',
                   active: _showLogOverride ?? showLogOnStartup,
                   onTap: () => setState(
                       () => _showLogOverride = !(_showLogOverride ?? showLogOnStartup))),
               const ToolSep(),
-              ToolButton('⊕ New Folder', onTap: () => _newFolder(_focusedPane)),
-              ToolButton('✎ Rename', onTap: () => _renameSelected(_focusedPane)),
-              ToolButton('⊗ Delete', color: FsColors.red, onTap: () => _deleteSelected(_focusedPane)),
+              ToolButton('⊕ New Folder',
+                  tooltip: 'Create a new folder here', onTap: () => _newFolder(_focusedPane)),
+              ToolButton('✎ Rename',
+                  tooltip: 'Rename the selected item (F2)', onTap: () => _renameSelected(_focusedPane)),
+              ToolButton('⊗ Delete',
+                  tooltip: 'Delete the selected item(s) (Del)',
+                  color: FsColors.red,
+                  onTap: () => _deleteSelected(_focusedPane)),
             ]),
           ),
         ),
@@ -943,16 +955,22 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         const SizedBox(width: 6),
         _paneIconBtn(
           ref.read(bookmarksProvider.notifier).isBookmarked(pane.connection?.id, pane.path) ? '★' : '☆',
+          tooltip: ref.read(bookmarksProvider.notifier).isBookmarked(pane.connection?.id, pane.path)
+              ? 'Remove bookmark'
+              : 'Bookmark this location',
           onTap: () => _toggleBookmark(pane),
         ),
         const SizedBox(width: 4),
-        Builder(builder: (ctx) => _paneIconBtn('▾', onTap: () => _showQuickJump(ctx, pane))),
+        Builder(
+            builder: (ctx) => _paneIconBtn('▾',
+                tooltip: 'Jump to a bookmark or recent path',
+                onTap: () => _showQuickJump(ctx, pane))),
         const SizedBox(width: 4),
-        _paneIconBtn('📋', onTap: () => _copyLocation(pane.displayPath)),
+        _paneIconBtn('📋', tooltip: 'Copy this location', onTap: () => _copyLocation(pane.displayPath)),
         const SizedBox(width: 4),
-        _paneIconBtn('↑', onTap: pane.goUp),
+        _paneIconBtn('↑', tooltip: 'Go up one folder', onTap: pane.goUp),
         const SizedBox(width: 4),
-        _paneIconBtn('↺', onTap: pane.refresh),
+        _paneIconBtn('↺', tooltip: 'Refresh listing', onTap: pane.refresh),
       ]),
     );
   }
@@ -1076,23 +1094,33 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         Text(name, style: FsType.sans(size: 12, color: FsColors.text1)),
       ]);
 
-  Widget _paneIconBtn(String glyph, {VoidCallback? onTap}) => GestureDetector(
-        onTap: onTap,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            width: 22,
-            height: 22,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: FsColors.bgDeep,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: FsColors.border),
-            ),
-            child: Text(glyph, style: FsType.sans(size: 11, color: FsColors.text2)),
+  Widget _paneIconBtn(String glyph, {VoidCallback? onTap, String? tooltip}) {
+    Widget btn = GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: FsColors.bgDeep,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: FsColors.border),
           ),
+          child: Text(glyph, style: FsType.sans(size: 11, color: FsColors.text2)),
         ),
+      ),
+    );
+    if (tooltip != null) {
+      btn = Tooltip(
+        message: tooltip,
+        waitDuration: const Duration(milliseconds: 400),
+        child: btn,
       );
+    }
+    return btn;
+  }
 
   Widget _breadcrumb(PaneController pane) {
     final segs = pane.breadcrumb;
