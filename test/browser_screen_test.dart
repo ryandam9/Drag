@@ -111,6 +111,40 @@ void main() {
         contains('s3-prod (Account A)'));
   });
 
+  testWidgets('a long connection name does not overflow the endpoint picker menu',
+      (tester) async {
+    const longName =
+        'production-data-lake-replication-bucket (Account A / us-east-1 / read-only)';
+    final c = makeContainer(connections: [
+      Connection(id: 'long', name: longName, protocol: Protocol.s3, bucket: 'b'),
+    ]);
+    final s = c.read(sessionsProvider.notifier);
+    final left = MemoryBackend.sample();
+    s.leftPane
+      ..backend = left
+      ..path = '/';
+    await s.leftPane.refresh();
+    final right = MemoryBackend();
+    s.rightPane
+      ..backend = right
+      ..connection = null
+      ..path = '/';
+    await s.rightPane.refresh();
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: c,
+      child: const MaterialApp(home: Scaffold(body: BrowserScreen())),
+    ));
+    await tester.pump();
+
+    // Opening the dropdown renders the menu rows, including the long name — it
+    // must ellipsise within the menu width rather than overflowing the row.
+    await tester.tap(find.byType(DropdownButton<Connection?>).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text(longName), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('queue strip surfaces the active transfer', (tester) async {
     final c = makeContainer(connections: sampleConnections());
     final s = c.read(sessionsProvider.notifier);

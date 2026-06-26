@@ -1082,8 +1082,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           Text(badge, style: FsType.sans(size: 10, weight: FontWeight.w700, color: fg)),
           const SizedBox(width: 6),
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 110),
-            child: Text(name, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: fg)),
+            constraints: const BoxConstraints(maxWidth: 150),
+            child: Text(name,
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: fg)),
           ),
         ]),
       );
@@ -1091,7 +1092,12 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   Widget _menuRow(String glyph, String name) => Row(mainAxisSize: MainAxisSize.min, children: [
         Text(glyph, style: const TextStyle(fontSize: 13)),
         const SizedBox(width: 8),
-        Text(name, style: FsType.sans(size: 12, color: FsColors.text1)),
+        // The dropdown menu is only as wide as the button, so a long connection
+        // name must ellipsise here instead of overflowing the row.
+        Flexible(
+          child: Text(name,
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 12, color: FsColors.text1)),
+        ),
       ]);
 
   Widget _paneIconBtn(String glyph, {VoidCallback? onTap, String? tooltip}) {
