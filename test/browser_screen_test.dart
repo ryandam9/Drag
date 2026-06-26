@@ -67,6 +67,17 @@ void main() {
         contains('alpha.txt'));
   });
 
+  testWidgets('toolbar Hidden toggle flips the show-hidden setting', (tester) async {
+    final (c, _, _) = await setup(tester);
+    // Hidden files are off by default.
+    expect(c.read(settingsProvider).showHiddenFiles, isFalse);
+    await tester.tap(find.text('• Hidden'));
+    await tester.pump();
+    expect(c.read(settingsProvider).showHiddenFiles, isTrue);
+    // Every pane picks up the change.
+    expect(c.read(sessionsProvider.notifier).leftPane.showHidden, isTrue);
+  });
+
   testWidgets('toolbar Up navigates the focused pane to its parent', (tester) async {
     final (c, _, _) = await setup(tester, leftPath: '/nested');
     final pane = c.read(sessionsProvider.notifier).leftPane;

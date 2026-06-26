@@ -246,7 +246,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       child: Column(
         children: [
           _sessionTabs(sessionsState),
-          _toolbar(settings.showLogOnStartup),
+          _toolbar(settings.showLogOnStartup, settings.showHiddenFiles),
           Expanded(
             child: LayoutBuilder(builder: (context, c) {
               final leftW = (c.maxWidth - 5) * _split;
@@ -790,7 +790,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   // ── Toolbar ──
-  Widget _toolbar(bool showLogOnStartup) {
+  Widget _toolbar(bool showLogOnStartup, bool showHiddenFiles) {
     final pane = _focusedPane;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -832,6 +832,13 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                   active: _showLogOverride ?? showLogOnStartup,
                   onTap: () => setState(
                       () => _showLogOverride = !(_showLogOverride ?? showLogOnStartup))),
+              ToolButton('• Hidden',
+                  tooltip: showHiddenFiles
+                      ? 'Hide hidden (dot-) files'
+                      : 'Show hidden (dot-) files',
+                  active: showHiddenFiles,
+                  onTap: () =>
+                      ref.read(settingsProvider.notifier).setShowHiddenFiles(!showHiddenFiles)),
               const ToolSep(),
               ToolButton('⊕ New Folder',
                   tooltip: 'Create a new folder here', onTap: () => _newFolder(_focusedPane)),
