@@ -55,6 +55,22 @@ void main() {
     expect(find.text('Total queued'), findsOneWidget);
   });
 
+  testWidgets('Navigation rail opens the About screen', (tester) async {
+    await tester.pumpWidget(app());
+    await tester.pump();
+
+    final context = tester.element(find.byType(NavRail));
+    final container = ProviderScope.containerOf(context);
+    container.read(navProvider.notifier).go(AppScreen.about);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('What is Drag?'), findsOneWidget);
+    expect(find.text('What it does'), findsOneWidget);
+    expect(find.text('Under the hood'), findsOneWidget);
+    expect(find.text('v1.0.0'), findsOneWidget);
+  });
+
   testWidgets('AppShell registers the SFTP host-key prompt on mount (any screen)', (tester) async {
     // Open the real (in-memory) store outside the fake-async zone — awaiting
     // sqflite I/O directly inside testWidgets would deadlock.

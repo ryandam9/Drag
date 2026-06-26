@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'fs/host_key_verifier.dart';
+import 'screens/about_screen.dart';
 import 'screens/browser_screen.dart';
 import 'screens/connection_manager_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -100,6 +101,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       AppScreen.queue => ('Transfer Queue', <Widget>[]),
       AppScreen.dashboard => ('History Dashboard', <Widget>[]),
       AppScreen.settings => ('Preferences', <Widget>[]),
+      AppScreen.about => ('About Drag', <Widget>[]),
     };
 
     final body = switch (screen) {
@@ -108,6 +110,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       AppScreen.queue => const TransferQueueScreen(),
       AppScreen.dashboard => const DashboardScreen(),
       AppScreen.settings => const SettingsScreen(),
+      AppScreen.about => const AboutScreen(),
     };
 
     return Scaffold(

@@ -63,6 +63,7 @@ class NavRail extends ConsumerWidget {
               Divider(height: 1, color: FsColors.border),
               const SizedBox(height: 6),
               destination(Icons.settings_outlined, 'Settings', AppScreen.settings),
+              destination(Icons.info_outline, 'About', AppScreen.about),
               _sessionCard(ref, collapsed),
               _collapseToggle(ref, collapsed),
               const SizedBox(height: 8),
