@@ -395,7 +395,10 @@ class TransferQueueScreen extends ConsumerWidget {
       ('Elapsed', t.elapsedLabel),
       ('Session', t.session),
       ('Attempts', '${t.attempts} / ${TransfersNotifier.maxAttempts}'),
-      if (t.errorMessage != null) ('Error', t.errorMessage!),
+      // Prefer the full detail (S3 op/bucket/key/status/request-id, etc.); the
+      // value is selectable for copy.
+      if (t.errorDetail != null || t.errorMessage != null)
+        ('Error', t.errorDetail ?? t.errorMessage!),
     ];
     return Column(
       mainAxisSize: MainAxisSize.min,

@@ -48,11 +48,13 @@ void main() {
       final payload = List<int>.generate(1000, (i) => i % 256);
       final src = File('${dir.path}/src.bin')..writeAsBytesSync(payload);
       final dstPath = '${dir.path}/dst.bin';
-      // A partial left by a previous attempt: the first 400 bytes, in the temp
-      // sibling the transfer stages writes in.
-      File('$dstPath.drag-partial').writeAsBytesSync(payload.sublist(0, 400));
 
       final t = download(attempts: 2); // a retry
+      // A partial left by a previous attempt: the first 400 bytes, in this
+      // transfer's per-id staging sibling.
+      final partial = '$dstPath.drag-partial-${t.id}';
+      File(partial).writeAsBytesSync(payload.sublist(0, 400));
+
       await TransferService().run(
         t: t,
         src: LocalBackend(),
@@ -66,7 +68,7 @@ void main() {
       expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
       expect(await File(dstPath).readAsBytes(), payload); // partial + tail == full
       // The temp file is promoted (renamed), not left behind.
-      expect(File('$dstPath.drag-partial').existsSync(), isFalse);
+      expect(File(partial).existsSync(), isFalse);
     });
 
     test('a first attempt overwrites a stale file (no accidental resume)', () async {
@@ -109,7 +111,7 @@ void main() {
 
       expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
       expect(await File(dstPath).readAsBytes(), payload);
-      expect(File('$dstPath.drag-partial').existsSync(), isFalse);
+      expect(dir.listSync().where((e) => e.path.contains('.drag-partial')), isEmpty);
     });
 
     test('an aborted local overwrite preserves the existing file and cleans the temp', () async {
@@ -132,16 +134,16 @@ void main() {
       expect(t.status, TransferStatus.paused);
       // The original destination must be intact — never truncated or deleted.
       expect(await File(dstPath).readAsBytes(), original);
-      expect(File('$dstPath.drag-partial').existsSync(), isFalse);
+      expect(dir.listSync().where((e) => e.path.contains('.drag-partial')), isEmpty);
     });
 
     test('checksum verification disables resume (hashes the whole file)', () async {
       final payload = List<int>.generate(1000, (i) => i % 256);
       final src = File('${dir.path}/src.bin')..writeAsBytesSync(payload);
       final dstPath = '${dir.path}/dst.bin';
-      File('$dstPath.drag-partial').writeAsBytesSync(payload.sublist(0, 400));
 
       final t = download(attempts: 2);
+      File('$dstPath.drag-partial-${t.id}').writeAsBytesSync(payload.sublist(0, 400));
       await TransferService().run(
         t: t,
         src: LocalBackend(),

@@ -5,6 +5,13 @@ enum TransferStatus { active, queued, paused, error, done }
 enum TransferDirection { upload, download }
 
 class Transfer {
+  /// Process-unique id. Used to give each transfer its own `.drag-partial`
+  /// staging path so two transfers writing to the same destination (or a
+  /// retry overlapping its predecessor) can never collide on the temp file.
+  final int id = _nextId();
+  static int _idSeq = 0;
+  static int _nextId() => ++_idSeq;
+
   final String name;
   final String route; // e.g. "Local → sftp://prod-server-01/backups/"
   final TransferDirection direction;
@@ -14,7 +21,12 @@ class Transfer {
   String eta; // "0:41" or "—" or "Done"
   final String session;
   TransferStatus status;
+
+  /// Short, toast/row-friendly error (truncated). [errorDetail] keeps the full
+  /// text (e.g. an S3Exception's operation/bucket/key/status/request-id) for
+  /// the details panel and copy-to-clipboard.
   String? errorMessage;
+  String? errorDetail;
 
   /// How many times this transfer has been (re)attempted — drives auto-retry
   /// backoff and is shown on the queue row.

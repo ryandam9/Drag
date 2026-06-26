@@ -67,4 +67,49 @@ region = eu-west-1
     // No connection profile → $AWS_PROFILE or 'default'; both are non-empty.
     expect(resolveAwsProfile(Connection(name: 's')), isNotEmpty);
   });
+
+  test('credential_process runs the helper and parses its JSON output', () {
+    final f = write('credentials', '''
+[sso]
+credential_process = printf '{"Version":1,"AccessKeyId":"AKIAPROC","SecretAccessKey":"procsecret","SessionToken":"PROCTOKEN"}'
+''');
+    final creds = loadAwsCredentials('sso', path: f.path);
+    expect(creds, isNotNull);
+    expect(creds!.accessKeyId, 'AKIAPROC');
+    expect(creds.secretAccessKey, 'procsecret');
+    expect(creds.sessionToken, 'PROCTOKEN');
+  }, skip: Platform.isWindows ? 'uses /bin/sh' : false);
+
+  test('a failing credential_process yields no credentials', () {
+    final f = write('credentials', '''
+[bad]
+credential_process = sh -c 'exit 3'
+''');
+    expect(loadAwsCredentials('bad', path: f.path), isNull);
+  }, skip: Platform.isWindows ? 'uses /bin/sh' : false);
+
+  test('a profile defined only in ~/.aws/config is honoured', () {
+    debugAwsCredentialsPath = '${dir.path}/credentials'; // absent
+    final cfg = write('config', '''
+[profile only-config]
+aws_access_key_id = AKIACFG
+aws_secret_access_key = cfgsecret
+''');
+    debugAwsConfigPath = cfg.path;
+    final creds = loadAwsCredentials('only-config');
+    expect(creds, isNotNull);
+    expect(creds!.accessKeyId, 'AKIACFG');
+  });
+
+  test('region is inherited from source_profile when absent', () {
+    final f = write('config', '''
+[profile base]
+region = ap-south-1
+
+[profile chained]
+source_profile = base
+role_arn = arn:aws:iam::123:role/x
+''');
+    expect(loadAwsRegion('chained', path: f.path), 'ap-south-1');
+  });
 }

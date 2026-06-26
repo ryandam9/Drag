@@ -201,7 +201,7 @@ void main() {
     expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
     // The new bytes replaced the old file and the temp file is gone.
     expect(dst.files['/f']!.length, 1000);
-    expect(dst.files.containsKey('/f.drag-partial'), isFalse);
+    expect(dst.files.keys.any((k) => k.startsWith('/f.drag-partial')), isFalse);
   });
 
   test('finalize does NOT delete the destination on an unrelated rename failure', () async {
@@ -217,7 +217,8 @@ void main() {
     expect(t.status, TransferStatus.error);
     // The valid destination survived; only the temp file holds the new bytes.
     expect(dst.files['/f'], original);
-    expect(dst.files['/f.drag-partial']!.length, 1000);
+    final partial = dst.files.entries.firstWhere((e) => e.key.startsWith('/f.drag-partial'));
+    expect(partial.value.length, 1000);
   });
 
   test('updates live speed/ETA once the 400ms window elapses', () async {

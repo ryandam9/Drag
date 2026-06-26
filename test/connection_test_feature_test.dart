@@ -58,6 +58,10 @@ void main() {
       expect(c.read(toastsProvider).last.title, 'Connection OK');
       expect(c.read(toastsProvider).last.kind, ToastKind.success);
       expect(conn.online, isTrue);
+      // Richer status (#24): connected, with a last-tested timestamp, no error.
+      expect(conn.status, ConnectionStatus.connected);
+      expect(conn.lastTestedAt, isNotNull);
+      expect(conn.lastError, isNull);
 
       // The connection log keeps a timestamped transcript that outlives toasts.
       final log = c.read(connectionLogProvider);
@@ -77,11 +81,15 @@ void main() {
         useSsl: false,
         accessKeyId: 'AKIA',
         secretAccessKey: 'secret',
-      )..online = true;
+      )..status = ConnectionStatus.connected;
       await c.read(sessionsProvider.notifier).testConnection(conn);
       expect(c.read(toastsProvider).last.title, 'Connection failed');
       expect(c.read(toastsProvider).last.kind, ToastKind.error);
       expect(conn.online, isFalse);
+      // Richer status (#24): failed, with the full error retained.
+      expect(conn.status, ConnectionStatus.failed);
+      expect(conn.lastError, isNotNull);
+      expect(conn.lastError, isNotEmpty);
 
       final log = c.read(connectionLogProvider);
       expect(log.last.kind, ToastKind.error);
@@ -119,7 +127,7 @@ void main() {
         useSsl: false,
         accessKeyId: 'AKIA',
         secretAccessKey: 'secret',
-      )..online = true;
+      )..status = ConnectionStatus.connected;
       await c.read(sessionsProvider.notifier).connect(conn);
       expect(conn.online, isFalse);
       expect(c.read(toastsProvider).last.title, 'Connection failed');

@@ -122,7 +122,11 @@ class _ConnectionManagerScreenState extends ConsumerState<ConnectionManagerScree
                     color: active ? FsColors.bgSurface : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: StatusDot(c.online ? FsColors.green : FsColors.text3, glow: c.online),
+                  child: Tooltip(
+                    message: _statusTooltip(c),
+                    child: StatusDot(_statusColor(c.status),
+                        glow: c.status == ConnectionStatus.connected),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -522,8 +526,25 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
         FormField2('Bucket', _field(_bucket, (v) => c.bucket = v, hint: 'blank = browse all buckets', icon: Icons.inventory_2_outlined)),
       ], flex: [1, 2]),
       const SizedBox(height: 12),
-      FormField2('Endpoint (optional — for S3-compatible / MinIO)',
-          _field(_endpoint, (v) => c.endpoint = v, hint: 's3.amazonaws.com', icon: Icons.dns_outlined)),
+      FormField2(
+        'Endpoint (optional — for S3-compatible / MinIO)',
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _field(_endpoint, (v) => setState(() => c.endpoint = v),
+              hint: 's3.amazonaws.com', icon: Icons.dns_outlined),
+          Builder(builder: (_) {
+            final err = validateS3Endpoint(_endpoint.text);
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                err ??
+                    'Examples: minio.example.com:9000 · localhost:4566 (LocalStack) · '
+                        'blank for AWS. Host[:port] only — no scheme or path.',
+                style: FsType.sans(size: 10.5, color: err != null ? FsColors.red : FsColors.text3),
+              ),
+            );
+          }),
+        ]),
+      ),
       const SizedBox(height: 20),
 
       _sectionTitle('Credentials', Icons.vpn_key_outlined),
@@ -747,4 +768,47 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
       Expanded(child: Text(label, style: FsType.sans(size: 12, color: FsColors.text2))),
     ]);
   }
+}
+
+/// Validates a custom S3 endpoint, returning an error message or null when it's
+/// acceptable (including empty, since the endpoint is optional). Expects a bare
+/// `host` or `host:port` — an optional `http(s)://` scheme is tolerated but a
+/// path, spaces, or a bad port are rejected, with concrete guidance.
+String? validateS3Endpoint(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return null; // optional → AWS default
+  var host = s.replaceFirst(RegExp(r'^https?://'), '');
+  if (host.contains(' ')) return 'Endpoint must not contain spaces';
+  if (host.contains('/')) return 'Host[:port] only — drop the path / trailing slash';
+  final colon = host.indexOf(':');
+  if (colon >= 0) {
+    final portStr = host.substring(colon + 1);
+    final port = int.tryParse(portStr);
+    if (port == null || port < 1 || port > 65535) return 'Invalid port "$portStr"';
+    host = host.substring(0, colon);
+  }
+  if (host.isEmpty) return 'Missing host';
+  if (!RegExp(r'^[A-Za-z0-9.\-]+$').hasMatch(host)) return 'Invalid host "$host"';
+  return null;
+}
+
+/// Sidebar dot colour for a connection's runtime [ConnectionStatus].
+Color _statusColor(ConnectionStatus s) => switch (s) {
+      ConnectionStatus.connected => FsColors.green,
+      ConnectionStatus.testing => FsColors.amber,
+      ConnectionStatus.failed => FsColors.red,
+      ConnectionStatus.notConfigured => FsColors.text3,
+      ConnectionStatus.saved => FsColors.text3,
+    };
+
+/// Hover text: status, when it was last tested, and the last failure reason.
+String _statusTooltip(Connection c) {
+  final parts = <String>[c.status.label];
+  if (c.lastTestedAt != null) {
+    final l = c.lastTestedAt!.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    parts.add('Last tested ${two(l.hour)}:${two(l.minute)}');
+  }
+  if (c.lastError != null && c.lastError!.trim().isNotEmpty) parts.add(c.lastError!.trim());
+  return parts.join('\n');
 }

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -264,9 +265,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 }
 
-/// Export the current history to a timestamped CSV file in the user's home
-/// directory, falling back to the clipboard where a file can't be written
-/// (sandboxed environments, no HOME). Surfaces the outcome as a toast.
+/// Export the current history to CSV. Lets the user pick the destination via a
+/// native save dialog; if the picker is unavailable (headless) it writes to the
+/// home directory, and if even that fails it falls back to the clipboard.
 Future<void> _exportCsv(WidgetRef ref) async {
   final history = ref.read(historyProvider);
   final toasts = ref.read(toastsProvider.notifier);
@@ -277,11 +278,28 @@ Future<void> _exportCsv(WidgetRef ref) async {
   final csv = historyToCsv(history.records);
   final count = history.records.length;
   final rowsLabel = '$count row${count == 1 ? '' : 's'}';
+  final suggested = csvFileName(DateTime.now());
+
+  // 1) Native save dialog (user chooses the location).
+  try {
+    final location = await getSaveLocation(
+      suggestedName: suggested,
+      acceptedTypeGroups: const [XTypeGroup(label: 'CSV', extensions: ['csv'])],
+    );
+    if (location == null) return; // user cancelled — do nothing
+    await File(location.path).writeAsString(csv);
+    toasts.push('History exported', '$rowsLabel → ${location.path}', ToastKind.success);
+    return;
+  } catch (_) {
+    // Picker unavailable in this environment — fall through.
+  }
+
+  // 2) Home directory, then 3) the clipboard.
   try {
     final env = Platform.environment;
     final dir = env['HOME'] ?? env['USERPROFILE'] ?? Directory.systemTemp.path;
     final sep = dir.endsWith('/') || dir.endsWith(r'\') ? '' : '/';
-    final path = '$dir$sep${csvFileName(DateTime.now())}';
+    final path = '$dir$sep$suggested';
     await File(path).writeAsString(csv);
     toasts.push('History exported', '$rowsLabel → $path', ToastKind.success);
   } catch (_) {

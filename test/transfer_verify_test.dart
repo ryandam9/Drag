@@ -57,13 +57,26 @@ void main() {
 
   group('post-transfer verification', () {
     test('an honest copy passes every verify level', () async {
-      for (final level in ['off', 'size', 'checksum']) {
+      for (final level in ['off', 'size', 'checksum', 'sha256']) {
         final out = File(p.join(dst.path, '$level.bin')).path;
         final t = await _run(LocalBackend(), srcFile(), LocalBackend(), out,
             verify: level);
         expect(t.status, TransferStatus.done, reason: '$level: ${t.errorMessage}');
         expect(await File(out).length(), 4096);
       }
+    });
+
+    test('sha256 verify catches silent corruption that size misses', () async {
+      final pass = await _run(
+          LocalBackend(), srcFile(), _CorruptingLocal(), p.join(dst.path, 'sa.bin'),
+          verify: 'size');
+      expect(pass.status, TransferStatus.done);
+
+      final fail = await _run(
+          LocalBackend(), srcFile(), _CorruptingLocal(), p.join(dst.path, 'sb.bin'),
+          verify: 'sha256');
+      expect(fail.status, TransferStatus.error);
+      expect(fail.errorMessage, contains('Checksum mismatch'));
     });
 
     test('size verify catches a short write', () async {

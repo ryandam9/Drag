@@ -21,6 +21,35 @@ extension AuthMethodLabel on AuthMethod {
 
 enum ConnGroup { recent, saved }
 
+/// Runtime reachability of a connection (not persisted). Replaces the old
+/// `online` boolean with the states the UI actually wants to distinguish.
+enum ConnectionStatus {
+  /// S3 without credentials / SFTP without host+user — can't even be tested.
+  notConfigured,
+
+  /// Configured but not yet tested/connected this session.
+  saved,
+
+  /// A test/connect is in flight.
+  testing,
+
+  /// Last test/connect succeeded (a real listing came back).
+  connected,
+
+  /// Last test/connect failed — see [Connection.lastError].
+  failed,
+}
+
+extension ConnectionStatusLabel on ConnectionStatus {
+  String get label => switch (this) {
+        ConnectionStatus.notConfigured => 'Not configured',
+        ConnectionStatus.saved => 'Saved',
+        ConnectionStatus.testing => 'Testing…',
+        ConnectionStatus.connected => 'Connected',
+        ConnectionStatus.failed => 'Failed',
+      };
+}
+
 int _idSeq = 0;
 
 class Connection {
@@ -38,7 +67,18 @@ class Connection {
   String remotePath;
   String localPath;
   int timeout;
-  bool online;
+
+  /// Runtime status (not persisted), set by test/connect. [online] is derived
+  /// from it for the existing call sites that only care about reachability.
+  ConnectionStatus status;
+
+  /// When the connection was last tested/connected, and the last failure
+  /// reason (full text) — surfaced in the Connection Manager.
+  DateTime? lastTestedAt;
+  String? lastError;
+
+  bool get online => status == ConnectionStatus.connected;
+
   bool keepAlive;
   bool openInNewTab;
   ConnGroup group;
@@ -102,7 +142,9 @@ class Connection {
     this.remotePath = '/',
     this.localPath = '',
     this.timeout = 30,
-    this.online = false,
+    this.status = ConnectionStatus.saved,
+    this.lastTestedAt,
+    this.lastError,
     this.keepAlive = true,
     this.openInNewTab = false,
     this.group = ConnGroup.saved,

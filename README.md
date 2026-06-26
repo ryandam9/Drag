@@ -382,9 +382,9 @@ out of scope (or need external setup) today:
   (named profiles), and STS `AssumeRole` are supported. **AWS SSO**,
   `credential_process`, web-identity, and full `source_profile`/`role_arn`
   chaining are **not** — use a static key, a profile, or an assumed role.
-- **S3 listing:** a folder listing fetches all pages before rendering (a
-  streamed `listPages` API exists but the pane doesn't yet render
-  incrementally), so a very large prefix can take a moment to appear.
+- **S3 listing:** the pane now renders a large prefix incrementally (page by
+  page via `listPages`), but there's no hard cap or "stop listing" control yet,
+  so an enormous prefix keeps streaming until complete.
 - **Signed installers:** the macOS `.dmg` and Windows `.zip` produced by CI are
   **unsigned** — they install with a first-launch OS prompt. Signing +
   notarization need an Apple Developer ID / Windows code-signing certificate.
@@ -393,3 +393,9 @@ out of scope (or need external setup) today:
   works; dragging *out* to the desktop/Finder/Explorer does not.
 - **SFTP:** host keys are trust-on-first-use (with a confirmation prompt);
   there's no SSH agent / `~/.ssh/config` integration beyond default key files.
+
+> **Maintainers:** keep this list honest. When a PR removes one of these
+> limitations, delete (or amend) the matching bullet in the *same* PR, and when
+> a PR introduces a new known gap, add a bullet here. Treat this section as the
+> single source of truth that mirrors the open-issues tracker — a stale
+> limitation is a documentation bug.

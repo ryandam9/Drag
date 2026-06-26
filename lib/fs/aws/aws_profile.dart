@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -69,18 +70,59 @@ Map<String, Map<String, String>> _parseIni(String text) {
   return out;
 }
 
-/// Loads credentials for [profile] from the shared credentials file, or null if
-/// the file/profile is missing or incomplete.
+/// The settings for [profile], looked up first in the shared credentials file
+/// and then in `~/.aws/config` (where it's `[profile NAME]`, except default).
+Map<String, String>? _profileSection(String profile, {String? credPath, String? cfgPath}) {
+  final cred = File(credPath ?? awsCredentialsPath());
+  if (cred.existsSync()) {
+    final s = _parseIni(cred.readAsStringSync())[profile];
+    if (s != null) return s;
+  }
+  final cfg = File(cfgPath ?? awsConfigPath());
+  if (cfg.existsSync()) {
+    final ini = _parseIni(cfg.readAsStringSync());
+    return ini[profile] ?? ini['profile $profile'];
+  }
+  return null;
+}
+
+/// Loads credentials for [profile], or null if none can be resolved. Resolution
+/// order within the profile: static `aws_access_key_id`/`aws_secret_access_key`,
+/// then a `credential_process` command (the path AWS SSO / external helpers use
+/// — its JSON output is parsed). Profiles in `~/.aws/config` are also honoured.
 AwsCredentials? loadAwsCredentials(String profile, {String? path}) {
-  final file = File(path ?? awsCredentialsPath());
-  if (!file.existsSync()) return null;
-  final section = _parseIni(file.readAsStringSync())[profile];
+  final section = _profileSection(profile, credPath: path);
   if (section == null) return null;
   final key = section['aws_access_key_id'] ?? '';
   final secret = section['aws_secret_access_key'] ?? '';
-  if (key.isEmpty || secret.isEmpty) return null;
-  final token = section['aws_session_token'] ?? section['aws_security_token'] ?? '';
-  return AwsCredentials(key, secret, sessionToken: token.isEmpty ? null : token);
+  if (key.isNotEmpty && secret.isNotEmpty) {
+    final token = section['aws_session_token'] ?? section['aws_security_token'] ?? '';
+    return AwsCredentials(key, secret, sessionToken: token.isEmpty ? null : token);
+  }
+  final process = section['credential_process'];
+  if (process != null && process.isNotEmpty) return _runCredentialProcess(process);
+  return null;
+}
+
+/// Runs a `credential_process` command and parses its JSON output
+/// (`AccessKeyId` / `SecretAccessKey` / `SessionToken`), as the AWS SDKs do.
+/// Returns null on any failure so callers fall through to other providers.
+AwsCredentials? _runCredentialProcess(String command) {
+  try {
+    final result = Platform.isWindows
+        ? Process.runSync('cmd', ['/c', command])
+        : Process.runSync('/bin/sh', ['-c', command]);
+    if (result.exitCode != 0) return null;
+    final out = result.stdout is String ? result.stdout as String : utf8.decode(result.stdout as List<int>);
+    final json = jsonDecode(out) as Map<String, dynamic>;
+    final key = (json['AccessKeyId'] as String?) ?? '';
+    final secret = (json['SecretAccessKey'] as String?) ?? '';
+    if (key.isEmpty || secret.isEmpty) return null;
+    final token = json['SessionToken'] as String?;
+    return AwsCredentials(key, secret, sessionToken: (token != null && token.isNotEmpty) ? token : null);
+  } catch (_) {
+    return null; // missing helper, non-JSON output, bad exit — treat as "no creds"
+  }
 }
 
 /// Credentials from the standard AWS environment variables
@@ -101,6 +143,14 @@ String? loadAwsRegion(String profile, {String? path}) {
   final file = File(path ?? awsConfigPath());
   if (!file.existsSync()) return null;
   final ini = _parseIni(file.readAsStringSync());
-  final region = (ini[profile] ?? ini['profile $profile'])?['region'];
-  return (region != null && region.isNotEmpty) ? region : null;
+  final section = ini[profile] ?? ini['profile $profile'];
+  final region = section?['region'];
+  if (region != null && region.isNotEmpty) return region;
+  // Inherit the region from the source profile when this one chains off it.
+  final source = section?['source_profile'];
+  if (source != null && source.isNotEmpty && source != profile) {
+    final inherited = (ini[source] ?? ini['profile $source'])?['region'];
+    if (inherited != null && inherited.isNotEmpty) return inherited;
+  }
+  return null;
 }
