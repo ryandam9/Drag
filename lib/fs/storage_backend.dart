@@ -504,7 +504,9 @@ class S3Backend extends StorageBackend {
           name: name,
           sizeBytes: obj.size,
           modified: formatModified(obj.lastModified),
-          perms: 's3',
+          // Objects have no region/permissions; the REGION column is only
+          // populated for buckets in the discovery list.
+          perms: '',
         ));
       }
       yield List<FileItem>.from(items)..sort(StorageBackend.dirsFirst);

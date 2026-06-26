@@ -1494,7 +1494,11 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         head('NAME', 40, SortKey.name),
         head('SIZE', 15, SortKey.size, align: TextAlign.right),
         head('MODIFIED', 25, SortKey.modified),
-        if (showPerms) head('PERMS', 20, SortKey.perms, align: TextAlign.right),
+        // S3 has no POSIX permissions; the last column carries the bucket region
+        // there instead, so label it accordingly.
+        if (showPerms)
+          head(pane.kind == EndpointKind.s3 ? 'REGION' : 'PERMS', 20, SortKey.perms,
+              align: TextAlign.right),
       ]),
     );
   }
