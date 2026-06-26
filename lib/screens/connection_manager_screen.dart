@@ -1,3 +1,4 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/connection.dart';
@@ -199,6 +200,10 @@ class ConnectionForm extends ConsumerStatefulWidget {
 class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   Connection get c => widget.connection;
 
+  /// Obscured fields (password / secret / token / passphrase) whose contents
+  /// the user has chosen to reveal via the eye toggle.
+  final Set<TextEditingController> _revealed = {};
+
   late final _name = TextEditingController(text: c.name);
   late final _tag = TextEditingController(text: c.tag);
   late final _host = TextEditingController(text: c.host);
@@ -233,6 +238,23 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
     });
 
   void _toast(String t, String s, ToastKind k) => ref.read(toastsProvider.notifier).push(t, s, k);
+
+  /// Open the OS file picker to choose an SSH private-key file, writing the
+  /// chosen path into the Key file field.
+  Future<void> _browseKeyFile() async {
+    try {
+      final file = await openFile(confirmButtonText: 'Select');
+      final path = file?.path;
+      if (path == null || path.isEmpty) return; // cancelled
+      setState(() {
+        _keyFile.text = path;
+        c.keyFile = path;
+      });
+      ref.read(connectionsProvider.notifier).touch();
+    } catch (e) {
+      _toast('Couldn\'t open file picker', e.toString(), ToastKind.error);
+    }
+  }
 
   @override
   void dispose() {
@@ -594,7 +616,7 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
             Expanded(child: _field(_keyFile, (v) => c.keyFile = v, hint: 'Blank = default ~/.ssh keys', icon: Icons.vpn_key_outlined)),
             const SizedBox(width: 8),
             OutlinedButton.icon(
-              onPressed: () {},
+              onPressed: _browseKeyFile,
               icon: const Icon(Icons.folder_open_outlined, size: 16),
               label: const Text('Browse'),
             ),
@@ -624,12 +646,14 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
   Widget _field(TextEditingController ctl, ValueChanged<String> onChanged,
       {bool obscure = false, String? hint, IconData? icon, FocusNode? focusNode}) {
     final style = FsType.sans(size: 13, color: FsColors.text1);
+    // For secret fields, an eye button toggles visibility per-field.
+    final revealed = obscure && _revealed.contains(ctl);
     return SizedBox(
       height: 46,
       child: TextField(
         controller: ctl,
         focusNode: focusNode,
-        obscureText: obscure,
+        obscureText: obscure && !revealed,
         onChanged: onChanged,
         style: style,
         cursorColor: FsColors.accent,
@@ -640,6 +664,19 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
           hintStyle: style.copyWith(color: FsColors.text3),
           prefixIcon: icon == null ? null : Icon(icon, size: 18, color: FsColors.text3),
           prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          suffixIcon: !obscure
+              ? null
+              : IconButton(
+                  splashRadius: 18,
+                  tooltip: revealed ? 'Hide' : 'Show',
+                  icon: Icon(
+                    revealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    size: 18,
+                    color: FsColors.text3,
+                  ),
+                  onPressed: () => setState(
+                      () => revealed ? _revealed.remove(ctl) : _revealed.add(ctl)),
+                ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           filled: true,
           fillColor: FsColors.bgSurface,

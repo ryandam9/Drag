@@ -7,19 +7,6 @@ import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-/// The categories shown in the Settings sidebar. Each maps to a pane of real,
-/// working controls — there are no decorative placeholders.
-enum SettingsSection { appearance, browser, transfers, fingerprints }
-
-extension on SettingsSection {
-  String get label => switch (this) {
-        SettingsSection.appearance => 'Appearance',
-        SettingsSection.browser => 'Browser',
-        SettingsSection.transfers => 'Transfers',
-        SettingsSection.fingerprints => 'Fingerprints',
-      };
-}
-
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -28,8 +15,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  SettingsSection _section = SettingsSection.appearance;
-
   /// Bumped to reload the known-hosts list after a remove / forget-all.
   int _khRefresh = 0;
 
@@ -38,55 +23,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
     final toast = ref.read(toastsProvider.notifier);
-    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(width: 170, child: _sidebar()),
-      VerticalDivider(width: 1, color: FsColors.border),
-      Expanded(child: _content(settings, notifier, toast)),
-    ]);
-  }
-
-  // ── Settings categories (clickable — switch the content pane) ──
-  Widget _sidebar() {
-    Widget item(SettingsSection s) {
-      final isActive = s == _section;
-      return Hoverable(builder: (hover) {
-        return GestureDetector(
-          onTap: () => setState(() => _section = s),
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: Container(
-              width: double.infinity,
-              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? FsColors.bgActive
-                    : (hover ? FsColors.bgHover : Colors.transparent),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(s.label,
-                  style: FsType.sans(
-                      size: 12,
-                      weight: isActive ? FontWeight.w600 : FontWeight.w400,
-                      color: isActive ? FsColors.accentHi : (hover ? FsColors.text1 : FsColors.text2))),
-            ),
-          ),
-        );
-      });
-    }
-
-    return Container(
-      color: FsColors.bgDeep,
-      child: ListView(padding: const EdgeInsets.symmetric(vertical: 12), children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Text('PREFERENCES',
-              style: TextStyle(
-                  fontSize: 10, fontWeight: FontWeight.w700, color: FsColors.text3, letterSpacing: 1)),
-        ),
-        for (final s in SettingsSection.values) item(s),
-      ]),
-    );
+    return _content(settings, notifier, toast);
   }
 
   /// A white rounded card wrapping one settings section, matching the
@@ -105,21 +42,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  // ── Active pane ──
+  // ── Single page: every section laid out in two columns (no tabs) ──
   Widget _content(AppSettings settings, SettingsNotifier notifier, ToastsNotifier toasts) {
     void toast(String t, String s, ToastKind k) => toasts.push(t, s, k);
+
+    final appearance = _sectionBlock(
+        'Appearance', Icons.palette_outlined, _appearance(settings, notifier, toast));
+    final browser =
+        _sectionBlock('Browser', Icons.folder_open_outlined, _browser(settings, notifier));
+    final transfers =
+        _sectionBlock('Transfers', Icons.swap_vert_outlined, _transfers(settings, notifier));
+    final security =
+        _sectionBlock('Security & Fingerprints', Icons.shield_outlined, _fingerprints());
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_section.label, style: FsType.sans(size: 22, weight: FontWeight.w700, color: FsColors.text1)),
+        Text('Preferences',
+            style: FsType.sans(size: 22, weight: FontWeight.w700, color: FsColors.text1)),
         const SizedBox(height: 20),
-        ...switch (_section) {
-          SettingsSection.appearance => _appearance(settings, notifier, toast),
-          SettingsSection.browser => _browser(settings, notifier),
-          SettingsSection.transfers => _transfers(settings, notifier),
-          SettingsSection.fingerprints => _fingerprints(),
-        },
-        const SizedBox(height: 20),
+        LayoutBuilder(builder: (context, c) {
+          // Use two columns when there's room; stack on a narrow window.
+          if (c.maxWidth < 900) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              appearance,
+              const SizedBox(height: 24),
+              browser,
+              const SizedBox(height: 24),
+              transfers,
+              const SizedBox(height: 24),
+              security,
+            ]);
+          }
+          // Split sections across two columns, balancing the tall Appearance
+          // block against the three shorter ones.
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: appearance),
+            const SizedBox(width: 24),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                browser,
+                const SizedBox(height: 24),
+                transfers,
+                const SizedBox(height: 24),
+                security,
+              ]),
+            ),
+          ]);
+        }),
+        const SizedBox(height: 24),
         Row(children: [
           FsButton('Save',
               kind: FsButtonKind.primary,
@@ -132,6 +103,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ]),
       ]),
     );
+  }
+
+  /// A titled group of setting cards (icon + heading, then the cards stacked).
+  Widget _sectionBlock(String title, IconData icon, List<Widget> cards) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Icon(icon, size: 18, color: FsColors.accentHi),
+        const SizedBox(width: 8),
+        Text(title, style: FsType.sans(size: 16, weight: FontWeight.w700, color: FsColors.text1)),
+      ]),
+      const SizedBox(height: 12),
+      ...cards,
+    ]);
   }
 
   static const _brightnessModes = [
@@ -566,7 +550,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            Text(label, style: FsType.sans(size: 12, color: FsColors.text2)),
+            Expanded(
+              child: Text(label, style: FsType.sans(size: 12, color: FsColors.text2)),
+            ),
           ]),
         ),
       ),
