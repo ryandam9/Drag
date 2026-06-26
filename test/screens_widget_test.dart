@@ -273,7 +273,7 @@ void main() {
       final cs = ColorScheme.fromSeed(
           seedColor: birdThemeByName('Galah').primary, brightness: Brightness.light);
       expect(c.read(settingsProvider).accentValue, cs.primary.toARGB32());
-      await tester.pump(const Duration(seconds: 6)); // drain the toast timer
+      await tester.pump(const Duration(seconds: 11)); // drain the toast timer
     });
 
     testWidgets('every section renders on one page (no tabs)', (tester) async {
@@ -345,7 +345,7 @@ void main() {
       expect(find.text('Upload complete'), findsOneWidget);
       expect(find.text('file.txt → s3'), findsOneWidget);
       // Drain the auto-dismiss timer so no timer is left pending.
-      await tester.pump(const Duration(seconds: 6));
+      await tester.pump(const Duration(seconds: 11));
     });
   });
 }

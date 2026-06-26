@@ -4,8 +4,12 @@ import 'toast.dart';
 
 export 'toast.dart' show ToastMessage, ToastKind, ToastKindStyle, ToastSink;
 
-/// The stack of transient notifications shown bottom-right. Each toast
-/// auto-dismisses after a few seconds.
+/// How long each notification stays on screen before auto-dismissing. Shared
+/// with the overlay so its countdown bar matches the actual lifetime.
+const kToastDuration = Duration(seconds: 10);
+
+/// The stack of transient notifications shown top-right. Each toast
+/// auto-dismisses after [kToastDuration].
 class ToastsNotifier extends Notifier<List<ToastMessage>> {
   int _seq = 0;
   bool _disposed = false;
@@ -19,7 +23,7 @@ class ToastsNotifier extends Notifier<List<ToastMessage>> {
   void push(String title, String sub, ToastKind kind, {String? detail}) {
     final msg = ToastMessage(_seq++, title, sub, kind, detail: detail);
     state = [...state, msg];
-    Future.delayed(const Duration(seconds: 5), () {
+    Future.delayed(kToastDuration, () {
       if (_disposed) return;
       state = state.where((m) => m.id != msg.id).toList();
     });

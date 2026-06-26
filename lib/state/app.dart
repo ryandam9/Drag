@@ -13,5 +13,5 @@ export 'session.dart' show Session;
 export 'sessions_provider.dart' show SessionsState, SessionsNotifier, sessionsProvider;
 export 'settings_provider.dart';
 export 'toast.dart' show ToastMessage, ToastKind, ToastKindStyle, ToastSink;
-export 'toasts_provider.dart' show toastsProvider, ToastsNotifier;
+export 'toasts_provider.dart' show toastsProvider, ToastsNotifier, kToastDuration;
 export 'transfers_provider.dart';

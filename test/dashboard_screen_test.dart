@@ -44,6 +44,6 @@ void main() {
     await tester.pump();
 
     expect(c.read(toastsProvider).last.title, 'Nothing to export');
-    await tester.pump(const Duration(seconds: 6)); // drain the toast timer
+    await tester.pump(const Duration(seconds: 11)); // drain the toast timer
   });
 }
