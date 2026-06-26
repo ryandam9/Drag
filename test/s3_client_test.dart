@@ -747,15 +747,19 @@ void main() {
   });
 
   group('S3Client — service ops', () {
-    test('listBuckets parses bucket names (GET /)', () async {
+    test('listBuckets parses bucket names + creation dates (GET /)', () async {
       final mock = await MockS3.start((req, res) => xml(res,
           '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets>'
-          '<Bucket><Name>alpha</Name></Bucket><Bucket><Name>beta</Name></Bucket>'
+          '<Bucket><Name>alpha</Name><CreationDate>2023-01-05T10:20:30.000Z</CreationDate></Bucket>'
+          '<Bucket><Name>beta</Name></Bucket>'
           '</Buckets></ListAllMyBucketsResult>'));
       addTearDown(mock.stop);
       final c = client(mock);
       addTearDown(c.close);
-      expect(await c.listBuckets(), ['alpha', 'beta']);
+      final buckets = await c.listBuckets();
+      expect(buckets.map((b) => b.name), ['alpha', 'beta']);
+      expect(buckets[0].created, DateTime.parse('2023-01-05T10:20:30.000Z'));
+      expect(buckets[1].created, isNull); // no CreationDate element
       expect(mock.last.path, '/');
     });
 
@@ -777,7 +781,8 @@ void main() {
         if (req.path == '/') {
           xml(res,
               '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets>'
-              '<Bucket><Name>alpha</Name></Bucket><Bucket><Name>beta</Name></Bucket>'
+              '<Bucket><Name>alpha</Name><CreationDate>2023-01-05T10:20:30.000Z</CreationDate></Bucket>'
+              '<Bucket><Name>beta</Name></Bucket>'
               '</Buckets></ListAllMyBucketsResult>');
         } else if (req.query['list-type'] == '2') {
           xml(res, listingXml(contents: [(key: 'report.csv', size: 9)], prefixes: ['logs/']));
@@ -799,10 +804,14 @@ void main() {
       addTearDown(b.dispose);
       expect(b.isReady, isTrue); // creds present, bucket optional
 
-      // Root → the account's buckets, as folders.
+      // Root → the account's buckets, as folders, annotated with their
+      // creation date (region is skipped here since a custom endpoint is set).
       final root = await b.list('');
       expect(root.map((e) => e.name), containsAll(['alpha', 'beta']));
       expect(root.every((e) => e.isDir && !e.isParent), isTrue);
+      final alpha = root.firstWhere((e) => e.name == 'alpha');
+      expect(alpha.modified, isNotEmpty); // ListBuckets CreationDate surfaced
+      expect(root.firstWhere((e) => e.name == 'beta').modified, isEmpty);
 
       // Enter a bucket → its objects/prefixes, with a '..' back to the list.
       final inside = await b.list(b.childPath('', 'alpha', true)); // 'alpha/'

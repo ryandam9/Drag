@@ -157,7 +157,9 @@ class S3Client {
       '/${awsUriEncode(bucket, encodeSlash: true)}/${awsUriEncode(key)}';
 
   // ── ListBuckets (service-level; ignores [bucket]) ──
-  Future<List<String>> listBuckets() async {
+  /// The account's buckets with their creation dates (the latter comes free in
+  /// the ListBuckets response — no extra request).
+  Future<List<({String name, DateTime? created})>> listBuckets() async {
     const canonicalUri = '/';
     final headers = _signer.sign(
       method: 'GET',
@@ -176,8 +178,12 @@ class S3Client {
     return XmlDocument.parse(body)
         .rootElement
         .findAllElements('Bucket')
-        .map((b) => b.getElement('Name')?.innerText ?? '')
-        .where((n) => n.isNotEmpty)
+        .map((b) {
+          final name = b.getElement('Name')?.innerText ?? '';
+          final cd = b.getElement('CreationDate')?.innerText;
+          return (name: name, created: cd == null ? null : DateTime.tryParse(cd));
+        })
+        .where((e) => e.name.isNotEmpty)
         .toList();
   }
 

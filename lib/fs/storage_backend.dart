@@ -460,11 +460,27 @@ class S3Backend extends StorageBackend {
     await _ensureCredentials();
     final (bucket, key) = _split(path);
 
-    // Root of a discovery connection → list the account's buckets (one call).
+    // Root of a discovery connection → list the account's buckets, annotated
+    // with their creation date (free from ListBuckets) and region (one
+    // GetBucketLocation per bucket, resolved in parallel and cached). Region
+    // routing doesn't apply to custom endpoints (MinIO etc.), so skip it there.
     if (_discovery && bucket.isEmpty) {
-      final names = await _serviceClient().listBuckets();
-      yield [for (final n in names) FileItem(name: n, isDir: true)]
-        ..sort(StorageBackend.dirsFirst);
+      final buckets = await _serviceClient().listBuckets();
+      final regions = <String, String>{};
+      if (connection.endpoint.isEmpty) {
+        await Future.wait(buckets.map((b) async {
+          regions[b.name] = _bucketRegions[b.name] ??= await _resolveRegion(b.name);
+        }));
+      }
+      yield [
+        for (final b in buckets)
+          FileItem(
+            name: b.name,
+            isDir: true,
+            modified: b.created == null ? '' : formatModified(b.created!),
+            perms: regions[b.name] ?? '',
+          ),
+      ]..sort(StorageBackend.dirsFirst);
       return;
     }
 
