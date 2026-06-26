@@ -526,8 +526,25 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
         FormField2('Bucket', _field(_bucket, (v) => c.bucket = v, hint: 'blank = browse all buckets', icon: Icons.inventory_2_outlined)),
       ], flex: [1, 2]),
       const SizedBox(height: 12),
-      FormField2('Endpoint (optional — for S3-compatible / MinIO)',
-          _field(_endpoint, (v) => c.endpoint = v, hint: 's3.amazonaws.com', icon: Icons.dns_outlined)),
+      FormField2(
+        'Endpoint (optional — for S3-compatible / MinIO)',
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _field(_endpoint, (v) => setState(() => c.endpoint = v),
+              hint: 's3.amazonaws.com', icon: Icons.dns_outlined),
+          Builder(builder: (_) {
+            final err = validateS3Endpoint(_endpoint.text);
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                err ??
+                    'Examples: minio.example.com:9000 · localhost:4566 (LocalStack) · '
+                        'blank for AWS. Host[:port] only — no scheme or path.',
+                style: FsType.sans(size: 10.5, color: err != null ? FsColors.red : FsColors.text3),
+              ),
+            );
+          }),
+        ]),
+      ),
       const SizedBox(height: 20),
 
       _sectionTitle('Credentials', Icons.vpn_key_outlined),
@@ -751,6 +768,28 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
       Expanded(child: Text(label, style: FsType.sans(size: 12, color: FsColors.text2))),
     ]);
   }
+}
+
+/// Validates a custom S3 endpoint, returning an error message or null when it's
+/// acceptable (including empty, since the endpoint is optional). Expects a bare
+/// `host` or `host:port` — an optional `http(s)://` scheme is tolerated but a
+/// path, spaces, or a bad port are rejected, with concrete guidance.
+String? validateS3Endpoint(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return null; // optional → AWS default
+  var host = s.replaceFirst(RegExp(r'^https?://'), '');
+  if (host.contains(' ')) return 'Endpoint must not contain spaces';
+  if (host.contains('/')) return 'Host[:port] only — drop the path / trailing slash';
+  final colon = host.indexOf(':');
+  if (colon >= 0) {
+    final portStr = host.substring(colon + 1);
+    final port = int.tryParse(portStr);
+    if (port == null || port < 1 || port > 65535) return 'Invalid port "$portStr"';
+    host = host.substring(0, colon);
+  }
+  if (host.isEmpty) return 'Missing host';
+  if (!RegExp(r'^[A-Za-z0-9.\-]+$').hasMatch(host)) return 'Invalid host "$host"';
+  return null;
 }
 
 /// Sidebar dot colour for a connection's runtime [ConnectionStatus].

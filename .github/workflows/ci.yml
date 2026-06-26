@@ -39,6 +39,47 @@ jobs:
           echo "Line coverage: ${pct}% (floor ${min}%)"
           awk -v p="$pct" -v m="$min" 'BEGIN{ if (p+0 < m+0) { printf "::error::Line coverage %.1f%% is below the %.1f%% floor\n", p, m; exit 1 } }'
 
+  sftp-integration:
+    name: SFTP integration (containerized)
+    needs: analyze-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-0 libsqlite3-dev
+
+      # A throwaway SSH/SFTP server so the gated integration test exercises the
+      # real SftpBackend end-to-end (connect/list/upload/download/rename/delete).
+      - name: Start SFTP server
+        run: |
+          docker run -d --name sftp -p 2222:22 atmoz/sftp:alpine \
+            sftptest:testpass123:::upload
+          for i in $(seq 1 30); do
+            if nc -z 127.0.0.1 2222; then echo "sftp up"; break; fi
+            sleep 1
+          done
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - name: Run SFTP integration test
+        run: |
+          flutter test test/sftp_integration_test.dart \
+            --dart-define=SFTP_HOST=127.0.0.1 \
+            --dart-define=SFTP_PORT=2222 \
+            --dart-define=SFTP_USER=sftptest \
+            --dart-define=SFTP_PASS=testpass123 \
+            --dart-define=SFTP_DIR=/upload
+
+      - name: Stop SFTP server
+        if: always()
+        run: docker rm -f sftp
+
   build:
     name: Build ${{ matrix.platform }}
     needs: analyze-and-test
