@@ -63,6 +63,14 @@ void main() {
       expect(b.parentPath('/a'), '/');
       expect(b.parentPath('/'), '/');
     });
+
+    test('parseInputPath strips the sftp:// prefix and forces absolute', () {
+      expect(b.parseInputPath('sftp://deploy@example.com/srv/app'), '/srv/app');
+      expect(b.parseInputPath('  /var/www  '), '/var/www');
+      expect(b.parseInputPath('var/www'), '/var/www');
+      expect(b.parseInputPath(''), '/');
+      expect(b.parseInputPath('sftp://deploy@example.com'), '/');
+    });
   });
 
   group('connection errors', () {

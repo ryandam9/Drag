@@ -60,6 +60,13 @@ void main() {
       expect(backend.isReady, isTrue);
     });
 
+    test('parseInputPath trims, strips file://, expands ~', () {
+      expect(backend.parseInputPath('  /a/b  '), '/a/b');
+      expect(backend.parseInputPath('file:///a/b'), '/a/b');
+      expect(backend.parseInputPath('~'), backend.initialPath);
+      expect(backend.parseInputPath('~/docs'), p.join(backend.initialPath, 'docs'));
+    });
+
     test('makeDir creates a directory', () async {
       final path = p.join(dir.path, 'newdir');
       await backend.makeDir(path);
@@ -108,6 +115,14 @@ void main() {
     });
     test('displayPath uses s3:// scheme', () {
       expect(b.displayPath('k'), 's3://bk/k');
+    });
+    test('parseInputPath strips s3:// + bucket and ensures a trailing slash', () {
+      expect(b.parseInputPath('s3://bk/logs/'), 'logs/');
+      expect(b.parseInputPath('bk/logs'), 'logs/');
+      expect(b.parseInputPath('logs'), 'logs/');
+      expect(b.parseInputPath('s3://bk/'), '');
+      expect(b.parseInputPath('s3://bk'), '');
+      expect(b.parseInputPath(''), '');
     });
     test('supportsMutation is true', () => expect(b.supportsMutation, isTrue));
   });

@@ -92,6 +92,12 @@ abstract class StorageBackend {
   /// Parent of [path] (for the "Up" / ".." actions).
   String parentPath(String path);
 
+  /// Turn a user-typed / pasted location into an internal pane path. It accepts
+  /// either the internal form or the displayed form (e.g. `s3://bucket/key`,
+  /// `sftp://user@host/path`), so a location copied from the path bar can be
+  /// pasted straight back in. The default just trims surrounding whitespace.
+  String parseInputPath(String input) => input.trim();
+
   /// The size in bytes of the file at [path], or null if it can't be
   /// determined. Used by post-transfer verification to confirm the
   /// destination received every byte. The default lists the parent directory
@@ -257,6 +263,19 @@ class LocalBackend extends StorageBackend {
 
   @override
   String parentPath(String path) => p.dirname(path);
+
+  @override
+  String parseInputPath(String input) {
+    var s = input.trim();
+    // Strip a file:// scheme (some file managers copy locations this way).
+    if (s.startsWith('file://')) s = s.substring(7);
+    // Expand a leading ~ to the home directory.
+    if (s == '~') return initialPath;
+    if (s.startsWith('~/') || s.startsWith('~\\')) {
+      return p.join(initialPath, s.substring(2));
+    }
+    return s;
+  }
 
   @override
   Future<int?> sizeOf(String path) async {
@@ -566,5 +585,23 @@ class S3Backend extends StorageBackend {
     final trimmed = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
     final idx = trimmed.lastIndexOf('/');
     return idx < 0 ? '' : trimmed.substring(0, idx + 1);
+  }
+
+  @override
+  String parseInputPath(String input) {
+    var s = input.trim();
+    if (s.startsWith('s3://')) s = s.substring(5);
+    // In fixed-bucket mode the path is just the key, so drop a leading
+    // "<bucket>/" if the user pasted the full displayed location.
+    if (!_discovery && connection.bucket.isNotEmpty) {
+      if (s == connection.bucket) return '';
+      if (s.startsWith('${connection.bucket}/')) {
+        s = s.substring(connection.bucket.length + 1);
+      }
+    }
+    s = s.replaceFirst(RegExp(r'^/+'), '');
+    // A navigable prefix is a folder, so it must end with a slash.
+    if (s.isNotEmpty && !s.endsWith('/')) s = '$s/';
+    return s;
   }
 }

@@ -197,7 +197,10 @@ class ToolButton extends StatelessWidget {
   final bool active;
   final Color? color;
   final VoidCallback? onTap;
-  const ToolButton(this.label, {super.key, this.active = false, this.color, this.onTap});
+
+  /// Optional hover description (e.g. what the action does + its shortcut).
+  final String? tooltip;
+  const ToolButton(this.label, {super.key, this.active = false, this.color, this.onTap, this.tooltip});
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +214,7 @@ class ToolButton extends StatelessWidget {
         bg = FsColors.bgHover;
         fg = color ?? FsColors.text1;
       }
-      return GestureDetector(
+      Widget btn = GestureDetector(
         onTap: onTap,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
@@ -222,6 +225,14 @@ class ToolButton extends StatelessWidget {
           ),
         ),
       );
+      if (tooltip != null) {
+        btn = Tooltip(
+          message: tooltip!,
+          waitDuration: const Duration(milliseconds: 400),
+          child: btn,
+        );
+      }
+      return btn;
     });
   }
 }

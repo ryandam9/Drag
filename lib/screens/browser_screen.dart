@@ -52,6 +52,12 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   // The in-pane filter box (applies to whichever pane is focused).
   final TextEditingController _filterCtl = TextEditingController();
 
+  // Inline path editor: which pane (if any) currently has its path bar in
+  // edit mode, plus a shared controller/focus node for the text field.
+  bool? _editingPathLeft; // null = not editing; true/false = left/right pane
+  final TextEditingController _pathCtl = TextEditingController();
+  final FocusNode _pathFocus = FocusNode();
+
   // Type-ahead: accumulate typed characters briefly so "re" jumps to "report".
   String _typeAheadBuffer = '';
   Timer? _typeAheadTimer;
@@ -74,6 +80,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     _leftScroll.dispose();
     _rightScroll.dispose();
     _filterCtl.dispose();
+    _pathCtl.dispose();
+    _pathFocus.dispose();
     super.dispose();
   }
 
@@ -127,6 +135,32 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   Future<void> _copyLocation(String location) async {
     await Clipboard.setData(ClipboardData(text: location));
     _toast('Copied', location, ToastKind.info);
+  }
+
+  /// Put a pane's path bar into edit mode, pre-filled with the current
+  /// location and fully selected so a paste replaces it outright.
+  void _beginEditPath(PaneController pane, bool left) {
+    _pathCtl
+      ..text = pane.displayPath
+      ..selection = TextSelection(baseOffset: 0, extentOffset: pane.displayPath.length);
+    setState(() => _editingPathLeft = left);
+    _pathFocus.requestFocus();
+  }
+
+  void _cancelEditPath() {
+    if (_editingPathLeft == null) return;
+    setState(() => _editingPathLeft = null);
+  }
+
+  /// Commit a typed/pasted path: parse it into the backend's internal form and
+  /// navigate there. An empty entry is ignored.
+  Future<void> _commitEditPath(PaneController pane) async {
+    final raw = _pathCtl.text.trim();
+    setState(() => _editingPathLeft = null);
+    if (raw.isEmpty) return;
+    final target = pane.backend.parseInputPath(raw);
+    if (target == pane.path) return;
+    await pane.navigateTo(target);
   }
 
   String _pathLabel(PaneController pane) {
@@ -233,6 +267,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   KeyEventResult _onKey(KeyEvent event) {
+    // While the inline path editor is open, let the text field own every key
+    // (typing, Enter, Escape) — don't run pane navigation/type-ahead.
+    if (_editingPathLeft != null) return KeyEventResult.ignored;
+
     // Ignore key-up; let held arrows/page keys auto-repeat (KeyRepeatEvent).
     final isDown = event is KeyDownEvent;
     if (!isDown && event is! KeyRepeatEvent) return KeyEventResult.ignored;
@@ -767,12 +805,16 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(children: [
-              ToolButton('← Back', onTap: pane.canGoBack ? pane.goBack : null),
-              ToolButton('→ Fwd', onTap: pane.canGoForward ? pane.goForward : null),
-              ToolButton('↑ Up', onTap: pane.goUp),
+              ToolButton('← Back',
+                  tooltip: 'Back to the previous folder', onTap: pane.canGoBack ? pane.goBack : null),
+              ToolButton('→ Fwd',
+                  tooltip: 'Forward to the next folder',
+                  onTap: pane.canGoForward ? pane.goForward : null),
+              ToolButton('↑ Up', tooltip: 'Go up one folder (Backspace)', onTap: pane.goUp),
               const ToolSep(),
-              ToolButton('🔍 Find', onTap: () => _showFindDialog(_focusedPane)),
-              ToolButton('👁 Preview', onTap: () {
+              ToolButton('🔍 Find',
+                  tooltip: 'Search files in this pane', onTap: () => _showFindDialog(_focusedPane)),
+              ToolButton('👁 Preview', tooltip: 'Quick-preview the selected file (Space)', onTap: () {
                 final f = _selected(_focusedPane);
                 if (f == null) {
                   _toast('Nothing selected', 'Select a file to preview', ToastKind.info);
@@ -780,17 +822,25 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                   _showPreview(_focusedPane, f);
                 }
               }),
-              ToolButton('⇄ Compare', onTap: () => _sessions.compareActivePanes()),
-              ToolButton('⇉ Mirror', onTap: _showMirrorDialog),
-              ToolButton('↯ Queue', onTap: () => _go(AppScreen.queue)),
+              ToolButton('⇄ Compare',
+                  tooltip: 'Compare the two panes\' folders', onTap: () => _sessions.compareActivePanes()),
+              ToolButton('⇉ Mirror',
+                  tooltip: 'Mirror one pane onto the other', onTap: _showMirrorDialog),
+              ToolButton('↯ Queue', tooltip: 'Open the transfer queue', onTap: () => _go(AppScreen.queue)),
               ToolButton('📋 Log',
+                  tooltip: 'Toggle the log console',
                   active: _showLogOverride ?? showLogOnStartup,
                   onTap: () => setState(
                       () => _showLogOverride = !(_showLogOverride ?? showLogOnStartup))),
               const ToolSep(),
-              ToolButton('⊕ New Folder', onTap: () => _newFolder(_focusedPane)),
-              ToolButton('✎ Rename', onTap: () => _renameSelected(_focusedPane)),
-              ToolButton('⊗ Delete', color: FsColors.red, onTap: () => _deleteSelected(_focusedPane)),
+              ToolButton('⊕ New Folder',
+                  tooltip: 'Create a new folder here', onTap: () => _newFolder(_focusedPane)),
+              ToolButton('✎ Rename',
+                  tooltip: 'Rename the selected item (F2)', onTap: () => _renameSelected(_focusedPane)),
+              ToolButton('⊗ Delete',
+                  tooltip: 'Delete the selected item(s) (Del)',
+                  color: FsColors.red,
+                  onTap: () => _deleteSelected(_focusedPane)),
             ]),
           ),
         ),
@@ -901,44 +951,94 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       child: Row(children: [
         _endpointPicker(pane, left: left, badgeBg: badgeBg, badgeFg: badgeFg),
         const SizedBox(width: 8),
-        Expanded(
-          child: Tooltip(
-            message: 'Click to copy this location',
-            waitDuration: const Duration(milliseconds: 500),
-            child: GestureDetector(
-              onTap: () => _copyLocation(pane.displayPath),
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: Container(
-                  height: 24,
-                  alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: FsColors.bgDeep,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: FsColors.border),
-                  ),
-                  child: Text(pane.displayPath,
-                      overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: FsColors.text2)),
-                ),
-              ),
-            ),
-          ),
-        ),
+        Expanded(child: _pathBar(pane, left)),
         const SizedBox(width: 6),
         _paneIconBtn(
           ref.read(bookmarksProvider.notifier).isBookmarked(pane.connection?.id, pane.path) ? '★' : '☆',
+          tooltip: ref.read(bookmarksProvider.notifier).isBookmarked(pane.connection?.id, pane.path)
+              ? 'Remove bookmark'
+              : 'Bookmark this location',
           onTap: () => _toggleBookmark(pane),
         ),
         const SizedBox(width: 4),
-        Builder(builder: (ctx) => _paneIconBtn('▾', onTap: () => _showQuickJump(ctx, pane))),
+        Builder(
+            builder: (ctx) => _paneIconBtn('▾',
+                tooltip: 'Jump to a bookmark or recent path',
+                onTap: () => _showQuickJump(ctx, pane))),
         const SizedBox(width: 4),
-        _paneIconBtn('📋', onTap: () => _copyLocation(pane.displayPath)),
+        _paneIconBtn('📋', tooltip: 'Copy this location', onTap: () => _copyLocation(pane.displayPath)),
         const SizedBox(width: 4),
-        _paneIconBtn('↑', onTap: pane.goUp),
+        _paneIconBtn('↑', tooltip: 'Go up one folder', onTap: pane.goUp),
         const SizedBox(width: 4),
-        _paneIconBtn('↺', onTap: pane.refresh),
+        _paneIconBtn('↺', tooltip: 'Refresh listing', onTap: pane.refresh),
       ]),
+    );
+  }
+
+  /// The pane's location bar. Click it to edit/paste a path and press Enter to
+  /// jump there; Escape cancels. Otherwise it shows the current location
+  /// (click the 📋 button in the header to copy it).
+  Widget _pathBar(PaneController pane, bool left) {
+    final editing = _editingPathLeft == left;
+    if (editing) {
+      return Container(
+        height: 24,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: FsColors.bgDeep,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: FsColors.accent),
+        ),
+        child: Focus(
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent &&
+                event.logicalKey == LogicalKeyboardKey.escape) {
+              _cancelEditPath();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: TextField(
+            controller: _pathCtl,
+            focusNode: _pathFocus,
+            autofocus: true,
+            cursorColor: FsColors.accent,
+            cursorHeight: 13,
+            style: FsType.sans(size: 11, color: FsColors.text1),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              hintText: 'Paste or type a path, then Enter',
+            ),
+            onSubmitted: (_) => _commitEditPath(pane),
+            onTapOutside: (_) => _cancelEditPath(),
+          ),
+        ),
+      );
+    }
+    return Tooltip(
+      message: 'Click to edit / paste a path (Enter to go)',
+      waitDuration: const Duration(milliseconds: 500),
+      child: GestureDetector(
+        onTap: () => _beginEditPath(pane, left),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.text,
+          child: Container(
+            height: 24,
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: FsColors.bgDeep,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: FsColors.border),
+            ),
+            child: Text(pane.displayPath,
+                overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: FsColors.text2)),
+          ),
+        ),
+      ),
     );
   }
 
@@ -994,23 +1094,33 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         Text(name, style: FsType.sans(size: 12, color: FsColors.text1)),
       ]);
 
-  Widget _paneIconBtn(String glyph, {VoidCallback? onTap}) => GestureDetector(
-        onTap: onTap,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            width: 22,
-            height: 22,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: FsColors.bgDeep,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: FsColors.border),
-            ),
-            child: Text(glyph, style: FsType.sans(size: 11, color: FsColors.text2)),
+  Widget _paneIconBtn(String glyph, {VoidCallback? onTap, String? tooltip}) {
+    Widget btn = GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: FsColors.bgDeep,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: FsColors.border),
           ),
+          child: Text(glyph, style: FsType.sans(size: 11, color: FsColors.text2)),
         ),
+      ),
+    );
+    if (tooltip != null) {
+      btn = Tooltip(
+        message: tooltip,
+        waitDuration: const Duration(milliseconds: 400),
+        child: btn,
       );
+    }
+    return btn;
+  }
 
   Widget _breadcrumb(PaneController pane) {
     final segs = pane.breadcrumb;
@@ -1589,8 +1699,16 @@ class _PreviewDialogState extends State<_PreviewDialog> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final sizeLabel = item.sizeBytes != null ? formatBytes(item.sizeBytes!) : '—';
+    // Size the preview to the window: at least 70% of the width and a generous
+    // share of the height, so text and images get real room (not a tiny popup).
+    final screen = MediaQuery.of(context).size;
+    final dialogW = screen.width * 0.7;
+    // Leave headroom for the dialog title + action row so the body never
+    // overflows the window vertically.
+    final dialogH = screen.height * 0.72;
     return AlertDialog(
       backgroundColor: FsColors.bgPanel,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       title: Row(children: [
         Text(item.icon, style: const TextStyle(fontSize: 16)),
         const SizedBox(width: 8),
@@ -1602,8 +1720,8 @@ class _PreviewDialogState extends State<_PreviewDialog> {
         ),
       ]),
       content: SizedBox(
-        width: 640,
-        height: 460,
+        width: dialogW,
+        height: dialogH,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${widget.endpointLabel} · $sizeLabel${item.modified.isNotEmpty ? ' · ${item.modified}' : ''}',
               maxLines: 1, overflow: TextOverflow.ellipsis,
