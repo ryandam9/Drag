@@ -138,4 +138,59 @@ void main() {
     expect(c.read(transfersProvider).activeCount, 1);
     expect(c.read(transfersProvider).pausedCount, 1);
   });
+
+  test('pauseAll clears retry-backoff so resume starts immediately', () async {
+    final c = makeContainer();
+    final q = c.read(transfersProvider.notifier)..setMaxThreads(2);
+    final src = pane(_FailOnceSource()); // attempt 1 fails, attempt 2 succeeds
+    final dst = pane(MemoryBackend());
+    // A long backoff: without the _deferred clear, a resume would stay stuck
+    // queued until this timer fires (far beyond the test window).
+    q.backoffFor = (_) => const Duration(seconds: 30);
+
+    q.enqueueFile(src, dst, '/f0.bin', '/f0.bin', 'f0.bin', 1, announce: false);
+    // Wait for attempt 1 to fail and land in retry-backoff (queued + deferred).
+    for (var i = 0; i < 200; i++) {
+      await tick(10);
+      final ts = c.read(transfersProvider).transfers;
+      if (ts.isNotEmpty && ts.first.status == TransferStatus.queued) break;
+    }
+    final t = c.read(transfersProvider).transfers.first;
+    expect(t.status, TransferStatus.queued); // waiting out the backoff
+
+    q.pauseAll();
+    expect(t.status, TransferStatus.paused);
+
+    // Resume should start it right away (attempt 2 succeeds), not wait 30s.
+    q.resume(t);
+    for (var i = 0; i < 200 && t.status != TransferStatus.done; i++) {
+      await tick(10);
+    }
+    expect(t.status, TransferStatus.done);
+  });
+
+  test('clearDone disposes removed transfers (no liveTick leak)', () async {
+    final c = makeContainer();
+    final q = c.read(transfersProvider.notifier);
+    final done = Transfer(
+        name: 'd', route: 'r', direction: TransferDirection.upload, sizeBytes: 1, session: 's',
+        status: TransferStatus.done);
+    q.debugSetTransfers([done]);
+    q.clearDone();
+    expect(c.read(transfersProvider).transfers, isEmpty);
+    // The transfer's liveTick was disposed, so touching it now throws.
+    expect(done.touchLive, throwsA(isA<Object>()));
+  });
+}
+
+/// A source whose first read fails (transient) and later reads succeed, to
+/// drive a transfer into retry-backoff and then let a retry complete.
+class _FailOnceSource extends MemoryBackend {
+  _FailOnceSource() : super(files: {'/f0.bin': Uint8List(1)});
+  int _calls = 0;
+  @override
+  Future<ReadHandle> openRead(String path) async {
+    if (_calls++ == 0) throw Exception('transient');
+    return super.openRead(path);
+  }
 }

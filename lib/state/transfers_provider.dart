@@ -460,6 +460,10 @@ class TransfersNotifier extends Notifier<TransfersState> {
     for (final t in _list) {
       if (t.status == TransferStatus.active || t.status == TransferStatus.queued) {
         _controls[t]?.abort();
+        // Clear any retry-backoff deferral too, otherwise a transfer paused
+        // mid-backoff stays skipped by _pump() after resume until its timer
+        // happens to fire.
+        _deferred.remove(t);
         t.status = TransferStatus.paused;
         t.speed = '—';
         t.eta = '—';
@@ -475,9 +479,18 @@ class TransfersNotifier extends Notifier<TransfersState> {
   }
 
   void clearDone() {
-    final kept = _list.where((t) => t.status != TransferStatus.done).toList();
-    _runners.removeWhere((t, _) => t.status == TransferStatus.done);
-    _emit(kept);
+    final done = _list.where((t) => t.status == TransferStatus.done).toList();
+    for (final t in done) {
+      // Release each removed transfer's live notifier and drop any lingering
+      // scheduler bookkeeping, so clearing the list can't leak `liveTick`s or
+      // strand runner/control entries.
+      _runners.remove(t);
+      _controls.remove(t);
+      _deferred.remove(t);
+      _cancelled.remove(t);
+      t.dispose();
+    }
+    _emit(_list.where((t) => t.status != TransferStatus.done).toList());
   }
 
   /// Pause [t]: abort its in-flight stream (if active) and mark it paused. A

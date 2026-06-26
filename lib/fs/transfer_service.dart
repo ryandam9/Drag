@@ -97,8 +97,12 @@ class TransferService {
     // a pause/cancel or crash can never truncate or delete a pre-existing
     // destination. Atomic backends (S3) publish only on completion, so they
     // write straight to the final path.
+    // A per-transfer suffix keeps the staging path unique across concurrent
+    // transfers to the same destination (and stable across this transfer's
+    // own retries, since the id rides on [t]), so they can't clobber each
+    // other's partial file.
     final usePartial = !dst.atomicWrite;
-    final writePath = usePartial ? '$dstPath.drag-partial' : dstPath;
+    final writePath = usePartial ? '$dstPath.drag-partial-${t.id}' : dstPath;
 
     try {
       // Resume an interrupted download: if a previous attempt left a partial

@@ -5,6 +5,13 @@ enum TransferStatus { active, queued, paused, error, done }
 enum TransferDirection { upload, download }
 
 class Transfer {
+  /// Process-unique id. Used to give each transfer its own `.drag-partial`
+  /// staging path so two transfers writing to the same destination (or a
+  /// retry overlapping its predecessor) can never collide on the temp file.
+  final int id = _nextId();
+  static int _idSeq = 0;
+  static int _nextId() => ++_idSeq;
+
   final String name;
   final String route; // e.g. "Local → sftp://prod-server-01/backups/"
   final TransferDirection direction;
