@@ -8,6 +8,11 @@ import '../models/transfer.dart';
 import 'rate_limiter.dart';
 import 'storage_backend.dart';
 
+/// True for a Drag staging temp file (`<name>.drag-partial-<id>`, or the legacy
+/// `<name>.drag-partial`). Used to spot leftovers from an interrupted transfer
+/// so the UI can offer to discard them.
+bool isPartialName(String name) => name.contains('.drag-partial');
+
 /// A cooperative cancellation handle for an in-flight transfer. Calling [abort]
 /// makes the streaming loop stop at the next chunk; the partial destination is
 /// then removed. Used by pause and cancel in the queue.
@@ -121,14 +126,15 @@ class TransferService {
       sent = resumeFrom; // progress already covers the bytes on disk
 
       // For a checksum verify, hash the source bytes as they stream past so we
-      // never read the (possibly remote) source twice.
-      final wantChecksum = verify == 'checksum';
+      // never read the (possibly remote) source twice. The algorithm follows
+      // the verify level: MD5 (fast integrity) or SHA-256 (stronger).
+      final algo = _digestFor(verify);
       Digest? srcDigest;
       ByteConversionSink? hasher;
-      if (wantChecksum) {
+      if (algo != null) {
         final out = ChunkedConversionSink<Digest>.withCallback(
             (digests) => srcDigest = digests.single);
-        hasher = md5.startChunkedConversion(out);
+        hasher = algo.startChunkedConversion(out);
       }
 
       // Throttle on the read side: each chunk waits for bandwidth tokens before
@@ -207,14 +213,23 @@ class TransferService {
           'expected ${formatBytes(total!)}');
     }
 
-    if (level == 'checksum' && srcDigest != null) {
+    final algo = _digestFor(level);
+    if (algo != null && srcDigest != null) {
       final handle = await dst.openRead(dstPath);
-      final destDigest = await md5.bind(handle.stream).single;
+      final destDigest = await algo.bind(handle.stream).single;
       if (destDigest != srcDigest) {
         throw Exception('Checksum mismatch: the copy does not match the source');
       }
     }
   }
+
+  /// The hash for a verify [level], or null when no content hash is needed
+  /// (`off` / `size`). `checksum` is MD5 (fast); `sha256` is stronger.
+  static Hash? _digestFor(String level) => switch (level) {
+        'checksum' => md5,
+        'sha256' => sha256,
+        _ => null,
+      };
 
   /// How many bytes of [dstPath] are already on disk from a previous,
   /// interrupted attempt — the offset to resume the download from. Returns 0
@@ -226,8 +241,8 @@ class TransferService {
   ///   • verification isn't checksum (which must hash the whole file).
   Future<int> _resumeOffset(
       Transfer t, StorageBackend src, StorageBackend dst, String dstPath, String verify) async {
-    if (t.attempts <= 1 || verify == 'checksum' || !src.supportsResume || dst is! LocalBackend) {
-      return 0;
+    if (t.attempts <= 1 || _digestFor(verify) != null || !src.supportsResume || dst is! LocalBackend) {
+      return 0; // a content hash must cover the whole file → no partial resume
     }
     final existing = await dst.sizeOf(dstPath);
     if (existing == null || existing <= 0) return 0;

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../fs/file_preview.dart';
 import '../fs/file_search.dart';
 import '../fs/storage_backend.dart';
+import '../fs/transfer_service.dart' show isPartialName;
 import '../models/connection.dart';
 import '../models/file_item.dart';
 import '../models/transfer.dart';
@@ -469,6 +470,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         if (canMutate) PopupMenuItem(value: 'delete', child: _menuText('⊗ Delete', color: FsColors.red)),
         if (canMutate) const PopupMenuDivider(),
         if (canMutate) PopupMenuItem(value: 'newFolder', child: _menuText('⊕ New folder')),
+        // A leftover staging file from an interrupted transfer — offer to
+        // discard it (user-confirmed; the real file is never touched).
+        if (canMutate && isPartialName(item.name))
+          PopupMenuItem(value: 'discardPartial', child: _menuText('🧹 Discard leftover partial', color: FsColors.amber)),
         PopupMenuItem(value: 'copyPath', child: _menuText('📋 Copy path')),
       ],
     );
@@ -484,6 +489,13 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         await _deleteSelected(pane);
       case 'newFolder':
         await _newFolder(pane);
+      case 'discardPartial':
+        final ok = await _confirm(
+          title: 'Discard "${item.name}"?',
+          message: 'This removes a leftover partial-transfer temp file. '
+              'The original/destination file (if any) is left untouched.',
+        );
+        if (ok) await _sessions.deleteItems(pane, [item]);
       case 'copyPath':
         // The full location (s3://bucket/key, sftp://host/path, or the local
         // absolute path) — not just the internal key.
@@ -642,15 +654,31 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             FsButton('Cancel', onTap: () => Navigator.pop(ctx)),
             FsButton('Mirror',
                 kind: FsButtonKind.primary,
-                onTap: () {
+                onTap: () async {
                   final plan = resolved;
-                  Navigator.pop(ctx);
                   if (plan == null) return; // still scanning
                   if (plan.isEmpty) {
+                    Navigator.pop(ctx);
                     _toast('Nothing to mirror', 'The folders already match', ToastKind.info);
-                  } else {
-                    _sessions.runMirror(plan);
+                    return;
                   }
+                  // Deleting destination-only files is destructive and
+                  // irreversible — require an explicit second confirmation with
+                  // a preview of exactly what will be removed.
+                  if (plan.deletes.isNotEmpty) {
+                    final sample = plan.deletes.take(8).map((d) => '• ${d.dstPath}').join('\n');
+                    final more = plan.deletes.length > 8
+                        ? '\n…and ${plan.deletes.length - 8} more'
+                        : '';
+                    final ok = await _confirm(
+                      title: 'Delete ${plan.deleteCount} item(s) on $dstLabel?',
+                      message: 'Mirror will permanently delete these destination-only '
+                          'items (this cannot be undone):\n\n$sample$more',
+                    );
+                    if (!ok) return; // leave the mirror dialog open
+                  }
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  _sessions.runMirror(plan);
                 }),
           ],
         );
@@ -1730,8 +1758,17 @@ class _PreviewDialog extends StatefulWidget {
 }
 
 class _PreviewDialogState extends State<_PreviewDialog> {
+  final PreviewCancel _cancel = PreviewCancel();
   late final Future<FilePreview> _future =
-      loadPreview(widget.backend, widget.path, widget.item);
+      loadPreview(widget.backend, widget.path, widget.item, cancel: _cancel);
+
+  @override
+  void dispose() {
+    // Dismissing the preview cancels any in-flight read so a remote (SFTP/S3)
+    // stream and its handle are released immediately rather than draining.
+    _cancel.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

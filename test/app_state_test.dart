@@ -433,6 +433,33 @@ void main() {
       expect(await f.readAsString(), 'SRC');
     });
 
+    test('conflict policy preset (skip) is applied without a resolver', () async {
+      final c = makeContainer();
+      c.read(settingsProvider.notifier).setConflictPolicy('skip');
+      final s = c.read(sessionsProvider.notifier);
+      // No conflict resolver registered — the preset must drive the decision.
+      final src = await Directory.systemTemp.createTemp('cp_src');
+      final dst = await Directory.systemTemp.createTemp('cp_dst');
+      addTearDown(() => src.delete(recursive: true));
+      addTearDown(() => dst.delete(recursive: true));
+      await File(p.join(src.path, 'dup.txt')).writeAsString('SRC');
+      await File(p.join(dst.path, 'dup.txt')).writeAsString('DST');
+      s.leftPane
+        ..backend = LocalBackend()
+        ..path = src.path;
+      await s.leftPane.refresh();
+      s.rightPane
+        ..backend = LocalBackend()
+        ..connection = null
+        ..path = dst.path;
+      await s.rightPane.refresh();
+      final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
+      s.dropTransfer(DragPayload(item, true), false);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(c.read(transfersProvider).transfers, isEmpty); // skipped, nothing queued
+      expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
+    });
+
     test('conflict: Rename writes a non-colliding copy and keeps the original', () async {
       final c = makeContainer();
       final (s, dst) = await conflictSetup(c, ConflictAction.rename);

@@ -19,6 +19,7 @@ class AppSettings {
     this.showPermsColumn = true,
     this.showLogOnStartup = false,
     this.confirmOverwrite = true,
+    this.conflictPolicy = 'ask',
     this.verifyLevel = 'size',
     this.transferLimitKbps = 0,
     this.notifyOnComplete = true,
@@ -54,6 +55,11 @@ class AppSettings {
   bool showLogOnStartup;
   bool confirmOverwrite;
 
+  /// Default action when a transfer's destination already has a file of that
+  /// name: `'ask'` (prompt, honouring [confirmOverwrite]), or a preset applied
+  /// to the whole drop without prompting — `'skip'`, `'overwrite'`, `'rename'`.
+  String conflictPolicy;
+
   /// How thoroughly a completed transfer is checked against its source:
   /// `'off'` (no check), `'size'` (compare byte counts) or `'checksum'`
   /// (compare MD5 digests). A mismatch fails the transfer so it can retry.
@@ -88,6 +94,7 @@ class AppSettings {
     bool? showPermsColumn,
     bool? showLogOnStartup,
     bool? confirmOverwrite,
+    String? conflictPolicy,
     String? verifyLevel,
     int? transferLimitKbps,
     bool? notifyOnComplete,
@@ -109,6 +116,7 @@ class AppSettings {
         showPermsColumn: showPermsColumn ?? this.showPermsColumn,
         showLogOnStartup: showLogOnStartup ?? this.showLogOnStartup,
         confirmOverwrite: confirmOverwrite ?? this.confirmOverwrite,
+        conflictPolicy: conflictPolicy ?? this.conflictPolicy,
         verifyLevel: verifyLevel ?? this.verifyLevel,
         transferLimitKbps: transferLimitKbps ?? this.transferLimitKbps,
         notifyOnComplete: notifyOnComplete ?? this.notifyOnComplete,
@@ -131,6 +139,7 @@ class AppSettings {
         'showPermsColumn': showPermsColumn,
         'showLogOnStartup': showLogOnStartup,
         'confirmOverwrite': confirmOverwrite,
+        'conflictPolicy': conflictPolicy,
         'verifyLevel': verifyLevel,
         'transferLimitKbps': transferLimitKbps,
         'notifyOnComplete': notifyOnComplete,
@@ -155,6 +164,7 @@ class AppSettings {
       showPermsColumn: (j['showPermsColumn'] as bool?) ?? true,
       showLogOnStartup: (j['showLogOnStartup'] as bool?) ?? false,
       confirmOverwrite: (j['confirmOverwrite'] as bool?) ?? true,
+      conflictPolicy: (j['conflictPolicy'] as String?) ?? 'ask',
       verifyLevel: (j['verifyLevel'] as String?) ?? 'size',
       transferLimitKbps: (j['transferLimitKbps'] as num?)?.toInt() ?? 0,
       notifyOnComplete: (j['notifyOnComplete'] as bool?) ?? true,

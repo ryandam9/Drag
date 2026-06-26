@@ -162,6 +162,20 @@ class TransfersNotifier extends Notifier<TransfersState> {
     _pump();
   }
 
+  // ── Folder-scan progress / cancellation (#41) ──
+  // A recursive folder drop can enqueue thousands of files; walk it
+  // progressively (yielding to the event loop and reporting progress) and let
+  // the user stop the scan before everything is queued.
+  bool _scanning = false;
+  bool _scanCancelled = false;
+  int _scanned = 0;
+
+  /// Whether a recursive folder enqueue is currently walking the tree.
+  bool get isScanning => _scanning;
+
+  /// Stop an in-progress folder scan; files already queued are kept.
+  void cancelFolderScan() => _scanCancelled = true;
+
   /// Total attempts before a live transfer gives up and stays failed.
   static const maxAttempts = 3;
 
@@ -316,7 +330,20 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// the number of files enqueued. Listing/mkdir errors on one subtree are
   /// reported but don't abort the rest.
   Future<int> enqueueTree(PaneController src, PaneController dst, FileItem folder) =>
-      _transferFolder(src, dst, folder, _Batch(), false);
+      _withScan(() => _transferFolder(src, dst, folder, _Batch(), false));
+
+  /// Runs a folder-walk [body] with scan progress/cancel state set up and torn
+  /// down, so [isScanning] and [cancelFolderScan] work for the duration.
+  Future<T> _withScan<T>(Future<T> Function() body) async {
+    _scanning = true;
+    _scanCancelled = false;
+    _scanned = 0;
+    try {
+      return await body();
+    } finally {
+      _scanning = false;
+    }
+  }
 
   // ── Conflict resolution ──
 
@@ -332,8 +359,16 @@ class TransfersNotifier extends Notifier<TransfersState> {
       PaneController src, PaneController dst, List<FileItem> entries) async {
     final files = entries.where((e) => !e.isDir).toList();
     final folders = entries.where((e) => e.isDir).toList();
-    final confirm = ref.read(settingsProvider).confirmOverwrite && _resolver != null;
+    final settings = ref.read(settingsProvider);
     final batch = _Batch();
+    // Conflict handling: a non-"ask" policy preset applies one action to the
+    // whole drop without prompting; "ask" falls back to the confirm-overwrite
+    // dialog. Either way name-clash detection (and thus a destination listing)
+    // is needed, so `confirm` gates that work.
+    final preset = _presetAction(settings.conflictPolicy);
+    if (preset != null) batch.applyToAll = preset;
+    final confirm =
+        preset != null || (settings.confirmOverwrite && _resolver != null);
     final single = entries.length == 1 && folders.isEmpty;
 
     final topNames = confirm ? await _namesAt(dst.backend, dst.path) : <String>{};
@@ -345,8 +380,13 @@ class TransfersNotifier extends Notifier<TransfersState> {
     if (files.length > 1 && folders.isEmpty) {
       _toast('Transferring', '${files.length} files → ${dst.endpointLabel}', ToastKind.info);
     }
-    for (final folder in folders) {
-      await _transferFolder(src, dst, folder, batch, confirm);
+    if (folders.isNotEmpty) {
+      await _withScan(() async {
+        for (final folder in folders) {
+          if (_scanCancelled) break;
+          await _transferFolder(src, dst, folder, batch, confirm);
+        }
+      });
     }
   }
 
@@ -378,6 +418,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
     final destNames = confirm ? await _namesAt(dst.backend, dstDir) : <String>{};
     var count = 0;
     for (final it in items) {
+      if (_scanCancelled) return count; // user stopped the scan
       if (it.isParent) continue;
       if (it.isDir) {
         final d = dst.backend.childPath(dstDir, it.name, true);
@@ -392,6 +433,12 @@ class TransfersNotifier extends Notifier<TransfersState> {
         if (await _maybeEnqueue(
             src, dst, srcDir, dstDir, it.name, it.sizeBytes ?? 0, destNames, batch, confirm)) {
           count++;
+          // Report progress and yield to the event loop periodically so a huge
+          // tree doesn't freeze the UI while it's being queued.
+          if (++_scanned % 50 == 0) {
+            _toast('Queuing folder…', '$_scanned files queued so far', ToastKind.info);
+            await Future<void>.delayed(Duration.zero);
+          }
         }
       }
     }
@@ -421,6 +468,15 @@ class TransfersNotifier extends Notifier<TransfersState> {
     enqueueFile(src, dst, s, d, outName, size, announce: announce);
     return true;
   }
+
+  /// The preset conflict action for a [conflictPolicy] setting, or null for the
+  /// `'ask'` policy (which prompts instead).
+  ConflictAction? _presetAction(String policy) => switch (policy) {
+        'skip' => ConflictAction.skip,
+        'overwrite' => ConflictAction.overwrite,
+        'rename' => ConflictAction.rename,
+        _ => null,
+      };
 
   Future<ConflictAction> _ask(String name, PaneController dst, _Batch batch) async {
     final res = await _resolver!(ConflictPrompt(name: name, destLabel: dst.endpointLabel));

@@ -319,7 +319,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _verifyLabels = {
     'off': 'Off',
     'size': 'Size (byte count)',
-    'checksum': 'Checksum (MD5)',
+    'checksum': 'Checksum (MD5— fast)',
+    'sha256': 'Checksum (SHA-256 — stronger)',
+  };
+
+  static const _conflictLabels = {
+    'ask': 'Ask each time',
+    'skip': 'Skip existing',
+    'overwrite': 'Overwrite',
+    'rename': 'Keep both (rename)',
   };
 
   // Aggregate transfer speed caps, in KiB/second (0 = unlimited).
@@ -362,6 +370,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         Text(
           'After each file copies, confirm the destination matches the source. '
           'A mismatch fails the transfer so it can retry.',
+          style: FsType.sans(size: 11, color: FsColors.text3),
+        ),
+      ]),
+      const SizedBox(height: 16),
+      _card(children: [
+        FormField2(
+          'When a file already exists',
+          _select(
+            _conflictLabels[settings.conflictPolicy] ?? _conflictLabels['ask']!,
+            _conflictLabels.values.toList(),
+            (v) {
+              final policy = _conflictLabels.entries.firstWhere((e) => e.value == v).key;
+              notifier.setConflictPolicy(policy);
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Default action for a destination name clash. "Ask each time" prompts '
+          '(when "Confirm before overwriting" is on); the others apply to the '
+          'whole drop without prompting.',
           style: FsType.sans(size: 11, color: FsColors.text3),
         ),
       ]),

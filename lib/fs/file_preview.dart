@@ -60,15 +60,28 @@ bool isImagePreviewable(String name) => _imageExts.contains(_ext(name));
 /// True when [name] is something [loadPreview] can show inline (text or image).
 bool isPreviewable(String name) => isTextPreviewable(name) || isImagePreviewable(name);
 
+/// A cancellation flag for an in-flight [loadPreview]. Set [cancelled] (e.g.
+/// when the preview popup is dismissed) and the read stops at the next chunk,
+/// which cancels the backend stream and closes its remote handle.
+class PreviewCancel {
+  bool cancelled = false;
+  void cancel() => cancelled = true;
+}
+
 /// Reads at most [max] bytes from [path] on [backend], stopping (and cancelling
-/// the stream) as soon as the cap is reached — so a huge remote file never
-/// streams in full just to be previewed.
-Future<Uint8List> _readBounded(StorageBackend backend, String path, int max) async {
+/// the stream) as soon as the cap is reached or [cancel] fires — so a huge
+/// remote file never streams in full just to be previewed, and dismissing the
+/// preview promptly releases the backend handle.
+Future<Uint8List> _readBounded(StorageBackend backend, String path, int max,
+    {PreviewCancel? cancel}) async {
   final handle = await backend.openRead(path);
   final out = BytesBuilder(copy: false);
   await for (final chunk in handle.stream) {
+    // Breaking the await-for cancels the subscription; backends that hold a
+    // remote handle (SFTP) close it in their stream's finally.
+    if (cancel?.cancelled ?? false) break;
     out.add(chunk);
-    if (out.length >= max) break; // breaking the await-for cancels the subscription
+    if (out.length >= max) break;
   }
   final bytes = out.takeBytes();
   return bytes.length > max ? Uint8List.sublistView(bytes, 0, max) : bytes;
@@ -84,6 +97,7 @@ Future<FilePreview> loadPreview(
   FileItem item, {
   int maxTextBytes = 64 * 1024,
   int maxImageBytes = 8 * 1024 * 1024,
+  PreviewCancel? cancel,
 }) async {
   final name = item.name;
   final size = item.sizeBytes;
@@ -93,7 +107,7 @@ Future<FilePreview> loadPreview(
         return FilePreview.tooLarge('Image is ${formatBytes(size)} — too large to preview.');
       }
       // Read one byte past the cap so we can tell "exactly at cap" from "over".
-      final bytes = await _readBounded(backend, path, maxImageBytes + 1);
+      final bytes = await _readBounded(backend, path, maxImageBytes + 1, cancel: cancel);
       if (bytes.isEmpty) return const FilePreview.empty();
       if (bytes.length > maxImageBytes) {
         return FilePreview.tooLarge('Image exceeds ${formatBytes(maxImageBytes)} — too large to preview.');
@@ -103,7 +117,7 @@ Future<FilePreview> loadPreview(
 
     if (isTextPreviewable(name)) {
       if (size == 0) return const FilePreview.empty();
-      final bytes = await _readBounded(backend, path, maxTextBytes);
+      final bytes = await _readBounded(backend, path, maxTextBytes, cancel: cancel);
       if (bytes.isEmpty) return const FilePreview.empty();
       final text = utf8.decode(bytes, allowMalformed: true);
       final truncated = (size != null && size > maxTextBytes) || bytes.length >= maxTextBytes;

@@ -69,6 +69,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setShowPermsColumn(bool v) => _update(state.copyWith(showPermsColumn: v));
   void setShowLogOnStartup(bool v) => _update(state.copyWith(showLogOnStartup: v));
   void setConfirmOverwrite(bool v) => _update(state.copyWith(confirmOverwrite: v));
+  void setConflictPolicy(String v) => _update(state.copyWith(conflictPolicy: v));
   void setVerifyLevel(String v) => _update(state.copyWith(verifyLevel: v));
   void setTransferLimitKbps(int v) => _update(state.copyWith(transferLimitKbps: v));
   void setNotifyOnComplete(bool v) => _update(state.copyWith(notifyOnComplete: v));
