@@ -974,7 +974,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           return FsTextField(
             controller: _filterCtl,
             hint: 'name…',
-            width: 150,
+            width: 240,
             height: 26,
             onChanged: (v) => _focusedPane.setFilter(v),
           );
