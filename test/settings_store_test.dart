@@ -59,7 +59,7 @@ void main() {
       expect(s.brightnessMode, 'system');
       expect(s.transferLimitKbps, 0); // unlimited by default
       expect(s.accentHiValue, 0xFF06ABDF);
-      expect(s.showHiddenFiles, isTrue);
+      expect(s.showHiddenFiles, isFalse); // hidden files are off by default
       expect(s.windowWidth, isNull);
     });
   });
@@ -76,7 +76,7 @@ void main() {
     test('load returns defaults on first run', () async {
       final s = await store.load();
       expect(s.themeName, 'Rainbow Bee-eater');
-      expect(s.showHiddenFiles, isTrue);
+      expect(s.showHiddenFiles, isFalse); // hidden files are off by default
     });
 
     test('save then load persists the single row', () async {
@@ -194,11 +194,12 @@ void main() {
       final c = makeContainer();
       // Build sessions so the show-hidden listener is wired up.
       c.read(sessionsProvider);
-      expect(c.read(sessionsProvider.notifier).leftPane.showHidden, isTrue);
-      c.read(settingsProvider.notifier).setShowHiddenFiles(false);
+      // Hidden files are off by default; enabling the setting reaches every pane.
+      expect(c.read(sessionsProvider.notifier).leftPane.showHidden, isFalse);
+      c.read(settingsProvider.notifier).setShowHiddenFiles(true);
       for (final s in c.read(sessionsProvider).sessions) {
-        expect(s.left.showHidden, isFalse);
-        expect(s.right.showHidden, isFalse);
+        expect(s.left.showHidden, isTrue);
+        expect(s.right.showHidden, isTrue);
       }
     });
 
