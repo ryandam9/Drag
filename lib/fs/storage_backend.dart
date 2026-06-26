@@ -46,7 +46,21 @@ abstract class StorageBackend {
   /// Whether this backend supports create/rename/delete operations.
   bool get supportsMutation => true;
 
+  /// Whether create/rename/delete are meaningful at [path] specifically.
+  /// Defaults to [supportsMutation]; backends with a read-only root (e.g. the
+  /// S3 account-level bucket list in discovery mode) narrow this per path so
+  /// the UI can hide New Folder / Rename / Delete where they can't succeed.
+  bool mutableAt(String path) => supportsMutation;
+
   Future<List<FileItem>> list(String path);
+
+  /// Lists [path], emitting progressively where the backend can (S3 yields each
+  /// page as it arrives, so a large prefix renders incrementally instead of
+  /// blocking on the whole listing). Each emission is the cumulative listing so
+  /// far. The default emits the full [list] result once.
+  Stream<List<FileItem>> listIncremental(String path) async* {
+    yield await list(path);
+  }
 
   /// Create a directory at [path].
   Future<void> makeDir(String path) =>
@@ -423,41 +437,64 @@ class S3Backend extends StorageBackend {
     }
   }
 
+  // The account-level bucket list (discovery mode at the root) isn't a
+  // writable directory — creating folders, renaming or deleting there is
+  // meaningless and the backend would throw — so report it read-only and let
+  // the UI hide those actions. Everywhere else mutation is allowed.
+  @override
+  bool mutableAt(String path) {
+    if (!_discovery) return true;
+    final (bucket, _) = _split(path);
+    return bucket.isNotEmpty;
+  }
+
   @override
   Future<List<FileItem>> list(String path) async {
+    List<FileItem> last = const [];
+    await for (final page in listIncremental(path)) {
+      last = page;
+    }
+    return last;
+  }
+
+  @override
+  Stream<List<FileItem>> listIncremental(String path) async* {
     await _ensureCredentials();
     final (bucket, key) = _split(path);
 
-    // Root of a discovery connection → list the account's buckets.
+    // Root of a discovery connection → list the account's buckets (one call).
     if (_discovery && bucket.isEmpty) {
       final names = await _serviceClient().listBuckets();
-      return [for (final n in names) FileItem(name: n, isDir: true)]
+      yield [for (final n in names) FileItem(name: n, isDir: true)]
         ..sort(StorageBackend.dirsFirst);
+      return;
     }
 
     final client = await _clientFor(bucket);
     final items = <FileItem>[];
     if (path.isNotEmpty) items.add(const FileItem(name: '..', isDir: true));
 
-    final result = await client.listAll(prefix: key, delimiter: '/');
-    for (final prefix in result.commonPrefixes) {
-      final name = prefix.substring(key.length).replaceAll(RegExp(r'/$'), '');
-      if (name.isEmpty) continue;
-      items.add(FileItem(name: name, isDir: true));
+    // Stream the listing page by page so the pane fills as objects arrive
+    // instead of buffering a whole (possibly huge) prefix before showing it.
+    await for (final page in client.listPages(prefix: key, delimiter: '/')) {
+      for (final prefix in page.commonPrefixes) {
+        final name = prefix.substring(key.length).replaceAll(RegExp(r'/$'), '');
+        if (name.isEmpty) continue;
+        items.add(FileItem(name: name, isDir: true));
+      }
+      for (final obj in page.objects) {
+        if (obj.key == key) continue; // the prefix placeholder object itself
+        final name = obj.key.substring(key.length);
+        if (name.isEmpty || name.endsWith('/')) continue;
+        items.add(FileItem(
+          name: name,
+          sizeBytes: obj.size,
+          modified: formatModified(obj.lastModified),
+          perms: 's3',
+        ));
+      }
+      yield List<FileItem>.from(items)..sort(StorageBackend.dirsFirst);
     }
-    for (final obj in result.objects) {
-      if (obj.key == key) continue; // the prefix placeholder object itself
-      final name = obj.key.substring(key.length);
-      if (name.isEmpty || name.endsWith('/')) continue;
-      items.add(FileItem(
-        name: name,
-        sizeBytes: obj.size,
-        modified: formatModified(obj.lastModified),
-        perms: 's3',
-      ));
-    }
-    items.sort(StorageBackend.dirsFirst);
-    return items;
   }
 
   @override

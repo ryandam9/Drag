@@ -2,6 +2,16 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'db_migrations.dart';
 
+/// Whether trusted host keys survive a restart, or only last the session.
+enum KnownHostsStoreStatus {
+  /// Backed by an on-disk SQLite database — trusted keys persist across runs.
+  persistent,
+
+  /// The on-disk store couldn't be opened; an in-memory database is used so
+  /// verification still happens, but trusted keys are forgotten on exit.
+  memoryOnly,
+}
+
 /// A trusted SSH host key, remembered after the first connection (TOFU).
 class KnownHost {
   final int? id;
@@ -44,9 +54,13 @@ class KnownHost {
 
 /// Persists trusted SSH host keys in a local SQLite database.
 class KnownHostsStore {
-  KnownHostsStore._(this._db);
+  KnownHostsStore._(this._db, this.status);
 
   final Database _db;
+
+  /// Whether trusted keys persist across restarts or are session-only.
+  final KnownHostsStoreStatus status;
+
   static const _table = 'known_hosts';
 
   static Future<KnownHostsStore> open([String? path]) async {
@@ -70,7 +84,10 @@ class KnownHostsStore {
         '''),
       ),
     );
-    return KnownHostsStore._(db);
+    final status = dbPath == inMemoryDatabasePath
+        ? KnownHostsStoreStatus.memoryOnly
+        : KnownHostsStoreStatus.persistent;
+    return KnownHostsStore._(db, status);
   }
 
   static Future<String> _defaultPath(DatabaseFactory factory) async {

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drag/data/known_hosts_store.dart';
 import 'package:drag/fs/host_key_verifier.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -121,6 +123,19 @@ void main() {
     test('endpoint label omits the default SSH port', () {
       expect(const KnownHost(host: 'h', port: 22, type: 't', fingerprint: 'f').endpoint, 'h');
       expect(const KnownHost(host: 'h', port: 2222, type: 't', fingerprint: 'f').endpoint, 'h:2222');
+    });
+
+    test('an in-memory store reports memoryOnly status', () {
+      // The shared `store` is opened with inMemoryDatabasePath in setUp.
+      expect(store.status, KnownHostsStoreStatus.memoryOnly);
+    });
+
+    test('an on-disk store reports persistent status', () async {
+      final dir = await Directory.systemTemp.createTemp('known_hosts');
+      addTearDown(() => dir.delete(recursive: true));
+      final disk = await KnownHostsStore.open('${dir.path}/kh.db');
+      addTearDown(disk.close);
+      expect(disk.status, KnownHostsStoreStatus.persistent);
     });
   });
 }

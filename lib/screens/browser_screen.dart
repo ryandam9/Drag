@@ -413,7 +413,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   Future<void> _newFolder(PaneController pane) async {
-    if (!pane.backend.supportsMutation) {
+    if (!pane.backend.mutableAt(pane.path)) {
       _toast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
       return;
     }
@@ -422,6 +422,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   Future<void> _renameSelected(PaneController pane) async {
+    if (!pane.backend.mutableAt(pane.path)) {
+      _toast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
+      return;
+    }
     final item = _selected(pane);
     if (item == null) {
       _toast('Nothing selected', 'Select an item to rename', ToastKind.info);
@@ -432,6 +436,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   Future<void> _deleteSelected(PaneController pane) async {
+    if (!pane.backend.mutableAt(pane.path)) {
+      _toast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
+      return;
+    }
     final items = pane.selectedItems();
     if (items.isEmpty) {
       _toast('Nothing selected', 'Select an item to delete', ToastKind.info);
@@ -447,6 +455,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
 
   Future<void> _showRowMenu(PaneController pane, bool left, FileItem item, Offset pos) async {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    // Mutation actions are meaningless at a read-only root (e.g. the S3 bucket
+    // list), so leave them out of the menu there.
+    final canMutate = pane.backend.mutableAt(pane.path);
     final choice = await showMenu<String>(
       context: context,
       color: FsColors.bgPanel,
@@ -454,10 +465,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       items: [
         PopupMenuItem(value: 'transfer', child: _menuText(left ? '⬆ Upload to other pane' : '⬇ Download to other pane')),
         if (!item.isDir) PopupMenuItem(value: 'preview', child: _menuText('👁 Preview')),
-        PopupMenuItem(value: 'rename', child: _menuText('✎ Rename')),
-        PopupMenuItem(value: 'delete', child: _menuText('⊗ Delete', color: FsColors.red)),
-        const PopupMenuDivider(),
-        PopupMenuItem(value: 'newFolder', child: _menuText('⊕ New folder')),
+        if (canMutate) PopupMenuItem(value: 'rename', child: _menuText('✎ Rename')),
+        if (canMutate) PopupMenuItem(value: 'delete', child: _menuText('⊗ Delete', color: FsColors.red)),
+        if (canMutate) const PopupMenuDivider(),
+        if (canMutate) PopupMenuItem(value: 'newFolder', child: _menuText('⊕ New folder')),
         PopupMenuItem(value: 'copyPath', child: _menuText('📋 Copy path')),
       ],
     );
@@ -840,14 +851,28 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                   onTap: () =>
                       ref.read(settingsProvider.notifier).setShowHiddenFiles(!showHiddenFiles)),
               const ToolSep(),
-              ToolButton('⊕ New Folder',
-                  tooltip: 'Create a new folder here', onTap: () => _newFolder(_focusedPane)),
-              ToolButton('✎ Rename',
-                  tooltip: 'Rename the selected item (F2)', onTap: () => _renameSelected(_focusedPane)),
-              ToolButton('⊗ Delete',
-                  tooltip: 'Delete the selected item(s) (Del)',
-                  color: FsColors.red,
-                  onTap: () => _deleteSelected(_focusedPane)),
+              Builder(builder: (_) {
+                // The S3 account-level bucket list (discovery root) isn't a
+                // writable directory, so hide these actions where they can't
+                // work rather than offer a button that always errors.
+                final canMutate = _focusedPane.backend.mutableAt(_focusedPane.path);
+                final mutateTip = canMutate ? null : 'Not available here';
+                return Row(mainAxisSize: MainAxisSize.min, children: [
+                  ToolButton('⊕ New Folder',
+                      enabled: canMutate,
+                      tooltip: mutateTip ?? 'Create a new folder here',
+                      onTap: () => _newFolder(_focusedPane)),
+                  ToolButton('✎ Rename',
+                      enabled: canMutate,
+                      tooltip: mutateTip ?? 'Rename the selected item (F2)',
+                      onTap: () => _renameSelected(_focusedPane)),
+                  ToolButton('⊗ Delete',
+                      enabled: canMutate,
+                      tooltip: mutateTip ?? 'Delete the selected item(s) (Del)',
+                      color: FsColors.red,
+                      onTap: () => _deleteSelected(_focusedPane)),
+                ]);
+              }),
             ]),
           ),
         ),

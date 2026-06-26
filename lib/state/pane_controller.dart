@@ -118,6 +118,11 @@ class PaneController {
     await refresh();
   }
 
+  /// Bumped on every [refresh]/navigation so a slow listing from a previous
+  /// path (e.g. a half-streamed S3 prefix) can't clobber the current one when
+  /// its pages arrive late.
+  int _loadToken = 0;
+
   Future<void> refresh() async {
     if (!backend.isReady) {
       _all = const [];
@@ -127,22 +132,33 @@ class PaneController {
       onChanged();
       return;
     }
+    final token = ++_loadToken;
     loading = true;
     error = null;
     compareMarks = const {}; // a fresh listing invalidates any comparison
     onChanged();
     try {
-      _all = await backend.list(path);
-      _applyView();
+      // Consume the listing incrementally so backends that page (S3) fill the
+      // pane as objects arrive instead of blocking on the whole prefix. Each
+      // emission is the cumulative listing so far.
+      await for (final page in backend.listIncremental(path)) {
+        if (token != _loadToken) return; // a newer navigation superseded us
+        _all = page;
+        _applyView();
+        onChanged();
+      }
     } catch (e) {
+      if (token != _loadToken) return;
       _all = const [];
       items = const [];
       error = e.toString().replaceFirst('Exception: ', '');
     } finally {
-      loading = false;
-      selectedIndex = null;
-      selection.clear();
-      onChanged();
+      if (token == _loadToken) {
+        loading = false;
+        selectedIndex = null;
+        selection.clear();
+        onChanged();
+      }
     }
   }
 

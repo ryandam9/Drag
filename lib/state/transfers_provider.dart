@@ -84,6 +84,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
       _runners.clear();
       _controls.clear();
       _deferred.clear();
+      _cancelled.clear();
       for (final t in _current) {
         t.dispose();
       }
@@ -175,6 +176,12 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// their timer fires, so the concurrency limiter doesn't restart them early.
   final Set<Transfer> _deferred = {};
 
+  /// Transfers cancelled while a run was still in flight. Their `liveTick` is
+  /// disposed only once the run settles (see [_runOnce]), since the unwinding
+  /// stream can still touch it — disposing immediately risks a "used after
+  /// dispose" error.
+  final Set<Transfer> _cancelled = {};
+
   /// Starts queued transfers (oldest first) until [TransfersState.maxThreads]
   /// are active. Called whenever a slot might free up (enqueue, completion,
   /// pause/cancel, resume, retry, thread-count change). Transfers with no
@@ -228,6 +235,13 @@ class TransfersNotifier extends Notifier<TransfersState> {
     )
         .then((_) {
       _controls.remove(t);
+      // Cancelled mid-run: the queue already removed it and deferred disposing
+      // its live notifier until the stream finished unwinding. Do it now.
+      if (_cancelled.remove(t)) {
+        t.dispose();
+        if (!_disposed) _pump();
+        return;
+      }
       if (_disposed) return;
       // Aborted (paused/cancelled) — the queue already set the desired state.
       if (t.status == TransferStatus.paused) {
@@ -493,12 +507,19 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// Cancel [t]: abort any in-flight stream (which discards the partial
   /// destination) and remove it from the queue.
   void cancel(Transfer t) {
+    final inFlight = _controls.containsKey(t);
     _controls[t]?.abort();
-    _controls.remove(t);
     _runners.remove(t);
     _deferred.remove(t);
     _emit(_list.where((x) => !identical(x, t)).toList());
-    t.dispose();
+    if (inFlight) {
+      // The run is still unwinding and may touch the transfer's live notifier;
+      // dispose only once it settles (see _runOnce). The control is removed
+      // there too, so leave it in place to be cleaned up by the run.
+      _cancelled.add(t);
+    } else {
+      t.dispose(); // queued/idle: nothing is running, safe to dispose now
+    }
     _pump(); // a cancelled active transfer frees a slot
   }
 

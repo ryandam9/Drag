@@ -241,14 +241,25 @@ class TransferService {
   }
 
   /// Promote the completed temp file [partial] to its final name, replacing any
-  /// existing destination. The complete bytes already live in [partial], so if
-  /// rename can't clobber an existing target we delete it and retry — a crash
-  /// in that window leaves the data recoverable in the temp file, never lost.
+  /// existing destination.
+  ///
+  /// A rename can fail because the final path already exists (several backends
+  /// won't clobber). That's the *only* case where deleting the destination and
+  /// retrying is safe — the complete bytes still live in [partial], so a crash
+  /// in that window leaves the data recoverable, never lost. Any other failure
+  /// (permission denied, a dropped SFTP connection, a missing partial) must
+  /// propagate untouched, so an unrelated error can never delete a valid
+  /// destination file. We distinguish the cases by checking, after the failure,
+  /// that the destination exists *and* our partial is still intact before
+  /// clobbering.
   Future<void> _finalize(StorageBackend dst, String partial, String finalPath) async {
     try {
       await dst.rename(partial, finalPath);
     } catch (_) {
-      await _safeDelete(dst, finalPath);
+      final destExists = await dst.sizeOf(finalPath) != null;
+      final partialExists = await dst.sizeOf(partial) != null;
+      if (!destExists || !partialExists) rethrow; // not a "target exists" clash
+      await dst.delete(finalPath, isDir: false);
       await dst.rename(partial, finalPath);
     }
   }

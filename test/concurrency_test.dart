@@ -88,6 +88,36 @@ void main() {
     expect(c.read(transfersProvider).doneCount, 3);
   });
 
+  test('cancelling an active transfer defers disposal until the run settles', () async {
+    final c = makeContainer();
+    final q = c.read(transfersProvider.notifier)..setMaxThreads(1);
+    final gated = _GatedSource();
+    final src = pane(gated);
+    final dst = pane(MemoryBackend());
+
+    enqueueN(q, src, dst, 2);
+    await tick();
+    var state = c.read(transfersProvider);
+    expect(state.activeCount, 1);
+    final active = state.transfers.firstWhere((t) => t.status == TransferStatus.active);
+
+    // Cancel while the read is still gated (the run is mid-flight).
+    q.cancel(active);
+    state = c.read(transfersProvider);
+    expect(state.transfers.any((t) => identical(t, active)), isFalse); // removed
+    // The live notifier must NOT be disposed yet — the unwinding run could
+    // still touch it. (Immediate disposal would make this throw.)
+    expect(active.touchLive, returnsNormally);
+
+    // Releasing lets the in-flight run unwind and the freed slot start the
+    // queued transfer, which then completes — without any use-after-dispose.
+    gated.release();
+    for (var i = 0; i < 200 && c.read(transfersProvider).doneCount < 1; i++) {
+      await tick(10);
+    }
+    expect(c.read(transfersProvider).doneCount, 1);
+  });
+
   test('a paused active transfer frees a slot for a queued one', () async {
     final c = makeContainer();
     final q = c.read(transfersProvider.notifier)..setMaxThreads(1);
