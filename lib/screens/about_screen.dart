@@ -65,7 +65,9 @@ class AboutScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return SingleChildScrollView(
+    // SelectionArea makes every piece of text on this page selectable/copyable.
+    return SelectionArea(
+      child: SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _hero(),
@@ -87,19 +89,7 @@ class AboutScreen extends ConsumerWidget {
         const SizedBox(height: 20),
         _heading(Icons.auto_awesome_outlined, 'What it does'),
         const SizedBox(height: 14),
-        LayoutBuilder(builder: (context, c) {
-          final cols = c.maxWidth >= 900 ? 2 : 1;
-          final gap = 16.0;
-          final cardW = (c.maxWidth - gap * (cols - 1)) / cols;
-          return Wrap(
-            spacing: gap,
-            runSpacing: gap,
-            children: [
-              for (final (icon, title, body) in _features)
-                SizedBox(width: cardW, child: _featureCard(icon, title, body)),
-            ],
-          );
-        }),
+        _featureMasonry(),
         const SizedBox(height: 24),
         _card(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -112,7 +102,40 @@ class AboutScreen extends ConsumerWidget {
         _footer(),
         const SizedBox(height: 8),
       ]),
+      ),
     );
+  }
+
+  /// Masonry grid of feature cards: two independent columns on a wide window
+  /// (one on a narrow one), each stacking on its own so a tall card never
+  /// leaves a gap beside a short one. Cards are dealt to the currently-shortest
+  /// column, estimating height from the body length.
+  Widget _featureMasonry() {
+    return LayoutBuilder(builder: (context, c) {
+      final cols = c.maxWidth >= 900 ? 2 : 1;
+      const gap = 16.0;
+      final colWidth = (c.maxWidth - gap * (cols - 1)) / cols;
+      final columns = List.generate(cols, (_) => <Widget>[]);
+      final loads = List<int>.filled(cols, 0);
+      for (final (icon, title, body) in _features) {
+        var t = 0;
+        for (var k = 1; k < cols; k++) {
+          if (loads[k] < loads[t]) t = k;
+        }
+        if (columns[t].isNotEmpty) columns[t].add(const SizedBox(height: gap));
+        columns[t].add(_featureCard(icon, title, body));
+        loads[t] += body.length + 60; // rough height proxy
+      }
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (var k = 0; k < cols; k++) ...[
+          if (k > 0) const SizedBox(width: gap),
+          SizedBox(
+            width: colWidth,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: columns[k]),
+          ),
+        ],
+      ]);
+    });
   }
 
   // ── Hero header ──────────────────────────────────────────────────────────
@@ -241,7 +264,7 @@ class AboutScreen extends ConsumerWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Open source', style: FsType.sans(size: 13, weight: FontWeight.w700, color: FsColors.text1)),
             const SizedBox(height: 3),
-            SelectableText(_repoUrl, style: FsType.mono(size: 12, color: FsColors.accentHi)),
+            Text(_repoUrl, style: FsType.mono(size: 12, color: FsColors.accentHi)),
           ]),
         ),
         Text('Built with Flutter', style: FsType.sans(size: 11, color: FsColors.text3)),

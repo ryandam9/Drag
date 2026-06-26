@@ -236,6 +236,10 @@ class SessionsNotifier extends Notifier<SessionsState> {
       log.error('${c.name}: missing AWS credentials (set a profile or access key/secret)');
       return;
     }
+    // Connecting counts as committing to this connection — persist it (record
+    // + secrets) so a typed password is retained next session even without an
+    // explicit Save.
+    await ref.read(connectionsProvider.notifier).remember(c);
     // Open the tab immediately so the user sees it, then verify in the
     // background; the pane shows its own loading/error state meanwhile.
     openSession(c);
@@ -301,6 +305,8 @@ class SessionsNotifier extends Notifier<SessionsState> {
     }
     toasts.push('Testing connection…', 'Reaching ${c.name}', ToastKind.info);
     log.info('Testing "${c.name}" — ${_target(c)}');
+    // Remember the credentials being tested so they survive a restart.
+    await ref.read(connectionsProvider.notifier).remember(c);
     final backend = c.isS3 ? S3Backend(c) : SftpBackend(c);
     try {
       final items = await backend.list(backend.initialPath);

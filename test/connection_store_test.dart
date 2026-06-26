@@ -1,4 +1,5 @@
 import 'package:drag/data/connection_store.dart';
+import 'package:drag/data/secret_store.dart';
 import 'package:drag/models/connection.dart';
 import 'package:drag/state/app.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -149,6 +150,44 @@ void main() {
       await conns.save(conn);
       final stored = (await store.load()).firstWhere((x) => x.id == conn.id);
       expect(stored.name, 'renamed');
+    });
+
+    test('remember persists secrets so they survive into a new session', () async {
+      final secrets = MemorySecretStore();
+      final db = await ConnectionStore.open(inMemoryDatabasePath);
+      final conn = Connection(
+        id: 'srv2',
+        name: 'srv2',
+        host: 'h',
+        username: 'u',
+        protocol: Protocol.sftp,
+      )..password = 'hunter2';
+
+      // Session 1: connecting/testing calls remember(), which writes the record
+      // to SQLite and the password to the (keychain-backed) secret store.
+      final c1 = makeContainer(
+        connectionStore: db,
+        connections: [conn],
+        overrides: [secretStoreProvider.overrideWithValue(secrets)],
+      );
+      await c1.read(connectionsProvider.notifier).remember(conn);
+
+      // The SQLite record never holds the secret (it lives in the keychain).
+      final reloaded = await db.load();
+      expect(reloaded.single.password, isEmpty);
+
+      // Session 2: a fresh boot restores the password from the secret store.
+      final c2 = makeContainer(
+        connectionStore: db,
+        connections: reloaded,
+        overrides: [secretStoreProvider.overrideWithValue(secrets)],
+      );
+      c2.read(connectionsProvider); // triggers the secret-restore microtask
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(c2.read(connectionsProvider).connections.single.password, 'hunter2');
+
+      await db.close();
     });
   });
 }

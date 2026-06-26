@@ -75,6 +75,18 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
     await _secrets?.save(c);
   }
 
+  /// Persist [c] (record + secrets) without changing the current selection or
+  /// re-emitting state. Called when the user Connects/Tests so a typed password
+  /// survives a restart even if they never press Save explicitly. A connection
+  /// not yet in the list (shouldn't normally happen) is skipped for the SQLite
+  /// upsert but its secrets are still saved.
+  Future<void> remember(Connection c) async {
+    if (c.id.isEmpty) c.id = Connection.newId();
+    final idx = _list.indexOf(c);
+    if (idx >= 0) await _store?.upsert(c, idx);
+    await _secrets?.save(c);
+  }
+
   Future<Connection> duplicate(Connection c) async {
     final copy = Connection.fromJson(c.toJson())
       ..id = Connection.newId()
