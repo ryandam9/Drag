@@ -1,67 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 
-/// macOS-style traffic lights used in every window title bar.
-class TrafficLights extends StatelessWidget {
-  const TrafficLights({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    Widget dot(Color c) => Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-        );
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        dot(const Color(0xFFFF5F57)),
-        const SizedBox(width: 6),
-        dot(const Color(0xFFFEBC2E)),
-        const SizedBox(width: 6),
-        dot(const Color(0xFF28C840)),
-      ],
-    );
-  }
-}
-
-/// The window title bar: traffic lights, centered title, optional trailing actions.
-class TitleBar extends StatelessWidget {
-  final String title;
-  final List<Widget> actions;
-  const TitleBar({super.key, required this.title, this.actions = const []});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: FsColors.bgDeep,
-        border: Border(bottom: BorderSide(color: FsColors.border)),
-      ),
-      child: Row(
-        children: [
-          const TrafficLights(),
-          Expanded(
-            child: Center(
-              child: Text(title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: FsType.sans(size: 12, weight: FontWeight.w500, color: FsColors.text2)),
-            ),
-          ),
-          if (actions.isEmpty)
-            const SizedBox(width: 54)
-          else
-            Row(mainAxisSize: MainAxisSize.min, children: actions),
-        ],
-      ),
-    );
-  }
-}
-
-/// Small pill button used in title bars ("⊕ New Session").
+/// Small pill button used in screen headers (e.g. the Transfer Queue's
+/// "⏸ Pause all" / "⊗ Clear done" bulk actions).
 class TbButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;

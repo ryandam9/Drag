@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'fs/host_key_verifier.dart';
 import 'screens/about_screen.dart';
@@ -88,21 +91,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     final screen = ref.watch(navProvider);
-    final nav = ref.read(navProvider.notifier);
 
-    final (title, actions) = switch (screen) {
-      AppScreen.browser => (
-          _browserTitle(),
-          [TbButton('⊕ New Session', onTap: () => nav.go(AppScreen.connections))],
-        ),
-      AppScreen.connections => ('Connection Manager', <Widget>[]),
-      // Queue & Dashboard render their own bulk actions in the screen header,
-      // so the title bar stays clean (no duplicate buttons).
-      AppScreen.queue => ('Transfer Queue', <Widget>[]),
-      AppScreen.dashboard => ('History Dashboard', <Widget>[]),
-      AppScreen.settings => ('Preferences', <Widget>[]),
-      AppScreen.about => ('About Drag', <Widget>[]),
-    };
+    // The app uses the OS-native title bar (no custom chrome), so keep the
+    // window title in step with the active screen / session here.
+    _syncWindowTitle(screen);
 
     final body = switch (screen) {
       AppScreen.browser => const BrowserScreen(),
@@ -116,25 +108,20 @@ class _AppShellState extends ConsumerState<AppShell> {
     return Scaffold(
       backgroundColor: FsColors.bgScaffold,
       body: Stack(children: [
-        Column(children: [
-          TitleBar(title: title, actions: actions),
+        Row(children: [
+          const NavRail(),
           Expanded(
-            child: Row(children: [
-              const NavRail(),
-              Expanded(
-                child: Container(
-                  color: FsColors.bgScaffold,
-                  child: _MinSize(
-                    minWidth: 820,
-                    minHeight: 520,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 160),
-                      child: KeyedSubtree(key: ValueKey(screen), child: body),
-                    ),
-                  ),
+            child: Container(
+              color: FsColors.bgScaffold,
+              child: _MinSize(
+                minWidth: 820,
+                minHeight: 520,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 160),
+                  child: KeyedSubtree(key: ValueKey(screen), child: body),
                 ),
               ),
-            ]),
+            ),
           ),
         ]),
         const ActiveTransferOverlay(),
@@ -142,6 +129,27 @@ class _AppShellState extends ConsumerState<AppShell> {
       ]),
     );
   }
+
+  /// Mirrors the active screen (and, on the browser, the active session) into
+  /// the OS window title. Best-effort: window control isn't available in tests
+  /// or headless runs, so a failure is ignored. Only re-set when it changes.
+  String? _lastWindowTitle;
+  void _syncWindowTitle(AppScreen screen) {
+    if (!_isDesktop) return;
+    final title = switch (screen) {
+      AppScreen.browser => _browserTitle(),
+      AppScreen.connections => 'Drag — Connection Manager',
+      AppScreen.queue => 'Drag — Transfer Queue',
+      AppScreen.dashboard => 'Drag — History Dashboard',
+      AppScreen.settings => 'Drag — Preferences',
+      AppScreen.about => 'Drag — About',
+    };
+    if (title == _lastWindowTitle) return;
+    _lastWindowTitle = title;
+    windowManager.setTitle(title).catchError((_) {});
+  }
+
+  static bool get _isDesktop => Platform.isLinux || Platform.isMacOS || Platform.isWindows;
 
   String _browserTitle() {
     final state = ref.watch(sessionsProvider);
