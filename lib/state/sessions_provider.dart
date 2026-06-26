@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/session_store.dart';
@@ -380,9 +381,22 @@ class SessionsNotifier extends Notifier<SessionsState> {
 
   /// Compute (but don't run) a recursive mirror of one pane's tree onto the
   /// other, walking nested folders so differences at any depth are caught.
-  Future<MirrorPlan> mirrorPlan({required bool leftToRight, required bool deleteExtras}) {
+  Future<MirrorPlan> mirrorPlan({
+    required bool leftToRight,
+    required bool deleteExtras,
+    CompareMode mode = CompareMode.size,
+    MirrorCancel? cancel,
+    void Function(int scanned)? onScanned,
+    int? maxDepth,
+    int? maxFiles,
+  }) {
     final src = leftToRight ? leftPane : rightPane;
     final dst = leftToRight ? rightPane : leftPane;
+    // Content hashing for checksum compare reads each file via the backend.
+    Future<String> hasher(StorageBackend b, String path) async {
+      final handle = await b.openRead(path);
+      return (await md5.bind(handle.stream).single).toString();
+    }
     return planMirrorRecursive(
       srcRoot: src.path,
       dstRoot: dst.path,
@@ -392,6 +406,13 @@ class SessionsNotifier extends Notifier<SessionsState> {
       joinDst: dst.backend.childPath,
       leftToRight: leftToRight,
       deleteExtras: deleteExtras,
+      mode: mode,
+      hashSrc: mode == CompareMode.checksum ? (p) => hasher(src.backend, p) : null,
+      hashDst: mode == CompareMode.checksum ? (p) => hasher(dst.backend, p) : null,
+      cancel: cancel,
+      onScanned: onScanned,
+      maxDepth: maxDepth,
+      maxFiles: maxFiles,
     );
   }
 

@@ -69,6 +69,25 @@ class PaneController {
   bool loading = false;
   String? error;
 
+  /// Cap on how many entries a single listing loads into a pane, so an enormous
+  /// prefix can't grow the pane unbounded. When hit, [listingTruncated] is set.
+  static const int listingMax = 10000;
+
+  /// True when the current listing stopped early (cap reached or [cancelListing]).
+  bool listingTruncated = false;
+
+  /// Number of raw entries loaded so far (pre-filter) — shown while a big
+  /// listing streams in.
+  int get loadedCount => _all.length;
+
+  bool _listCancelled = false;
+
+  /// Stop the in-progress listing, keeping whatever has loaded so far.
+  void cancelListing() {
+    _listCancelled = true;
+    onChanged();
+  }
+
   /// In-pane name filter (substring, case-insensitive). Empty shows everything.
   String filterQuery = '';
 
@@ -135,14 +154,28 @@ class PaneController {
     final token = ++_loadToken;
     loading = true;
     error = null;
+    listingTruncated = false;
+    _listCancelled = false;
     compareMarks = const {}; // a fresh listing invalidates any comparison
     onChanged();
     try {
       // Consume the listing incrementally so backends that page (S3) fill the
       // pane as objects arrive instead of blocking on the whole prefix. Each
-      // emission is the cumulative listing so far.
+      // emission is the cumulative listing so far. Stop on a user cancel or
+      // when the cap is reached so a giant prefix can't run unbounded.
       await for (final page in backend.listIncremental(path)) {
         if (token != _loadToken) return; // a newer navigation superseded us
+        if (_listCancelled) {
+          listingTruncated = true;
+          break;
+        }
+        if (page.length > listingMax) {
+          _all = page.sublist(0, listingMax);
+          listingTruncated = true;
+          _applyView();
+          onChanged();
+          break;
+        }
         _all = page;
         _applyView();
         onChanged();

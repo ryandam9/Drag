@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:drag/fs/storage_backend.dart';
 import 'package:drag/models/connection.dart';
+import 'package:drag/models/file_item.dart';
 import 'package:drag/state/pane_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -188,4 +190,36 @@ void main() {
   test('endpointLabel falls back to Local', () {
     expect(localPane().endpointLabel, 'Local');
   });
+
+  test('a listing larger than the cap is truncated', () async {
+    final pane = PaneController(backend: _BigBackend(), onChanged: () {})..path = '/';
+    await pane.refresh();
+    expect(pane.listingTruncated, isTrue);
+    expect(pane.loadedCount, PaneController.listingMax);
+  });
+}
+
+/// A backend whose single listing page exceeds [PaneController.listingMax].
+class _BigBackend extends StorageBackend {
+  @override
+  EndpointKind get kind => EndpointKind.s3;
+  @override
+  String get badge => 'BIG';
+  @override
+  String displayPath(String path) => path;
+  @override
+  String get initialPath => '/';
+  @override
+  Future<List<FileItem>> list(String path) async =>
+      [for (var i = 0; i < PaneController.listingMax + 50; i++) FileItem(name: 'f$i', sizeBytes: i)];
+  @override
+  Future<ReadHandle> openRead(String path) => throw UnsupportedError('no');
+  @override
+  Future<void> write(String path, Stream<Uint8List> data, int length,
+          {void Function(int sent)? onProgress}) =>
+      throw UnsupportedError('no');
+  @override
+  String childPath(String path, String name, bool isDir) => '$path$name';
+  @override
+  String parentPath(String path) => '/';
 }

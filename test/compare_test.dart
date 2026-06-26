@@ -51,6 +51,13 @@ void main() {
       Map<String, List<FileItem>> src,
       Map<String, List<FileItem>> dst, {
       bool deleteExtras = false,
+      CompareMode mode = CompareMode.size,
+      MirrorHasher? hashSrc,
+      MirrorHasher? hashDst,
+      MirrorCancel? cancel,
+      void Function(int)? onScanned,
+      int? maxDepth,
+      int? maxFiles,
     }) {
       String join(String path, String name, bool isDir) => path == '/' ? '/$name' : '$path/$name';
       return planMirrorRecursive(
@@ -62,6 +69,13 @@ void main() {
         joinDst: join,
         leftToRight: true,
         deleteExtras: deleteExtras,
+        mode: mode,
+        hashSrc: hashSrc,
+        hashDst: hashDst,
+        cancel: cancel,
+        onScanned: onScanned,
+        maxDepth: maxDepth,
+        maxFiles: maxFiles,
       );
     }
 
@@ -94,6 +108,77 @@ void main() {
       expect(p.mkdirs.map((m) => m.dstPath), ['/sub', '/sub/deep']); // parents first
       expect(p.copies.map((c) => c.dstPath).toSet(), {'/sub/a', '/sub/deep/b'});
       expect(p.totalBytes, 3);
+    });
+
+    test('size+modified mode flags same-size files with a different mtime', () async {
+      const sA = FileItem(name: 'a', sizeBytes: 10, modified: '2025-01-01');
+      const dA = FileItem(name: 'a', sizeBytes: 10, modified: '2025-02-02');
+      // Size-only sees them as identical; size+time catches the change.
+      final sizeOnly = await plan({'/': [sA]}, {'/': [dA]});
+      expect(sizeOnly.copies, isEmpty);
+      final withTime = await plan({'/': [sA]}, {'/': [dA]}, mode: CompareMode.sizeAndTime);
+      expect(withTime.copies.map((c) => c.dstPath), ['/a']);
+    });
+
+    test('checksum mode compares content hashes for same-size files', () async {
+      const sA = FileItem(name: 'a', sizeBytes: 10);
+      const dA = FileItem(name: 'a', sizeBytes: 10);
+      final p = await plan(
+        {'/': [sA]},
+        {'/': [dA]},
+        mode: CompareMode.checksum,
+        hashSrc: (_) async => 'HASH_A',
+        hashDst: (_) async => 'HASH_B', // differs → copy
+      );
+      expect(p.copies.map((c) => c.dstPath), ['/a']);
+
+      final same = await plan(
+        {'/': [sA]},
+        {'/': [dA]},
+        mode: CompareMode.checksum,
+        hashSrc: (_) async => 'SAME',
+        hashDst: (_) async => 'SAME', // equal → skip
+      );
+      expect(same.copies, isEmpty);
+    });
+
+    test('maxDepth bounds recursion and marks the plan truncated', () async {
+      final p = await plan(
+        {
+          '/': [_d('sub')],
+          '/sub': [_f('a', 1), _d('deep')],
+          '/sub/deep': [_f('b', 2)],
+        },
+        {'/': const []},
+        maxDepth: 1, // don't descend into /sub/deep
+      );
+      expect(p.copies.map((c) => c.dstPath), ['/sub/a']);
+      expect(p.copies.any((c) => c.dstPath == '/sub/deep/b'), isFalse);
+    });
+
+    test('a cancel stops planning and marks it truncated', () async {
+      final cancel = MirrorCancel()..cancel();
+      final p = await plan(
+        {
+          '/': [_f('a', 1), _f('b', 2)],
+        },
+        {'/': const []},
+        cancel: cancel,
+      );
+      expect(p.truncated, isTrue);
+      expect(p.copies, isEmpty); // cancelled before examining entries
+    });
+
+    test('maxFiles caps the scan and reports truncated', () async {
+      final p = await plan(
+        {
+          '/': [_f('a', 1), _f('b', 1), _f('c', 1)],
+        },
+        {'/': const []},
+        maxFiles: 2,
+      );
+      expect(p.truncated, isTrue);
+      expect(p.copies.length, lessThanOrEqualTo(2));
     });
 
     test('identical trees produce an empty plan', () async {

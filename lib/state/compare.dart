@@ -60,6 +60,36 @@ PaneDiff comparePanes(List<FileItem> left, List<FileItem> right) {
   return PaneDiff(marksFor(l, r), marksFor(r, l));
 }
 
+/// How a mirror decides two same-named files differ.
+enum CompareMode {
+  /// Byte count only (cheap; default).
+  size,
+
+  /// Byte count and last-modified timestamp.
+  sizeAndTime,
+
+  /// Content hash — exact but reads both files, so it's opt-in.
+  checksum,
+}
+
+extension CompareModeLabel on CompareMode {
+  String get label => switch (this) {
+        CompareMode.size => 'Size',
+        CompareMode.sizeAndTime => 'Size + modified',
+        CompareMode.checksum => 'Checksum (slow)',
+      };
+}
+
+/// Computes a content hash for the file at [path] on one side (used only by
+/// [CompareMode.checksum]).
+typedef MirrorHasher = Future<String> Function(String path);
+
+/// A cooperative cancel flag for an in-progress [planMirrorRecursive].
+class MirrorCancel {
+  bool cancelled = false;
+  void cancel() => cancelled = true;
+}
+
 /// Lists the entries of a directory at [path] on one side of a mirror.
 typedef MirrorLister = Future<List<FileItem>> Function(String path);
 
@@ -105,11 +135,16 @@ class MirrorPlan {
   final List<MirrorMkdir> mkdirs;
   final List<MirrorCopy> copies;
   final List<MirrorDelete> deletes;
+  /// True when planning stopped early because a limit (max depth / max files)
+  /// was hit or the user cancelled — so the plan is partial.
+  final bool truncated;
+
   const MirrorPlan({
     required this.leftToRight,
     this.mkdirs = const [],
     this.copies = const [],
     this.deletes = const [],
+    this.truncated = false,
   });
 
   bool get isEmpty => mkdirs.isEmpty && copies.isEmpty && deletes.isEmpty;
@@ -125,6 +160,12 @@ class MirrorPlan {
 /// size), and — when [deleteExtras] — destination-only entries to remove.
 /// Type conflicts (a file where the source has a folder, or vice-versa) are
 /// always resolved by removing the blocker, regardless of [deleteExtras].
+/// [mode] picks how same-named files are compared (size / size+time /
+/// checksum). [hashSrc]/[hashDst] are required for [CompareMode.checksum].
+/// Planning can be bounded and observed: [cancel] stops it, [onScanned] reports
+/// entries examined, and [maxDepth]/[maxFiles] cap the walk on huge trees. When
+/// any bound (or cancellation) cuts the walk short the result is a partial plan
+/// with [MirrorPlan.truncated] set.
 Future<MirrorPlan> planMirrorRecursive({
   required String srcRoot,
   required String dstRoot,
@@ -134,18 +175,52 @@ Future<MirrorPlan> planMirrorRecursive({
   required MirrorJoin joinDst,
   required bool leftToRight,
   required bool deleteExtras,
+  CompareMode mode = CompareMode.size,
+  MirrorHasher? hashSrc,
+  MirrorHasher? hashDst,
+  MirrorCancel? cancel,
+  void Function(int scanned)? onScanned,
+  int? maxDepth,
+  int? maxFiles,
 }) async {
   final mkdirs = <MirrorMkdir>[];
   final copies = <MirrorCopy>[];
   final deletes = <MirrorDelete>[];
+  var scanned = 0;
+  var stopped = false;
 
-  Future<void> walk(String sDir, String dDir, bool dstExists) async {
+  // Whether a same-named source/destination *file* pair differs, per [mode].
+  Future<bool> fileDiffers(FileItem s, FileItem d, String sPath, String dPath) async {
+    if ((d.sizeBytes ?? 0) != (s.sizeBytes ?? 0)) return true; // size always wins
+    if (mode == CompareMode.sizeAndTime) return s.modified != d.modified;
+    if (mode == CompareMode.checksum && hashSrc != null && hashDst != null) {
+      return (await hashSrc(sPath)) != (await hashDst(dPath));
+    }
+    return false;
+  }
+
+  Future<void> walk(String sDir, String dDir, bool dstExists, int depth) async {
+    if (stopped || (cancel?.cancelled ?? false)) {
+      stopped = true;
+      return;
+    }
+    if (maxDepth != null && depth > maxDepth) return;
     final srcEntries = [for (final e in await listSrc(sDir)) if (!e.isParent) e];
     final dstEntries = dstExists ? [for (final e in await listDst(dDir)) if (!e.isParent) e] : <FileItem>[];
     final dstByName = {for (final e in dstEntries) e.name: e};
     final srcNames = {for (final e in srcEntries) e.name};
 
     for (final s in srcEntries) {
+      if (cancel?.cancelled ?? false) {
+        stopped = true;
+        return;
+      }
+      if (maxFiles != null && scanned >= maxFiles) {
+        stopped = true;
+        return;
+      }
+      if (++scanned % 200 == 0) onScanned?.call(scanned);
+
       final d = dstByName[s.name];
       if (s.isDir) {
         final sPath = joinSrc(sDir, s.name, true);
@@ -154,12 +229,12 @@ Future<MirrorPlan> planMirrorRecursive({
           // A file blocks the folder — remove it, then build the subtree fresh.
           deletes.add(MirrorDelete(joinDst(dDir, s.name, false), false));
           mkdirs.add(MirrorMkdir(dPath));
-          await walk(sPath, dPath, false);
+          await walk(sPath, dPath, false, depth + 1);
         } else if (d == null) {
           mkdirs.add(MirrorMkdir(dPath));
-          await walk(sPath, dPath, false);
+          await walk(sPath, dPath, false, depth + 1);
         } else {
-          await walk(sPath, dPath, true);
+          await walk(sPath, dPath, true, depth + 1);
         }
       } else {
         final sPath = joinSrc(sDir, s.name, false);
@@ -169,7 +244,7 @@ Future<MirrorPlan> planMirrorRecursive({
           // A folder blocks the file — remove it, then copy.
           deletes.add(MirrorDelete(joinDst(dDir, s.name, true), true));
           copies.add(MirrorCopy(srcPath: sPath, dstPath: dPath, name: s.name, sizeBytes: size));
-        } else if (d == null || (d.sizeBytes ?? 0) != size) {
+        } else if (d == null || await fileDiffers(s, d, sPath, dPath)) {
           copies.add(MirrorCopy(srcPath: sPath, dstPath: dPath, name: s.name, sizeBytes: size));
         }
       }
@@ -184,6 +259,12 @@ Future<MirrorPlan> planMirrorRecursive({
     }
   }
 
-  await walk(srcRoot, dstRoot, true);
-  return MirrorPlan(leftToRight: leftToRight, mkdirs: mkdirs, copies: copies, deletes: deletes);
+  await walk(srcRoot, dstRoot, true, 0);
+  onScanned?.call(scanned);
+  return MirrorPlan(
+      leftToRight: leftToRight,
+      mkdirs: mkdirs,
+      copies: copies,
+      deletes: deletes,
+      truncated: stopped);
 }

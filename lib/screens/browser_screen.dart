@@ -566,19 +566,34 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   Future<void> _showMirrorDialog() async {
     var leftToRight = true;
     var deleteExtras = false;
+    var mode = CompareMode.size;
     // Recompute the (recursive) plan only when an input changes; the latest
-    // resolved plan is what the Mirror button acts on.
+    // resolved plan is what the Mirror button acts on. Planning is bounded and
+    // cancellable so a huge remote tree can't run away.
     String? planKey;
     Future<MirrorPlan>? planFuture;
     MirrorPlan? resolved;
+    MirrorCancel? scanCancel;
+    final scanned = ValueNotifier<int>(0);
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
-        final key = '$leftToRight/$deleteExtras';
+        final key = '$leftToRight/$deleteExtras/${mode.name}';
         if (key != planKey) {
           planKey = key;
           resolved = null;
-          planFuture = _sessions.mirrorPlan(leftToRight: leftToRight, deleteExtras: deleteExtras);
+          scanCancel?.cancel(); // abandon any superseded scan
+          final cancel = scanCancel = MirrorCancel();
+          scanned.value = 0;
+          planFuture = _sessions.mirrorPlan(
+            leftToRight: leftToRight,
+            deleteExtras: deleteExtras,
+            mode: mode,
+            cancel: cancel,
+            onScanned: (n) => scanned.value = n,
+            maxDepth: 64,
+            maxFiles: 50000,
+          );
         }
         final srcLabel = leftToRight ? _leftPane.endpointLabel : _rightPane.endpointLabel;
         final dstLabel = leftToRight ? _rightPane.endpointLabel : _leftPane.endpointLabel;
@@ -598,12 +613,32 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                         color: leftToRight == value ? FsColors.accentHi : FsColors.text2)),
               ),
             );
+        Widget modeChip(CompareMode m) => GestureDetector(
+              onTap: () => setLocal(() => mode = m),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: mode == m ? FsColors.bgActive : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: FsColors.border),
+                ),
+                child: Text(m.label,
+                    style: FsType.sans(
+                        size: 11,
+                        weight: FontWeight.w600,
+                        color: mode == m ? FsColors.accentHi : FsColors.text2)),
+              ),
+            );
         return AlertDialog(
           backgroundColor: FsColors.bgPanel,
           title: Text('Mirror folders',
               style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [dirChip('Left → Right', true), const SizedBox(width: 8), dirChip('Right → Left', false)]),
+            const SizedBox(height: 10),
+            Text('Compare by', style: FsType.sans(size: 11, color: FsColors.text3)),
+            const SizedBox(height: 4),
+            Wrap(spacing: 8, runSpacing: 6, children: [for (final m in CompareMode.values) modeChip(m)]),
             const SizedBox(height: 14),
             Text('Make $dstLabel match $srcLabel (recursively):',
                 style: FsType.sans(size: 12, color: FsColors.text2)),
@@ -618,7 +653,18 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                         height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
                     const SizedBox(width: 10),
-                    Text('Scanning folders…', style: FsType.sans(size: 12, color: FsColors.text3)),
+                    ValueListenableBuilder<int>(
+                      valueListenable: scanned,
+                      builder: (_, n, _) => Text(
+                          n > 0 ? 'Scanning folders… ($n examined)' : 'Scanning folders…',
+                          style: FsType.sans(size: 12, color: FsColors.text3)),
+                    ),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () => scanCancel?.cancel(),
+                      child: Text('Stop',
+                          style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.amber)),
+                    ),
                   ]);
                 }
                 final plan = resolved = snap.data!;
@@ -629,6 +675,13 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
                       style: FsType.sans(size: 12, color: FsColors.text1)),
                   Text('· ${plan.deleteCount} item(s) to delete on $dstLabel',
                       style: FsType.sans(size: 12, color: plan.deleteCount > 0 ? FsColors.red : FsColors.text3)),
+                  if (plan.truncated)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                          '⚠ Scan was stopped early (limit reached or cancelled) — this plan is partial.',
+                          style: FsType.sans(size: 11, color: FsColors.amber)),
+                    ),
                 ]);
               },
             ),
@@ -651,7 +704,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             ),
           ]),
           actions: [
-            FsButton('Cancel', onTap: () => Navigator.pop(ctx)),
+            FsButton('Cancel', onTap: () {
+              scanCancel?.cancel(); // stop any in-flight scan
+              Navigator.pop(ctx);
+            }),
             FsButton('Mirror',
                 kind: FsButtonKind.primary,
                 onTap: () async {
@@ -1245,7 +1301,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         },
       );
     }
-    if (pane.loading) {
+    // Only block with a full-screen spinner before the first page arrives; once
+    // entries stream in, show them with a thin progress strip so a large
+    // listing renders incrementally (and can be stopped).
+    if (pane.loading && pane.items.isEmpty) {
       return Center(
         child: SizedBox(
             width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
@@ -1260,7 +1319,56 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         onAction: pane.refresh,
       );
     }
-    return _fileTable(pane, showPerms, left: left, scroll: left ? _leftScroll : _rightScroll);
+    return Column(children: [
+      if (pane.loading) _listingStrip(pane),
+      if (!pane.loading && pane.listingTruncated) _truncatedStrip(pane),
+      Expanded(child: _fileTable(pane, showPerms, left: left, scroll: left ? _leftScroll : _rightScroll)),
+    ]);
+  }
+
+  /// Thin strip shown while a (possibly large) listing streams in: live count
+  /// plus a Stop control that keeps what's loaded so far.
+  Widget _listingStrip(PaneController pane) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      color: FsColors.bgActive,
+      child: Row(children: [
+        SizedBox(
+            width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.6, color: FsColors.accent)),
+        const SizedBox(width: 8),
+        Text('Loading… ${pane.loadedCount} item(s)', style: FsType.sans(size: 11, color: FsColors.text2)),
+        const Spacer(),
+        GestureDetector(
+          onTap: pane.cancelListing,
+          child: Text('Stop',
+              style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.amber)),
+        ),
+      ]),
+    );
+  }
+
+  /// Banner shown when a listing was capped/stopped so the pane isn't complete.
+  Widget _truncatedStrip(PaneController pane) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      color: FsColors.amber.withValues(alpha: 0.14),
+      child: Row(children: [
+        Icon(Icons.warning_amber_rounded, size: 13, color: FsColors.amber),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+              'Showing ${pane.loadedCount} item(s) — listing stopped. Narrow the path or filter to see the rest.',
+              style: FsType.sans(size: 11, color: FsColors.amber)),
+        ),
+        GestureDetector(
+          onTap: pane.refresh,
+          child: Text('Reload',
+              style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.amber)),
+        ),
+      ]),
+    );
   }
 
   Widget _placeholder({
