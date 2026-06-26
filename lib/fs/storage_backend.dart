@@ -46,10 +46,10 @@ abstract class StorageBackend {
   /// Whether this backend supports create/rename/delete operations.
   bool get supportsMutation => true;
 
-  /// Whether create/rename/delete are meaningful at [path] specifically.
-  /// Defaults to [supportsMutation]; backends with a read-only root (e.g. the
-  /// S3 account-level bucket list in discovery mode) narrow this per path so
-  /// the UI can hide New Folder / Rename / Delete where they can't succeed.
+  /// Whether create/rename/delete are valid *at [path]*. Defaults to
+  /// [supportsMutation]; backends whose capability depends on location (e.g.
+  /// S3 at the account root, where there's no bucket to create folders in)
+  /// override this so the UI can hide those actions instead of erroring.
   bool mutableAt(String path) => supportsMutation;
 
   Future<List<FileItem>> list(String path);
@@ -316,6 +316,15 @@ class S3Backend extends StorageBackend {
   /// accounts with many buckets across many regions.
   bool get _discovery => connection.bucket.isEmpty;
 
+  // At the discovery account root there's no bucket selected, so create /
+  // rename / delete don't apply (you can't make a "folder" among buckets).
+  @override
+  bool mutableAt(String path) {
+    if (!_discovery) return true;
+    final (bucket, _) = _split(path);
+    return bucket.isNotEmpty;
+  }
+
   // One client per bucket (built with that bucket's region), plus a service
   // client for ListBuckets / GetBucketLocation in discovery mode.
   final Map<String, S3Client> _bucketClients = {};
@@ -435,17 +444,6 @@ class S3Backend extends StorageBackend {
     } catch (_) {
       return _defaultRegion(connection); // fall back; object ops will surface errors
     }
-  }
-
-  // The account-level bucket list (discovery mode at the root) isn't a
-  // writable directory — creating folders, renaming or deleting there is
-  // meaningless and the backend would throw — so report it read-only and let
-  // the UI hide those actions. Everywhere else mutation is allowed.
-  @override
-  bool mutableAt(String path) {
-    if (!_discovery) return true;
-    final (bucket, _) = _split(path);
-    return bucket.isNotEmpty;
   }
 
   @override
