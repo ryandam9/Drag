@@ -46,25 +46,35 @@ void main() {
   }
 
   group('Connection Manager', () {
-    testWidgets('shows SSH fields for an SFTP connection', (tester) async {
+    testWidgets('shows SSH fields for an SFTP connection (Connection tab)', (tester) async {
       final c = makeContainer(connections: sampleConnections());
       c.read(connectionsProvider.notifier)
           .select(c.read(connectionsProvider).connections.firstWhere((x) => x.kind == EndpointKind.sftp));
       await pumpScreen(tester, c, const ConnectionManagerScreen());
+      // The SFTP form is tabbed; an Authentication tab exists, host lives under
+      // the Connection tab, and there are no S3 credential fields.
+      expect(find.text('Authentication'), findsOneWidget); // tab chip
+      await tester.tap(find.text('Connection'));
+      await tester.pump();
       expect(find.text('Hostname / IP'), findsOneWidget);
-      expect(find.text('Authentication'), findsOneWidget);
       expect(find.text('Access Key ID'), findsNothing);
     });
 
-    testWidgets('shows S3 credential fields for an S3 connection', (tester) async {
+    testWidgets('shows S3 fields under the Connection and Credentials tabs', (tester) async {
       final c = makeContainer(connections: sampleConnections());
       c.read(connectionsProvider.notifier)
           .select(c.read(connectionsProvider).connections.firstWhere((x) => x.isS3));
       await pumpScreen(tester, c, const ConnectionManagerScreen());
-      expect(find.text('Access Key ID'), findsOneWidget);
-      expect(find.text('Secret Access Key'), findsOneWidget);
+
+      await tester.tap(find.text('Connection'));
+      await tester.pump();
       expect(find.text('Bucket'), findsOneWidget);
       expect(find.text('Hostname / IP'), findsNothing);
+
+      await tester.tap(find.text('Credentials'));
+      await tester.pump();
+      expect(find.text('Access Key ID'), findsOneWidget);
+      expect(find.text('Secret Access Key'), findsOneWidget);
     });
 
     testWidgets('secret fields can be revealed with the eye toggle', (tester) async {
@@ -72,6 +82,8 @@ void main() {
       c.read(connectionsProvider.notifier)
           .select(c.read(connectionsProvider).connections.firstWhere((x) => x.isS3));
       await pumpScreen(tester, c, const ConnectionManagerScreen());
+      await tester.tap(find.text('Credentials')); // secrets live on this tab
+      await tester.pump();
 
       // Secret + session-token fields start obscured, each with a "show" eye.
       expect(find.byIcon(Icons.visibility_outlined), findsWidgets);
@@ -92,6 +104,8 @@ void main() {
       final s3 = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
       c.read(connectionsProvider.notifier).select(s3);
       await pumpScreen(tester, c, const ConnectionManagerScreen());
+      await tester.tap(find.text('Connection')); // bucket lives on this tab
+      await tester.pump();
 
       final bucketField = find.widgetWithText(TextField, s3.bucket);
       expect(bucketField, findsWidgets);

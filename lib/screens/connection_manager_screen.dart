@@ -18,6 +18,9 @@ class _ConnectionManagerScreenState extends ConsumerState<ConnectionManagerScree
   final _search = TextEditingController();
   String _query = '';
 
+  /// Width of the connections sidebar — drag the divider to resize.
+  double _sidebarW = 264;
+
   @override
   void dispose() {
     _search.dispose();
@@ -31,8 +34,21 @@ class _ConnectionManagerScreenState extends ConsumerState<ConnectionManagerScree
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(width: 220, child: _sidebar(ref, state)),
-        VerticalDivider(width: 1, color: FsColors.border),
+        SizedBox(width: _sidebarW, child: _sidebar(ref, state)),
+        // Draggable divider: widen the connections list for more room.
+        MouseRegion(
+          cursor: SystemMouseCursors.resizeColumn,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragUpdate: (d) =>
+                setState(() => _sidebarW = (_sidebarW + d.delta.dx).clamp(200.0, 480.0)),
+            child: Container(
+              width: 7,
+              alignment: Alignment.center,
+              child: Container(width: 1, color: FsColors.border),
+            ),
+          ),
+        ),
         Expanded(
           child: selected == null
               ? _emptyState(ref)
@@ -297,38 +313,197 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
         ),
       ]);
 
+  /// Active settings tab.
+  int _tab = 0;
+
+  /// Height of the bottom connection-log panel (drag the handle to resize).
+  /// Default shows ~8 log lines.
+  double _logH = 280;
+
   @override
   Widget build(BuildContext context) {
-    // Detail layout: form + connection log. Side-by-side when there's room,
-    // stacked (log under the form) when the area is too narrow for two columns.
-    return LayoutBuilder(builder: (context, cons) {
-      final log = Container(
-        color: FsColors.bgScaffold,
-        padding: const EdgeInsets.all(20),
-        child: _connectionLog(),
-      );
+    final tabs = _tabDefs();
+    if (_tab >= tabs.length) _tab = 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _headerBar(),
+        _tabBar(tabs),
+        // The active section, scrollable, full width.
+        Expanded(
+          child: LayoutBuilder(builder: (context, cons) {
+            _narrow = cons.maxWidth < 460;
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(_narrow ? 16 : 28, 6, _narrow ? 16 : 28, 20),
+              child: _card(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start, children: tabs[_tab].body),
+              ),
+            );
+          }),
+        ),
+        // Pinned, resizable, scrollable connection log at the bottom.
+        _logResizeHandle(),
+        SizedBox(
+          height: _logH,
+          child: Container(
+            color: FsColors.bgScaffold,
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
+            child: _connectionLog(),
+          ),
+        ),
+      ],
+    );
+  }
 
-      if (cons.maxWidth < 640) {
-        return Column(
-          children: [
-            Expanded(child: _formColumn()),
-            Divider(height: 1, color: FsColors.border),
-            SizedBox(height: 220, child: log),
+  /// Title (connection name) + the Connect/Test/Save/Duplicate/Delete actions.
+  Widget _headerBar() {
+    final title = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Text(c.name.trim().isEmpty ? 'Unnamed connection' : c.name,
+          maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: FsType.sans(size: 22, weight: FontWeight.w700, color: FsColors.text1)),
+      if (c.lastConnected.isNotEmpty || c.details.isNotEmpty) ...[
+        const SizedBox(height: 4),
+        Text(
+          [if (c.lastConnected.isNotEmpty) c.lastConnected, if (c.details.isNotEmpty) c.details].join(' · '),
+          maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: FsType.sans(size: 12, color: FsColors.text2),
+        ),
+      ],
+    ]);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 20, 28, 12),
+      // Title and actions share the row when wide; the actions (a Wrap inside a
+      // Flexible) wrap onto their own lines when the area is narrow.
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(flex: 2, child: title),
+        const SizedBox(width: 12),
+        Flexible(flex: 3, child: _actionButtons()),
+      ]),
+    );
+  }
+
+  Widget _actionButtons() {
+    return Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.end, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      FilledButton.icon(
+        onPressed: () => ref.read(sessionsProvider.notifier).connect(c),
+        icon: const Icon(Icons.bolt, size: 18),
+        label: const Text('Connect'),
+      ),
+      OutlinedButton.icon(
+        onPressed: () => ref.read(sessionsProvider.notifier).testConnection(c),
+        icon: const Icon(Icons.wifi_tethering, size: 18),
+        label: const Text('Test'),
+      ),
+      OutlinedButton.icon(
+        onPressed: () {
+          ref.read(connectionsProvider.notifier).save(c);
+          _toast('Saved', '${c.name} configuration stored', ToastKind.success);
+        },
+        icon: const Icon(Icons.save_outlined, size: 18),
+        label: const Text('Save'),
+      ),
+      OutlinedButton.icon(
+        onPressed: () => ref.read(connectionsProvider.notifier).duplicate(c),
+        icon: const Icon(Icons.copy_all_outlined, size: 18),
+        label: const Text('Duplicate'),
+      ),
+      OutlinedButton.icon(
+        onPressed: () {
+          ref.read(connectionsProvider.notifier).delete(c);
+          _toast('Deleted', '${c.name} removed', ToastKind.info);
+        },
+        style: OutlinedButton.styleFrom(foregroundColor: FsColors.red),
+        icon: const Icon(Icons.delete_outline, size: 18),
+        label: const Text('Delete'),
+      ),
+    ]);
+  }
+
+  /// The settings tabs for the current protocol. Each tab's `body` is the list
+  /// of widgets shown (in a card) when it's active.
+  List<({String label, IconData icon, List<Widget> body})> _tabDefs() {
+    if (c.isS3) {
+      return [
+        (label: 'General', icon: Icons.tune, body: _generalFields()),
+        (label: 'Connection', icon: Icons.cloud_outlined, body: _s3ConnectionFields()),
+        (label: 'Credentials', icon: Icons.vpn_key_outlined, body: _s3CredentialFields()),
+        (label: 'Advanced', icon: Icons.settings_outlined, body: _s3AdvancedFields()),
+      ];
+    }
+    return [
+      (label: 'General', icon: Icons.tune, body: _generalFields()),
+      (label: 'Connection', icon: Icons.dns_outlined, body: _sshConnectionFields()),
+      (label: 'Authentication', icon: Icons.shield_outlined, body: _sshAuthFields()),
+      (label: 'Advanced', icon: Icons.folder_outlined, body: _sshAdvancedFields()),
+    ];
+  }
+
+  Widget _tabBar(List<({String label, IconData icon, List<Widget> body})> tabs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          for (var i = 0; i < tabs.length; i++) ...[
+            if (i > 0) const SizedBox(width: 6),
+            _tabChip(tabs[i].label, tabs[i].icon, i),
           ],
-        );
-      }
+        ]),
+      ),
+    );
+  }
 
-      // Cap the form so fields don't sprawl; the log gets the rest.
-      final formWidth = (cons.maxWidth * 0.5).clamp(320.0, 720.0);
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(width: formWidth, child: _formColumn()),
-          VerticalDivider(width: 1, color: FsColors.border),
-          Expanded(child: log),
-        ],
-      );
-    });
+  Widget _tabChip(String label, IconData icon, int i) {
+    final active = _tab == i;
+    return GestureDetector(
+      onTap: () => setState(() => _tab = i),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: active ? FsColors.bgSurface : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: active ? FsColors.border : Colors.transparent),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 15, color: active ? FsColors.accentHi : FsColors.text3),
+            const SizedBox(width: 7),
+            Text(label,
+                style: FsType.sans(
+                    size: 12.5,
+                    weight: active ? FontWeight.w700 : FontWeight.w500,
+                    color: active ? FsColors.text1 : FsColors.text2)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Draggable handle to grow/shrink the log; drag up for more lines.
+  Widget _logResizeHandle() {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeRow,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onVerticalDragUpdate: (d) =>
+            setState(() => _logH = (_logH - d.delta.dy).clamp(140.0, 560.0)),
+        child: Container(
+          height: 11,
+          decoration: BoxDecoration(
+            color: FsColors.bgScaffold,
+            border: Border(top: BorderSide(color: FsColors.border)),
+          ),
+          alignment: Alignment.center,
+          child: Container(
+            width: 46,
+            height: 4,
+            decoration: BoxDecoration(color: FsColors.border, borderRadius: BorderRadius.circular(2)),
+          ),
+        ),
+      ),
+    );
   }
 
   /// True when the form is too narrow for side-by-side fields (set per build
@@ -354,93 +529,26 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
     ]);
   }
 
-  Widget _formColumn() {
-    return LayoutBuilder(builder: (context, cons) {
-      _narrow = cons.maxWidth < 380;
-      return SingleChildScrollView(
-        padding: EdgeInsets.all(_narrow ? 16 : 28),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(c.name.trim().isEmpty ? 'Unnamed connection' : c.name,
-            style: FsType.sans(size: 22, weight: FontWeight.w700, color: FsColors.text1)),
-        if (c.lastConnected.isNotEmpty || c.details.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            [if (c.lastConnected.isNotEmpty) c.lastConnected, if (c.details.isNotEmpty) c.details].join(' · '),
-            style: FsType.sans(size: 13, color: FsColors.text2),
-          ),
-        ],
-        const SizedBox(height: 20),
-
-        // ── General card: name + protocol ──
-        _card(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _sectionTitle('General', Icons.tune),
-            const SizedBox(height: 16),
-            FormField2('Connection name',
-                _field(_name, (v) {
-                  c.name = v;
-                  // Refresh the header here and the sidebar list (same name shown).
-                  ref.read(connectionsProvider.notifier).touch();
-                }, hint: 'e.g. Prod SFTP, Data bucket', icon: Icons.badge_outlined, focusNode: _nameFocus)),
-            const SizedBox(height: 16),
-            FormField2('Group / tag (optional)',
-                _field(_tag, (v) {
-                  c.tag = v;
-                  // Regroup the sidebar live as the tag changes.
-                  ref.read(connectionsProvider.notifier).touch();
-                }, hint: 'e.g. Production, Staging', icon: Icons.sell_outlined)),
-            const SizedBox(height: 16),
-            FormField2('Protocol', _protocolSelect()),
-          ]),
-        ),
-        const SizedBox(height: 18),
-
-        // ── Connection detail card ──
-        _card(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-              children: c.isS3 ? _s3Fields() : _sshFields()),
-        ),
-        const SizedBox(height: 18),
-
-        // M3 action buttons.
-        Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          FilledButton.icon(
-            onPressed: () => ref.read(sessionsProvider.notifier).connect(c),
-            icon: const Icon(Icons.bolt, size: 18),
-            label: const Text('Connect'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () => ref.read(sessionsProvider.notifier).testConnection(c),
-            icon: const Icon(Icons.wifi_tethering, size: 18),
-            label: const Text('Test'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () {
-              ref.read(connectionsProvider.notifier).save(c);
-              _toast('Saved', '${c.name} configuration stored', ToastKind.success);
-            },
-            icon: const Icon(Icons.save_outlined, size: 18),
-            label: const Text('Save'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () => ref.read(connectionsProvider.notifier).duplicate(c),
-            icon: const Icon(Icons.copy_all_outlined, size: 18),
-            label: const Text('Duplicate'),
-          ),
-          OutlinedButton.icon(
-            onPressed: () {
-              ref.read(connectionsProvider.notifier).delete(c);
-              _toast('Deleted', '${c.name} removed', ToastKind.info);
-            },
-            style: OutlinedButton.styleFrom(foregroundColor: FsColors.red),
-            icon: const Icon(Icons.delete_outline, size: 18),
-            label: const Text('Delete'),
-          ),
-        ]),
-      ]),
-      );
-    });
-  }
+  /// General tab — name, tag, protocol (shared by both protocols).
+  List<Widget> _generalFields() => [
+        _sectionTitle('General', Icons.tune),
+        const SizedBox(height: 16),
+        FormField2('Connection name',
+            _field(_name, (v) {
+              c.name = v;
+              // Refresh the header here and the sidebar list (same name shown).
+              ref.read(connectionsProvider.notifier).touch();
+            }, hint: 'e.g. Prod SFTP, Data bucket', icon: Icons.badge_outlined, focusNode: _nameFocus)),
+        const SizedBox(height: 16),
+        FormField2('Group / tag (optional)',
+            _field(_tag, (v) {
+              c.tag = v;
+              // Regroup the sidebar live as the tag changes.
+              ref.read(connectionsProvider.notifier).touch();
+            }, hint: 'e.g. Production, Staging', icon: Icons.sell_outlined)),
+        const SizedBox(height: 16),
+        FormField2('Protocol', _protocolSelect()),
+      ];
 
   // ── Connection log ──
   // A persistent, timestamped transcript of Connect / Test attempts. Unlike the
@@ -516,150 +624,153 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
         ToastKind.info => FsColors.text2,
       };
 
-  // ── S3 credential fields ──
-  List<Widget> _s3Fields() {
-    return [
-      _sectionTitle('Connection', Icons.cloud_outlined),
-      const SizedBox(height: 16),
-      _fieldRow([
-        FormField2('Region', _field(_region, (v) => c.region = v, hint: 'us-east-1', icon: Icons.public)),
-        FormField2('Bucket', _field(_bucket, (v) => c.bucket = v, hint: 'blank = browse all buckets', icon: Icons.inventory_2_outlined)),
-      ], flex: [1, 2]),
-      const SizedBox(height: 12),
-      FormField2(
-        'Endpoint (optional — for S3-compatible / MinIO)',
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _field(_endpoint, (v) => setState(() => c.endpoint = v),
-              hint: 's3.amazonaws.com', icon: Icons.dns_outlined),
-          Builder(builder: (_) {
-            final err = validateS3Endpoint(_endpoint.text);
-            return Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                err ??
-                    'Examples: minio.example.com:9000 · localhost:4566 (LocalStack) · '
-                        'blank for AWS. Host[:port] only — no scheme or path.',
-                style: FsType.sans(size: 10.5, color: err != null ? FsColors.red : FsColors.text3),
-              ),
-            );
-          }),
-        ]),
-      ),
-      const SizedBox(height: 20),
+  // ── S3 tabs ──
+  List<Widget> _s3ConnectionFields() => [
+        _sectionTitle('Connection', Icons.cloud_outlined),
+        const SizedBox(height: 16),
+        _fieldRow([
+          FormField2('Region', _field(_region, (v) => c.region = v, hint: 'us-east-1', icon: Icons.public)),
+          FormField2('Bucket', _field(_bucket, (v) => c.bucket = v, hint: 'blank = browse all buckets', icon: Icons.inventory_2_outlined)),
+        ], flex: [1, 2]),
+        const SizedBox(height: 12),
+        FormField2(
+          'Endpoint (optional — for S3-compatible / MinIO)',
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _field(_endpoint, (v) => setState(() => c.endpoint = v),
+                hint: 's3.amazonaws.com', icon: Icons.dns_outlined),
+            Builder(builder: (_) {
+              final err = validateS3Endpoint(_endpoint.text);
+              return Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  err ??
+                      'Examples: minio.example.com:9000 · localhost:4566 (LocalStack) · '
+                          'blank for AWS. Host[:port] only — no scheme or path.',
+                  style: FsType.sans(size: 10.5, color: err != null ? FsColors.red : FsColors.text3),
+                ),
+              );
+            }),
+          ]),
+        ),
+      ];
 
-      _sectionTitle('Credentials', Icons.vpn_key_outlined),
-      const SizedBox(height: 12),
-      // Credentials source: typed, or the AWS chain (env vars → ~/.aws).
-      _checkRow('Use AWS environment / ~/.aws credentials (auto-refreshed)', c.useAwsProfile,
-          (v) => setState(() => c.useAwsProfile = v)),
-      const SizedBox(height: 12),
-      if (c.useAwsProfile) ...[
-        FormField2('AWS profile',
-            _field(_awsProfile, (v) => c.awsProfile = v, hint: 'default (or \$AWS_PROFILE)', icon: Icons.person_outline)),
+  List<Widget> _s3CredentialFields() => [
+        _sectionTitle('Credentials', Icons.vpn_key_outlined),
+        const SizedBox(height: 12),
+        // Credentials source: typed, or the AWS chain (env vars → ~/.aws).
+        _checkRow('Use AWS environment / ~/.aws credentials (auto-refreshed)', c.useAwsProfile,
+            (v) => setState(() => c.useAwsProfile = v)),
+        const SizedBox(height: 12),
+        if (c.useAwsProfile) ...[
+          FormField2('AWS profile',
+              _field(_awsProfile, (v) => c.awsProfile = v, hint: 'default (or \$AWS_PROFILE)', icon: Icons.person_outline)),
+          const SizedBox(height: 6),
+          Text(
+            'Credentials are resolved per request from the AWS environment '
+            'variables (AWS_ACCESS_KEY_ID / …) if set, otherwise this profile in '
+            '~/.aws/credentials — so refreshed temporary credentials are picked '
+            'up automatically.',
+            style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
+          ),
+        ] else ...[
+          FormField2('Access Key ID', _field(_akid, (v) => c.accessKeyId = v, hint: 'AKIA…', icon: Icons.key_outlined)),
+          const SizedBox(height: 12),
+          FormField2('Secret Access Key', _field(_secret, (v) => c.secretAccessKey = v, obscure: true, hint: '••••••••', icon: Icons.lock_outline)),
+          const SizedBox(height: 12),
+          FormField2('Session Token (optional)', _field(_token, (v) => c.sessionToken = v, obscure: true, hint: 'For temporary STS credentials', icon: Icons.confirmation_number_outlined)),
+        ],
+      ];
+
+  List<Widget> _s3AdvancedFields() => [
+        _sectionTitle('Assume role (optional)', Icons.badge_outlined),
+        const SizedBox(height: 12),
+        FormField2('Role ARN',
+            _field(_roleArn, (v) => c.assumeRoleArn = v, hint: 'arn:aws:iam::123456789012:role/Name', icon: Icons.security)),
+        const SizedBox(height: 12),
+        FormField2('Role session name',
+            _field(_roleSession, (v) => c.roleSessionName = v, hint: 'drag', icon: Icons.label_outline)),
         const SizedBox(height: 6),
         Text(
-          'Credentials are resolved per request from the AWS environment '
-          'variables (AWS_ACCESS_KEY_ID / …) if set, otherwise this profile in '
-          '~/.aws/credentials — so refreshed temporary credentials are picked '
-          'up automatically.',
+          'When set, the credentials above are exchanged for temporary credentials '
+          'scoped to this role via STS AssumeRole (auto-refreshed before expiry).',
           style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
         ),
-      ] else ...[
-        FormField2('Access Key ID', _field(_akid, (v) => c.accessKeyId = v, hint: 'AKIA…', icon: Icons.key_outlined)),
+        const SizedBox(height: 20),
+        _sectionTitle('Paths & Options', Icons.folder_outlined),
+        const SizedBox(height: 14),
+        _checkRow('Use SSL (HTTPS)', c.useSsl, (v) => setState(() => c.useSsl = v)),
         const SizedBox(height: 12),
-        FormField2('Secret Access Key', _field(_secret, (v) => c.secretAccessKey = v, obscure: true, hint: '••••••••', icon: Icons.lock_outline)),
-        const SizedBox(height: 12),
-        FormField2('Session Token (optional)', _field(_token, (v) => c.sessionToken = v, obscure: true, hint: 'For temporary STS credentials', icon: Icons.confirmation_number_outlined)),
-      ],
-      const SizedBox(height: 20),
-      _sectionTitle('Assume role (optional)', Icons.badge_outlined),
-      const SizedBox(height: 12),
-      FormField2('Role ARN',
-          _field(_roleArn, (v) => c.assumeRoleArn = v, hint: 'arn:aws:iam::123456789012:role/Name', icon: Icons.security)),
-      const SizedBox(height: 12),
-      FormField2('Role session name',
-          _field(_roleSession, (v) => c.roleSessionName = v, hint: 'drag', icon: Icons.label_outline)),
-      const SizedBox(height: 6),
-      Text(
-        'When set, the credentials above are exchanged for temporary credentials '
-        'scoped to this role via STS AssumeRole (auto-refreshed before expiry).',
-        style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
-      ),
-      const SizedBox(height: 20),
-      _sectionTitle('Paths & Options', Icons.folder_outlined),
-      const SizedBox(height: 14),
-      _checkRow('Use SSL (HTTPS)', c.useSsl, (v) => setState(() => c.useSsl = v)),
-      const SizedBox(height: 12),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: FsColors.bgScaffold,
-          borderRadius: BorderRadius.circular(FsColors.rField),
-          border: Border.all(color: FsColors.border),
-        ),
-        child: Row(children: [
-          const Text('🪣', style: TextStyle(fontSize: 14)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Cross-account copies are streamed: pick this bucket in one pane and another account\'s bucket in the other, then drag between them.',
-              style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
-            ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: FsColors.bgScaffold,
+            borderRadius: BorderRadius.circular(FsColors.rField),
+            border: Border.all(color: FsColors.border),
           ),
-        ]),
-      ),
-    ];
-  }
-
-  // ── SSH / SFTP fields ──
-  List<Widget> _sshFields() {
-    return [
-      _sectionTitle('Connection', Icons.cloud_outlined),
-      const SizedBox(height: 16),
-      FormField2('Hostname / IP', _field(_host, (v) => c.host = v, icon: Icons.dns_outlined)),
-      const SizedBox(height: 16),
-      _fieldRow([
-        FormField2('Port', _field(_port, (v) => c.port = int.tryParse(v) ?? c.port, icon: Icons.numbers)),
-        FormField2('Username', _field(_user, (v) => c.username = v, icon: Icons.person_outline)),
-        FormField2('Timeout (s)', _field(_timeout, (v) => c.timeout = int.tryParse(v) ?? c.timeout, icon: Icons.timer_outlined)),
-      ]),
-      const SizedBox(height: 20),
-      _sectionTitle('Authentication', Icons.shield_outlined),
-      const SizedBox(height: 12),
-      _authTabs(),
-      const SizedBox(height: 16),
-      if (c.auth == AuthMethod.password)
-        FormField2('Password', _field(_password, (v) => c.password = v, obscure: true, hint: '••••••••', icon: Icons.lock_outline))
-      else ...[
-        FormField2(
-          'Key file',
-          Row(children: [
-            Expanded(child: _field(_keyFile, (v) => c.keyFile = v, hint: 'Blank = default ~/.ssh keys', icon: Icons.vpn_key_outlined)),
+          child: Row(children: [
+            const Text('🪣', style: TextStyle(fontSize: 14)),
             const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _browseKeyFile,
-              icon: const Icon(Icons.folder_open_outlined, size: 16),
-              label: const Text('Browse'),
+            Expanded(
+              child: Text(
+                'Cross-account copies are streamed: pick this bucket in one pane and another account\'s bucket in the other, then drag between them.',
+                style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
+              ),
             ),
           ]),
         ),
+      ];
+
+  // ── SSH / SFTP tabs ──
+  List<Widget> _sshConnectionFields() => [
+        _sectionTitle('Connection', Icons.dns_outlined),
+        const SizedBox(height: 16),
+        FormField2('Hostname / IP', _field(_host, (v) => c.host = v, icon: Icons.dns_outlined)),
+        const SizedBox(height: 16),
+        _fieldRow([
+          FormField2('Port', _field(_port, (v) => c.port = int.tryParse(v) ?? c.port, icon: Icons.numbers)),
+          FormField2('Username', _field(_user, (v) => c.username = v, icon: Icons.person_outline)),
+          FormField2('Timeout (s)', _field(_timeout, (v) => c.timeout = int.tryParse(v) ?? c.timeout, icon: Icons.timer_outlined)),
+        ]),
+      ];
+
+  List<Widget> _sshAuthFields() => [
+        _sectionTitle('Authentication', Icons.shield_outlined),
         const SizedBox(height: 12),
-        FormField2('Passphrase', _field(_passphrase, (v) => c.passphrase = v, obscure: true, hint: 'Leave blank if none', icon: Icons.password_outlined)),
-      ],
-      const SizedBox(height: 20),
-      _sectionTitle('Paths & Options', Icons.folder_outlined),
-      const SizedBox(height: 16),
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: FormField2('Remote start path', _field(_remotePath, (v) => c.remotePath = v, icon: Icons.folder_outlined))),
-        const SizedBox(width: 12),
-        Expanded(child: FormField2('Local start path', _field(_localPath, (v) => c.localPath = v, hint: '~', icon: Icons.folder_outlined))),
-      ]),
-      const SizedBox(height: 14),
-      _checkRow('Keep session alive (heartbeat every 30s)', c.keepAlive, (v) => setState(() => c.keepAlive = v)),
-      const SizedBox(height: 6),
-      _checkRow('Open in new tab', c.openInNewTab, (v) => setState(() => c.openInNewTab = v)),
-    ];
-  }
+        _authTabs(),
+        const SizedBox(height: 16),
+        if (c.auth == AuthMethod.password)
+          FormField2('Password', _field(_password, (v) => c.password = v, obscure: true, hint: '••••••••', icon: Icons.lock_outline))
+        else ...[
+          FormField2(
+            'Key file',
+            Row(children: [
+              Expanded(child: _field(_keyFile, (v) => c.keyFile = v, hint: 'Blank = default ~/.ssh keys', icon: Icons.vpn_key_outlined)),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _browseKeyFile,
+                icon: const Icon(Icons.folder_open_outlined, size: 16),
+                label: const Text('Browse'),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          FormField2('Passphrase', _field(_passphrase, (v) => c.passphrase = v, obscure: true, hint: 'Leave blank if none', icon: Icons.password_outlined)),
+        ],
+      ];
+
+  List<Widget> _sshAdvancedFields() => [
+        _sectionTitle('Paths & Options', Icons.folder_outlined),
+        const SizedBox(height: 16),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: FormField2('Remote start path', _field(_remotePath, (v) => c.remotePath = v, icon: Icons.folder_outlined))),
+          const SizedBox(width: 12),
+          Expanded(child: FormField2('Local start path', _field(_localPath, (v) => c.localPath = v, hint: '~', icon: Icons.folder_outlined))),
+        ]),
+        const SizedBox(height: 14),
+        _checkRow('Keep session alive (heartbeat every 30s)', c.keepAlive, (v) => setState(() => c.keepAlive = v)),
+        const SizedBox(height: 6),
+        _checkRow('Open in new tab', c.openInNewTab, (v) => setState(() => c.openInNewTab = v)),
+      ];
 
   /// Local field builder: a bigger Material [TextField] (~46px tall) styled to
   /// match the app, with a leading [prefixIcon]. ([FsTextField] has no prefix
