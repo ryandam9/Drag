@@ -67,6 +67,26 @@ void main() {
       expect(find.text('Hostname / IP'), findsNothing);
     });
 
+    testWidgets('secret fields can be revealed with the eye toggle', (tester) async {
+      final c = makeContainer(connections: sampleConnections());
+      c.read(connectionsProvider.notifier)
+          .select(c.read(connectionsProvider).connections.firstWhere((x) => x.isS3));
+      await pumpScreen(tester, c, const ConnectionManagerScreen());
+
+      // Secret + session-token fields start obscured, each with a "show" eye.
+      expect(find.byIcon(Icons.visibility_outlined), findsWidgets);
+      expect(find.byIcon(Icons.visibility_off_outlined), findsNothing);
+
+      final eye = find.byIcon(Icons.visibility_outlined).first;
+      await tester.ensureVisible(eye);
+      await tester.pump();
+      await tester.tap(eye);
+      await tester.pump();
+
+      // That field flips to revealed (its toggle now shows "hide").
+      expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
+    });
+
     testWidgets('typing into the bucket field updates the connection', (tester) async {
       final c = makeContainer(connections: sampleConnections());
       final s3 = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
@@ -225,16 +245,15 @@ void main() {
   });
 
   group('Settings', () {
-    testWidgets('Fingerprints section renders and navigates from the sidebar', (tester) async {
+    testWidgets('Fingerprints section renders on the page', (tester) async {
       final c = makeContainer(); // no known-hosts store ⇒ "unavailable" notice
       await pumpScreen(tester, c, const SettingsScreen());
-      await tester.tap(find.text('Fingerprints'));
-      await tester.pump();
+      // No tab to click — the section is on the single page.
       expect(find.text('Trusted SSH host keys'), findsOneWidget);
       expect(find.text('Host-key storage is unavailable.'), findsOneWidget);
     });
 
-    testWidgets('renders appearance options by default', (tester) async {
+    testWidgets('renders appearance options', (tester) async {
       final c = makeContainer();
       await pumpScreen(tester, c, const SettingsScreen());
       expect(find.text('Appearance'), findsWidgets);
@@ -257,26 +276,25 @@ void main() {
       await tester.pump(const Duration(seconds: 6)); // drain the toast timer
     });
 
-    testWidgets('sidebar navigation switches the pane', (tester) async {
+    testWidgets('every section renders on one page (no tabs)', (tester) async {
       final c = makeContainer();
       await pumpScreen(tester, c, const SettingsScreen());
-      // Browser settings live on their own pane, not the default Appearance one.
-      expect(find.text('Show hidden files'), findsNothing);
-      await tester.tap(find.text('Browser'));
-      await tester.pump();
+      // All section headers and their controls are present simultaneously.
+      expect(find.text('Appearance'), findsOneWidget);
+      expect(find.text('Browser'), findsOneWidget);
+      expect(find.text('Transfers'), findsOneWidget);
       expect(find.text('Show hidden files'), findsOneWidget);
+      expect(find.text('Show transfer log on startup'), findsOneWidget);
     });
 
     testWidgets('toggling a checkbox updates settings', (tester) async {
       final c = makeContainer();
       await pumpScreen(tester, c, const SettingsScreen());
       expect(c.read(settingsProvider).showLogOnStartup, isFalse);
-      // Show-transfer-log lives on the Transfers pane.
-      await tester.tap(find.text('Transfers').first);
-      await tester.pump();
-      final unchecked = find.byWidgetPredicate((w) => w is Checkbox && w.value == false);
-      expect(unchecked, findsOneWidget);
-      await tester.tap(unchecked);
+      // Tap the labelled row directly — no tab to switch to anymore.
+      final row = find.text('Show transfer log on startup');
+      await tester.ensureVisible(row);
+      await tester.tap(row);
       await tester.pump();
       expect(c.read(settingsProvider).showLogOnStartup, isTrue);
     });
