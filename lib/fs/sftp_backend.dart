@@ -240,6 +240,20 @@ class SftpBackend extends StorageBackend {
   }
 
   @override
+  String parseInputPath(String input) {
+    var s = input.trim();
+    // Accept a full sftp://user@host/path location: keep only the path part.
+    if (s.startsWith('sftp://')) {
+      final rest = s.substring(7);
+      final slash = rest.indexOf('/');
+      s = slash < 0 ? '/' : rest.substring(slash);
+    }
+    if (s.isEmpty) return '/';
+    if (!s.startsWith('/')) s = '/$s'; // SFTP paths are absolute
+    return s;
+  }
+
+  @override
   void dispose() {
     _sftp?.close();
     _client?.close();

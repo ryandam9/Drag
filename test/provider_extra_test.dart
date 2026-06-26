@@ -31,6 +31,18 @@ void main() {
       expect(ids.length, 2);
       expect(n, isNotNull);
     });
+
+    test('dismiss removes a single toast immediately', () {
+      final c = makeContainer();
+      c.read(toastsProvider.notifier)
+        ..push('A', '1', ToastKind.info)
+        ..push('B', '2', ToastKind.error);
+      final first = c.read(toastsProvider).first.id;
+      c.read(toastsProvider.notifier).dismiss(first);
+      final remaining = c.read(toastsProvider);
+      expect(remaining.length, 1);
+      expect(remaining.single.title, 'B');
+    });
   });
 
   group('transfer speed limit', () {

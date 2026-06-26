@@ -52,6 +52,12 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   // The in-pane filter box (applies to whichever pane is focused).
   final TextEditingController _filterCtl = TextEditingController();
 
+  // Inline path editor: which pane (if any) currently has its path bar in
+  // edit mode, plus a shared controller/focus node for the text field.
+  bool? _editingPathLeft; // null = not editing; true/false = left/right pane
+  final TextEditingController _pathCtl = TextEditingController();
+  final FocusNode _pathFocus = FocusNode();
+
   // Type-ahead: accumulate typed characters briefly so "re" jumps to "report".
   String _typeAheadBuffer = '';
   Timer? _typeAheadTimer;
@@ -74,6 +80,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     _leftScroll.dispose();
     _rightScroll.dispose();
     _filterCtl.dispose();
+    _pathCtl.dispose();
+    _pathFocus.dispose();
     super.dispose();
   }
 
@@ -127,6 +135,32 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   Future<void> _copyLocation(String location) async {
     await Clipboard.setData(ClipboardData(text: location));
     _toast('Copied', location, ToastKind.info);
+  }
+
+  /// Put a pane's path bar into edit mode, pre-filled with the current
+  /// location and fully selected so a paste replaces it outright.
+  void _beginEditPath(PaneController pane, bool left) {
+    _pathCtl
+      ..text = pane.displayPath
+      ..selection = TextSelection(baseOffset: 0, extentOffset: pane.displayPath.length);
+    setState(() => _editingPathLeft = left);
+    _pathFocus.requestFocus();
+  }
+
+  void _cancelEditPath() {
+    if (_editingPathLeft == null) return;
+    setState(() => _editingPathLeft = null);
+  }
+
+  /// Commit a typed/pasted path: parse it into the backend's internal form and
+  /// navigate there. An empty entry is ignored.
+  Future<void> _commitEditPath(PaneController pane) async {
+    final raw = _pathCtl.text.trim();
+    setState(() => _editingPathLeft = null);
+    if (raw.isEmpty) return;
+    final target = pane.backend.parseInputPath(raw);
+    if (target == pane.path) return;
+    await pane.navigateTo(target);
   }
 
   String _pathLabel(PaneController pane) {
@@ -233,6 +267,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   KeyEventResult _onKey(KeyEvent event) {
+    // While the inline path editor is open, let the text field own every key
+    // (typing, Enter, Escape) — don't run pane navigation/type-ahead.
+    if (_editingPathLeft != null) return KeyEventResult.ignored;
+
     // Ignore key-up; let held arrows/page keys auto-repeat (KeyRepeatEvent).
     final isDown = event is KeyDownEvent;
     if (!isDown && event is! KeyRepeatEvent) return KeyEventResult.ignored;
@@ -901,30 +939,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       child: Row(children: [
         _endpointPicker(pane, left: left, badgeBg: badgeBg, badgeFg: badgeFg),
         const SizedBox(width: 8),
-        Expanded(
-          child: Tooltip(
-            message: 'Click to copy this location',
-            waitDuration: const Duration(milliseconds: 500),
-            child: GestureDetector(
-              onTap: () => _copyLocation(pane.displayPath),
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: Container(
-                  height: 24,
-                  alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: FsColors.bgDeep,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: FsColors.border),
-                  ),
-                  child: Text(pane.displayPath,
-                      overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: FsColors.text2)),
-                ),
-              ),
-            ),
-          ),
-        ),
+        Expanded(child: _pathBar(pane, left)),
         const SizedBox(width: 6),
         _paneIconBtn(
           ref.read(bookmarksProvider.notifier).isBookmarked(pane.connection?.id, pane.path) ? '★' : '☆',
@@ -939,6 +954,73 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         const SizedBox(width: 4),
         _paneIconBtn('↺', onTap: pane.refresh),
       ]),
+    );
+  }
+
+  /// The pane's location bar. Click it to edit/paste a path and press Enter to
+  /// jump there; Escape cancels. Otherwise it shows the current location
+  /// (click the 📋 button in the header to copy it).
+  Widget _pathBar(PaneController pane, bool left) {
+    final editing = _editingPathLeft == left;
+    if (editing) {
+      return Container(
+        height: 24,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: FsColors.bgDeep,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: FsColors.accent),
+        ),
+        child: Focus(
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent &&
+                event.logicalKey == LogicalKeyboardKey.escape) {
+              _cancelEditPath();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: TextField(
+            controller: _pathCtl,
+            focusNode: _pathFocus,
+            autofocus: true,
+            cursorColor: FsColors.accent,
+            cursorHeight: 13,
+            style: FsType.sans(size: 11, color: FsColors.text1),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              hintText: 'Paste or type a path, then Enter',
+            ),
+            onSubmitted: (_) => _commitEditPath(pane),
+            onTapOutside: (_) => _cancelEditPath(),
+          ),
+        ),
+      );
+    }
+    return Tooltip(
+      message: 'Click to edit / paste a path (Enter to go)',
+      waitDuration: const Duration(milliseconds: 500),
+      child: GestureDetector(
+        onTap: () => _beginEditPath(pane, left),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.text,
+          child: Container(
+            height: 24,
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: FsColors.bgDeep,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: FsColors.border),
+            ),
+            child: Text(pane.displayPath,
+                overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: FsColors.text2)),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1589,8 +1671,16 @@ class _PreviewDialogState extends State<_PreviewDialog> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final sizeLabel = item.sizeBytes != null ? formatBytes(item.sizeBytes!) : '—';
+    // Size the preview to the window: at least 70% of the width and a generous
+    // share of the height, so text and images get real room (not a tiny popup).
+    final screen = MediaQuery.of(context).size;
+    final dialogW = screen.width * 0.7;
+    // Leave headroom for the dialog title + action row so the body never
+    // overflows the window vertically.
+    final dialogH = screen.height * 0.72;
     return AlertDialog(
       backgroundColor: FsColors.bgPanel,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       title: Row(children: [
         Text(item.icon, style: const TextStyle(fontSize: 16)),
         const SizedBox(width: 8),
@@ -1602,8 +1692,8 @@ class _PreviewDialogState extends State<_PreviewDialog> {
         ),
       ]),
       content: SizedBox(
-        width: 640,
-        height: 460,
+        width: dialogW,
+        height: dialogH,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${widget.endpointLabel} · $sizeLabel${item.modified.isNotEmpty ? ' · ${item.modified}' : ''}',
               maxLines: 1, overflow: TextOverflow.ellipsis,

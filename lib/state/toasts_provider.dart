@@ -24,6 +24,12 @@ class ToastsNotifier extends Notifier<List<ToastMessage>> {
       state = state.where((m) => m.id != msg.id).toList();
     });
   }
+
+  /// Dismiss a toast immediately (the in-card close button).
+  void dismiss(int id) {
+    if (_disposed) return;
+    state = state.where((m) => m.id != id).toList();
+  }
 }
 
 final toastsProvider =
