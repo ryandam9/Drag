@@ -122,7 +122,11 @@ class _ConnectionManagerScreenState extends ConsumerState<ConnectionManagerScree
                     color: active ? FsColors.bgSurface : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: StatusDot(c.online ? FsColors.green : FsColors.text3, glow: c.online),
+                  child: Tooltip(
+                    message: _statusTooltip(c),
+                    child: StatusDot(_statusColor(c.status),
+                        glow: c.status == ConnectionStatus.connected),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -747,4 +751,25 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
       Expanded(child: Text(label, style: FsType.sans(size: 12, color: FsColors.text2))),
     ]);
   }
+}
+
+/// Sidebar dot colour for a connection's runtime [ConnectionStatus].
+Color _statusColor(ConnectionStatus s) => switch (s) {
+      ConnectionStatus.connected => FsColors.green,
+      ConnectionStatus.testing => FsColors.amber,
+      ConnectionStatus.failed => FsColors.red,
+      ConnectionStatus.notConfigured => FsColors.text3,
+      ConnectionStatus.saved => FsColors.text3,
+    };
+
+/// Hover text: status, when it was last tested, and the last failure reason.
+String _statusTooltip(Connection c) {
+  final parts = <String>[c.status.label];
+  if (c.lastTestedAt != null) {
+    final l = c.lastTestedAt!.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    parts.add('Last tested ${two(l.hour)}:${two(l.minute)}');
+  }
+  if (c.lastError != null && c.lastError!.trim().isNotEmpty) parts.add(c.lastError!.trim());
+  return parts.join('\n');
 }

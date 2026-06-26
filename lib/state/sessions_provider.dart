@@ -225,12 +225,14 @@ class SessionsNotifier extends Notifier<SessionsState> {
   /// online — so the status reflects an actual login, not just intent. S3
   /// connections need credentials first.
   Future<void> connect(Connection c) async {
-    c.online = false; // not online until a real listing succeeds
+    c.status = ConnectionStatus.testing; // not connected until a real listing succeeds
     evictBackend(c); // pick up freshly entered credentials
     ref.read(connectionsProvider.notifier).touch();
     final toast = ref.read(toastsProvider.notifier);
     final log = ref.read(connectionLogProvider.notifier);
     if (c.isS3 && !c.hasS3Credentials) {
+      c.status = ConnectionStatus.notConfigured;
+      c.lastError = 'Missing AWS credentials (set a profile or access key/secret)';
       toast.push('Missing credentials',
           'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
       log.error('${c.name}: missing AWS credentials (set a profile or access key/secret)');
@@ -250,14 +252,18 @@ class SessionsNotifier extends Notifier<SessionsState> {
     final backend = backendFor(c); // same cached backend the pane uses
     try {
       final items = await backend.list(backend.initialPath);
-      c.online = true;
+      c.status = ConnectionStatus.connected;
+      c.lastTestedAt = DateTime.now();
+      c.lastError = null;
       toast.push('Session connected', '${c.name} is reachable', ToastKind.success);
       log.success('${c.name}: connected — listed ${items.length} '
           '${items.length == 1 ? 'entry' : 'entries'}');
     } catch (e) {
-      c.online = false;
+      c.status = ConnectionStatus.failed;
+      c.lastTestedAt = DateTime.now();
+      c.lastError = e.toString(); // keep the full reason; toast/log stay short
       toast.push('Connection failed', _short(e), ToastKind.error);
-      log.error('${c.name}: failed — ${_short(e)}');
+      log.error('${c.name}: failed — $e');
     }
     ref.read(connectionsProvider.notifier).touch();
   }
@@ -294,15 +300,23 @@ class SessionsNotifier extends Notifier<SessionsState> {
     final toasts = ref.read(toastsProvider.notifier);
     final log = ref.read(connectionLogProvider.notifier);
     if (c.isS3 && !c.hasS3Credentials) {
+      c.status = ConnectionStatus.notConfigured;
+      c.lastError = 'Missing AWS credentials (set a profile or access key/secret)';
+      ref.read(connectionsProvider.notifier).touch();
       toasts.push('Missing credentials', 'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
       log.error('${c.name}: missing AWS credentials (set a profile or access key/secret)');
       return;
     }
     if (!c.isS3 && (c.host.isEmpty || c.username.isEmpty)) {
+      c.status = ConnectionStatus.notConfigured;
+      c.lastError = 'Missing host or username';
+      ref.read(connectionsProvider.notifier).touch();
       toasts.push('Missing details', 'Enter a host and username for ${c.name}', ToastKind.error);
       log.error('${c.name}: missing host or username');
       return;
     }
+    c.status = ConnectionStatus.testing;
+    ref.read(connectionsProvider.notifier).touch();
     toasts.push('Testing connection…', 'Reaching ${c.name}', ToastKind.info);
     log.info('Testing "${c.name}" — ${_target(c)}');
     // Remember the credentials being tested so they survive a restart.
@@ -310,16 +324,20 @@ class SessionsNotifier extends Notifier<SessionsState> {
     final backend = c.isS3 ? S3Backend(c) : SftpBackend(c);
     try {
       final items = await backend.list(backend.initialPath);
-      c.online = true;
+      c.status = ConnectionStatus.connected;
+      c.lastTestedAt = DateTime.now();
+      c.lastError = null;
       ref.read(connectionsProvider.notifier).touch();
       toasts.push('Connection OK', '${c.name} is reachable', ToastKind.success);
       log.success('${c.name}: connected — listed ${items.length} '
           '${items.length == 1 ? 'entry' : 'entries'} at "${backend.initialPath}"');
     } catch (e) {
-      c.online = false;
+      c.status = ConnectionStatus.failed;
+      c.lastTestedAt = DateTime.now();
+      c.lastError = e.toString(); // full reason; toast/log stay short
       ref.read(connectionsProvider.notifier).touch();
       toasts.push('Connection failed', _short(e), ToastKind.error);
-      log.error('${c.name}: failed — ${_short(e)}');
+      log.error('${c.name}: failed — $e');
     } finally {
       backend.dispose();
     }

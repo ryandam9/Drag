@@ -176,7 +176,8 @@ class TransferService {
       t.eta = '—';
     } catch (e) {
       t.status = TransferStatus.error;
-      t.errorMessage = _friendly(e);
+      t.errorMessage = _friendly(e); // short, for the row/toast
+      t.errorDetail = e.toString(); // full, for the details panel + copy
     } finally {
       t.finishedAt = DateTime.now();
       onStatus();

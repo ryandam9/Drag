@@ -21,7 +21,12 @@ class Transfer {
   String eta; // "0:41" or "—" or "Done"
   final String session;
   TransferStatus status;
+
+  /// Short, toast/row-friendly error (truncated). [errorDetail] keeps the full
+  /// text (e.g. an S3Exception's operation/bucket/key/status/request-id) for
+  /// the details panel and copy-to-clipboard.
   String? errorMessage;
+  String? errorDetail;
 
   /// How many times this transfer has been (re)attempted — drives auto-retry
   /// backoff and is shown on the queue row.
