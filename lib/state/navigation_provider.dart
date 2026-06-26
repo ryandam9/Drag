@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// The top-level screens reachable from the navigation rail.
-enum AppScreen { browser, connections, queue, dashboard, settings }
+enum AppScreen { browser, connections, queue, dashboard, settings, about }
 
 /// Which screen is currently shown.
 class NavNotifier extends Notifier<AppScreen> {
