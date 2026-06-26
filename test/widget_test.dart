@@ -32,8 +32,9 @@ void main() {
     await tester.pumpWidget(app());
     await tester.pump();
 
-    // Title bar reflects the active session — a fresh Local tab.
-    expect(find.textContaining('Drag — Local'), findsOneWidget);
+    // The session tab strip reflects the active session — a fresh Local tab.
+    // (The "Drag — Local" window title now lives in the native title bar.)
+    expect(find.text('Local'), findsWidgets);
     // Both panes default to the Local endpoint on a clean install.
     expect(find.text('LOCAL'), findsWidgets);
     expect(find.text('S3'), findsNothing);
