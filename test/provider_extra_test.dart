@@ -12,12 +12,16 @@ import 'support/harness.dart';
 
 void main() {
   group('toasts', () {
-    test('auto-dismiss removes the toast after a few seconds', () {
+    test('auto-dismiss removes the toast after the 10s lifetime', () {
       fakeAsync((async) {
         final c = makeContainer();
         c.read(toastsProvider.notifier).push('A', 'b', ToastKind.info);
         expect(c.read(toastsProvider).length, 1);
-        async.elapse(const Duration(seconds: 6));
+        // Still visible just before the lifetime elapses…
+        async.elapse(const Duration(seconds: 9));
+        expect(c.read(toastsProvider).length, 1);
+        // …and gone shortly after.
+        async.elapse(const Duration(seconds: 2));
         expect(c.read(toastsProvider), isEmpty);
       });
     });

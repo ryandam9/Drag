@@ -63,7 +63,7 @@ void main() {
         'transfers=1');
 
     // Drain the toast auto-dismiss timer.
-    await tester.pump(const Duration(seconds: 6));
+    await tester.pump(const Duration(seconds: 11));
   });
 
   test('container.listen receives an emission from every notifier', () async {

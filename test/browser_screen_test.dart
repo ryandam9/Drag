@@ -99,7 +99,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('created_dir'), findsOneWidget);
     expect((await left.list('/')).any((e) => e.name == 'created_dir'), isTrue);
-    await tester.pump(const Duration(seconds: 6)); // drain the success-toast timer
+    await tester.pump(const Duration(seconds: 11)); // drain the success-toast timer
   });
 
   testWidgets('F2 with nothing selected shows an info toast', (tester) async {
@@ -107,7 +107,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.f2);
     await tester.pump();
     expect(c.read(toastsProvider).last.title, 'Nothing selected');
-    await tester.pump(const Duration(seconds: 6)); // drain the toast timer
+    await tester.pump(const Duration(seconds: 11)); // drain the toast timer
   });
 
   testWidgets('endpoint picker offers Local plus every saved connection', (tester) async {
@@ -221,7 +221,7 @@ void main() {
     await tester.pumpAndSettle();
     expect((await left.list('/')).any((e) => e.name == 'renamed.txt'), isTrue);
     expect((await left.list('/')).any((e) => e.name == 'alpha.txt'), isFalse);
-    await tester.pump(const Duration(seconds: 6));
+    await tester.pump(const Duration(seconds: 11));
   });
 
   testWidgets('Delete key removes the selected file after confirmation', (tester) async {
@@ -235,7 +235,7 @@ void main() {
     await tester.tap(find.text('Delete')); // the dialog's confirm button
     await tester.pumpAndSettle();
     expect((await left.list('/')).any((e) => e.name == 'beta.bin'), isFalse);
-    await tester.pump(const Duration(seconds: 6));
+    await tester.pump(const Duration(seconds: 11));
   });
 
   testWidgets('double-tapping a folder opens it', (tester) async {
@@ -334,6 +334,6 @@ void main() {
       await tester.pump(const Duration(milliseconds: 20));
     }
     expect((await right.list('/')).any((e) => e.name == 'alpha.txt'), isTrue);
-    await tester.pump(const Duration(seconds: 6));
+    await tester.pump(const Duration(seconds: 11));
   });
 }
