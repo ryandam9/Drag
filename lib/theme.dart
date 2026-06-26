@@ -277,6 +277,17 @@ ThemeData buildDragTheme() {
     ),
     dividerColor: FsColors.border,
     splashFactory: NoSplash.splashFactory,
+    // Rounded, bordered dropdown / context menus (right-click, bookmarks,
+    // endpoint picker, sort) instead of square corners.
+    popupMenuTheme: PopupMenuThemeData(
+      color: FsColors.bgPanel,
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(FsColors.rField),
+        side: BorderSide(color: FsColors.border),
+      ),
+    ),
     scrollbarTheme: ScrollbarThemeData(
       thumbColor: WidgetStateProperty.all(FsColors.borderHi),
       thickness: WidgetStateProperty.all(8),
