@@ -784,6 +784,22 @@ void main() {
       addTearDown(b.dispose);
       await expectLater(b.delete('alpha/', isDir: true), throwsUnsupportedError);
     });
+
+    test('mutableAt is false at the account root, true inside a bucket', () {
+      final discovery = S3Backend(Connection(
+        name: 's3', protocol: Protocol.s3, bucket: '', region: 'us-east-1',
+        accessKeyId: 'AKIA', secretAccessKey: 's'));
+      addTearDown(discovery.dispose);
+      expect(discovery.mutableAt(''), isFalse); // among the account's buckets
+      expect(discovery.mutableAt('alpha/'), isTrue); // inside a chosen bucket
+
+      // A bucket-bound connection is always mutable.
+      final bound = S3Backend(Connection(
+        name: 's3', protocol: Protocol.s3, bucket: 'bk', region: 'us-east-1',
+        accessKeyId: 'AKIA', secretAccessKey: 's'));
+      addTearDown(bound.dispose);
+      expect(bound.mutableAt(''), isTrue);
+    });
   });
 
   group('S3Client — addressing', () {

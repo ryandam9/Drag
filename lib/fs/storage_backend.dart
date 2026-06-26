@@ -46,6 +46,12 @@ abstract class StorageBackend {
   /// Whether this backend supports create/rename/delete operations.
   bool get supportsMutation => true;
 
+  /// Whether create/rename/delete are valid *at [path]*. Defaults to
+  /// [supportsMutation]; backends whose capability depends on location (e.g.
+  /// S3 at the account root, where there's no bucket to create folders in)
+  /// override this so the UI can hide those actions instead of erroring.
+  bool mutableAt(String path) => supportsMutation;
+
   Future<List<FileItem>> list(String path);
 
   /// Create a directory at [path].
@@ -301,6 +307,15 @@ class S3Backend extends StorageBackend {
   /// root and the first path segment becomes the bucket name. This supports
   /// accounts with many buckets across many regions.
   bool get _discovery => connection.bucket.isEmpty;
+
+  // At the discovery account root there's no bucket selected, so create /
+  // rename / delete don't apply (you can't make a "folder" among buckets).
+  @override
+  bool mutableAt(String path) {
+    if (!_discovery) return true;
+    final (bucket, _) = _split(path);
+    return bucket.isNotEmpty;
+  }
 
   // One client per bucket (built with that bucket's region), plus a service
   // client for ListBuckets / GetBucketLocation in discovery mode.

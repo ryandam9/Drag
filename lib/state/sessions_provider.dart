@@ -455,8 +455,8 @@ class SessionsNotifier extends Notifier<SessionsState> {
 
   Future<void> createFolder(PaneController pane, String name) async {
     if (name.trim().isEmpty) return;
-    if (!pane.backend.supportsMutation) {
-      _toast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
+    if (!pane.backend.mutableAt(pane.path)) {
+      _toast('Not supported', 'Open a bucket first to create folders here', ToastKind.error);
       return;
     }
     try {
@@ -470,6 +470,10 @@ class SessionsNotifier extends Notifier<SessionsState> {
 
   Future<void> renameItem(PaneController pane, FileItem item, String newName) async {
     if (item.isParent || newName.trim().isEmpty || newName.trim() == item.name) return;
+    if (!pane.backend.mutableAt(pane.path)) {
+      _toast('Not supported', 'Open a bucket first to rename items here', ToastKind.error);
+      return;
+    }
     try {
       final from = pane.backend.childPath(pane.path, item.name, item.isDir);
       final to = pane.backend.childPath(pane.path, newName.trim(), item.isDir);
@@ -486,6 +490,10 @@ class SessionsNotifier extends Notifier<SessionsState> {
   Future<void> deleteItems(PaneController pane, List<FileItem> items) async {
     final targets = items.where((i) => !i.isParent).toList();
     if (targets.isEmpty) return;
+    if (!pane.backend.mutableAt(pane.path)) {
+      _toast('Not supported', 'Buckets can\'t be deleted from Drag', ToastKind.error);
+      return;
+    }
     var failed = 0;
     for (final item in targets) {
       try {
