@@ -62,6 +62,7 @@ class KnownHostsStore {
   final KnownHostsStoreStatus status;
 
   static const _table = 'known_hosts';
+  static const _hostPortIndex = 'idx_known_hosts_host_port';
 
   static Future<KnownHostsStore> open([String? path]) async {
     sqfliteFfiInit();
@@ -70,18 +71,23 @@ class KnownHostsStore {
     final db = await factory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
-        onCreate: (db, _) => db.execute('''
-          CREATE TABLE $_table (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            host TEXT NOT NULL,
-            port INTEGER NOT NULL,
-            type TEXT NOT NULL,
-            fingerprint TEXT NOT NULL,
-            created_at TEXT NOT NULL
-          )
-        '''),
+        onCreate: (db, _) async {
+          await db.execute('''
+            CREATE TABLE $_table (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              host TEXT NOT NULL,
+              port INTEGER NOT NULL,
+              type TEXT NOT NULL,
+              fingerprint TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            )
+          ''');
+          // One trusted key per host:port — upsert on re-trust, no duplicates.
+          await db.execute(
+              'CREATE UNIQUE INDEX $_hostPortIndex ON $_table(host, port)');
+        },
       ),
     );
     final status = dbPath == inMemoryDatabasePath
@@ -107,7 +113,11 @@ class KnownHostsStore {
     return rows.isEmpty ? null : KnownHost.fromRow(rows.first);
   }
 
-  Future<void> trust(KnownHost h) => _db.insert(_table, h.toRow());
+  /// Remember [h]. Upserts on `(host, port)` — re-trusting a host (e.g. after a
+  /// legitimate key rotation the user re-confirmed) replaces the stored
+  /// fingerprint instead of leaving a duplicate row.
+  Future<void> trust(KnownHost h) =>
+      _db.insert(_table, h.toRow(), conflictAlgorithm: ConflictAlgorithm.replace);
 
   Future<void> remove(int id) => _db.delete(_table, where: 'id = ?', whereArgs: [id]);
 
@@ -120,5 +130,16 @@ class KnownHostsStore {
 }
 
 /// Schema migrations keyed by the version they bring the database *to*.
-/// Empty today (schema v1); add an entry and bump `version` for each change.
-final _migrations = <int, Migration>{};
+final _migrations = <int, Migration>{
+  // v2: enforce one trusted key per (host, port). De-duplicate any existing
+  // rows (keeping the most recently inserted) before adding the unique index.
+  2: (db) async {
+    await db.execute('''
+      DELETE FROM known_hosts WHERE id NOT IN (
+        SELECT MAX(id) FROM known_hosts GROUP BY host, port
+      )
+    ''');
+    await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_known_hosts_host_port ON known_hosts(host, port)');
+  },
+};

@@ -137,5 +137,50 @@ void main() {
       addTearDown(disk.close);
       expect(disk.status, KnownHostsStoreStatus.persistent);
     });
+
+    test('trust upserts on (host,port) instead of inserting a duplicate', () async {
+      await store.trust(const KnownHost(host: 'h', port: 22, type: 't', fingerprint: 'SHA256:aaa'));
+      await store.trust(const KnownHost(host: 'h', port: 22, type: 't', fingerprint: 'SHA256:bbb'));
+      final all = await store.load();
+      expect(all.where((h) => h.host == 'h' && h.port == 22).length, 1);
+      expect((await store.find('h', 22))!.fingerprint, 'SHA256:bbb'); // latest wins
+    });
+
+    test('migrates a v1 database: dedups (host,port) and enforces uniqueness', () async {
+      final dir = await Directory.systemTemp.createTemp('kh_mig');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = '${dir.path}/kh.db';
+
+      // Build a v1-shaped database (no unique index) with duplicate rows.
+      final raw = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (db, _) => db.execute('''
+            CREATE TABLE known_hosts (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              host TEXT NOT NULL, port INTEGER NOT NULL,
+              type TEXT NOT NULL, fingerprint TEXT NOT NULL, created_at TEXT NOT NULL)
+          '''),
+        ),
+      );
+      await raw.insert('known_hosts',
+          {'host': 'h', 'port': 22, 'type': 't', 'fingerprint': 'old', 'created_at': 'a'});
+      await raw.insert('known_hosts',
+          {'host': 'h', 'port': 22, 'type': 't', 'fingerprint': 'new', 'created_at': 'b'});
+      await raw.close();
+
+      // Reopen through the store → runs the v2 migration.
+      final migrated = await KnownHostsStore.open(path);
+      addTearDown(migrated.close);
+      final all = await migrated.load();
+      expect(all.length, 1, reason: 'duplicate rows collapsed');
+      expect(all.single.fingerprint, 'new', reason: 'kept the most recent');
+
+      // The unique index now holds: re-trusting upserts rather than duplicating.
+      await migrated.trust(const KnownHost(host: 'h', port: 22, type: 't', fingerprint: 'newer'));
+      expect((await migrated.load()).length, 1);
+      expect((await migrated.find('h', 22))!.fingerprint, 'newer');
+    });
   });
 }
