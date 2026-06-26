@@ -49,12 +49,15 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             artifact: build/linux/x64/release/bundle
+            package: drag-linux-x64.deb
           - os: macos-latest
             platform: macos
             artifact: build/macos/Build/Products/Release
+            package: drag-macos.dmg
           - os: windows-latest
             platform: windows
             artifact: build/windows/x64/runner/Release
+            package: drag-windows-x64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -101,9 +104,18 @@ jobs:
           Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath drag-windows-x64.zip -Force
           Get-Item drag-windows-x64.zip | Select-Object Name, Length
 
-      - name: Upload ${{ matrix.platform }} artifact
+      - name: Upload ${{ matrix.platform }} build bundle
         uses: actions/upload-artifact@v4
         with:
           name: drag-${{ matrix.platform }}
           path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+      # Also publish the generated, installable package so it can be downloaded
+      # and inspected straight from a PR run — not just the raw build bundle.
+      - name: Upload ${{ matrix.platform }} package
+        uses: actions/upload-artifact@v4
+        with:
+          name: drag-${{ matrix.platform }}-package
+          path: ${{ matrix.package }}
           if-no-files-found: error

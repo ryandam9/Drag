@@ -21,8 +21,10 @@ any combination:
   (`source.openRead → dest.write`), so each side can use its own credentials —
   no server-side copy and no shared-account requirement.
 - **SFTP ⇄ Local / S3** — real SFTP via `dartssh2` (password or private-key
-  auth); browse, upload and download against any SSH server, and stream
-  to/from S3 or local with no temp files.
+  auth); browse, upload and download against any SSH server, streaming directly
+  between endpoints. Writes to a Local/SFTP destination are staged to a
+  `.drag-partial` sibling and renamed on success, so a failed transfer never
+  truncates or deletes the file you were overwriting (S3 publishes atomically).
 
 **S3 is real**, and talks to S3 through a **hand-written client** — there is no
 official AWS SDK for Dart, so Drag ships its own AWS **Signature V4** signer
@@ -36,8 +38,11 @@ filesystem.
 
 **Credentials — two sources:**
 
-- **Typed** — Access Key, Secret and optional Session Token entered in the form
-  (held in memory only, never written to disk).
+- **Typed** — Access Key, Secret and optional Session Token entered in the form.
+  Secrets are excluded from the SQLite connection record and stored separately in
+  the **OS keychain** (libsecret on Linux, Keychain on macOS) when you Save, Test
+  or Connect; if the keychain is unavailable, Drag falls back to memory-only
+  storage and warns in **Settings → Secret storage**.
 - **AWS profile** — tick *"Load credentials from `~/.aws/credentials`"* and give
   a profile name (default `default`, or `$AWS_PROFILE`). The access key, secret
   and **session token** are read from the shared credentials file
@@ -64,8 +69,10 @@ actual error (`ExpiredToken`, `AccessDenied`, `NoSuchBucket`, …).
 > AbortMultipartUpload on failure) above a size threshold; smaller objects use a
 > single PUT.
 
-> Typed secrets are held in memory for the session and are not persisted to disk.
-> S3 connections can instead use the **AWS credential chain** — environment
+> Typed secrets are kept out of the plain SQLite connection record and stored in
+> the **OS keychain** when available (with a memory-only fallback surfaced in
+> Settings when it isn't). S3 connections can instead use the **AWS credential
+> chain** — environment
 > variables (`AWS_ACCESS_KEY_ID` / …) take precedence, falling back to the named
 > `~/.aws/credentials` profile — resolved per request so rotated temporary
 > credentials are picked up automatically. A connection can also **assume an IAM

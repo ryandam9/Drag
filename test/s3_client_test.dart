@@ -366,6 +366,38 @@ void main() {
       expect(completeBody, contains('etag-3'));
     });
 
+    test('an empty stream falls back to a zero-byte PutObject, not an empty part', () async {
+      var parts = 0;
+      var aborted = false;
+      var plainPut = false;
+      final mock = await MockS3.start((req, res) {
+        final q = req.query;
+        if (req.method == 'POST' && q.containsKey('uploads')) {
+          xml(res, '<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>');
+        } else if (req.method == 'PUT' && q.containsKey('partNumber')) {
+          parts++;
+          res.headers.set('ETag', '"e"');
+          res.statusCode = 200;
+        } else if (req.method == 'DELETE' && q.containsKey('uploadId')) {
+          aborted = true; // the unused multipart upload is cleaned up
+          res.statusCode = 204;
+        } else if (req.method == 'PUT') {
+          plainPut = true;
+          res.statusCode = 200;
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      await c.putObjectMultipart('empty.bin', const Stream<Uint8List>.empty(), partSize: 10);
+      expect(parts, 0, reason: 'no zero-length part should be uploaded');
+      expect(aborted, isTrue, reason: 'the empty multipart upload is aborted');
+      expect(plainPut, isTrue, reason: 'the empty object is written with a plain PUT');
+    });
+
     test('aborts the upload when a part fails', () async {
       var aborted = false;
       final mock = await MockS3.start((req, res) {
@@ -563,18 +595,24 @@ void main() {
             .having((e) => e.requestId, 'requestId', 'REQ123')
             .having((e) => e.hostId, 'hostId', 'HOST456')
             .having((e) => e.operation, 'operation', 'PutObject')
-            .having((e) => e.bucket, 'bucket', 'bk')),
+            .having((e) => e.bucket, 'bucket', 'bk')
+            .having((e) => e.key, 'key', 'data/file.csv')),
       );
     });
 
     test('toString surfaces operation, code and diagnostics', () {
       const e = S3Exception(403, 'Access Denied',
-          code: 'AccessDenied', requestId: 'REQ123', operation: 'PutObject', bucket: 'bk');
+          code: 'AccessDenied',
+          requestId: 'REQ123',
+          operation: 'PutObject',
+          bucket: 'bk',
+          key: 'data/file.csv');
       final s = e.toString();
       expect(s, contains('PutObject failed'));
       expect(s, contains('AccessDenied'));
       expect(s, contains('HTTP 403'));
       expect(s, contains('bucket=bk'));
+      expect(s, contains('key=data/file.csv'));
       expect(s, contains('requestId=REQ123'));
     });
   });
@@ -785,20 +823,24 @@ void main() {
       await expectLater(b.delete('alpha/', isDir: true), throwsUnsupportedError);
     });
 
-    test('mutableAt is false at the account root, true inside a bucket', () {
+    test('mutableAt is false at the bucket-list root, true inside a bucket', () {
       final discovery = S3Backend(Connection(
         name: 's3', protocol: Protocol.s3, bucket: '', region: 'us-east-1',
         accessKeyId: 'AKIA', secretAccessKey: 's'));
       addTearDown(discovery.dispose);
-      expect(discovery.mutableAt(''), isFalse); // among the account's buckets
-      expect(discovery.mutableAt('alpha/'), isTrue); // inside a chosen bucket
+      // The account-level bucket list isn't a writable directory.
+      expect(discovery.mutableAt(''), isFalse);
+      // Inside a bucket, mutation is allowed again.
+      expect(discovery.mutableAt('alpha/'), isTrue);
+      expect(discovery.mutableAt('alpha/logs/'), isTrue);
 
-      // A bucket-bound connection is always mutable.
-      final bound = S3Backend(Connection(
+      // A fixed-bucket connection has no read-only root.
+      final fixed = S3Backend(Connection(
         name: 's3', protocol: Protocol.s3, bucket: 'bk', region: 'us-east-1',
         accessKeyId: 'AKIA', secretAccessKey: 's'));
-      addTearDown(bound.dispose);
-      expect(bound.mutableAt(''), isTrue);
+      addTearDown(fixed.dispose);
+      expect(fixed.mutableAt(''), isTrue);
+      expect(fixed.mutableAt('any/prefix/'), isTrue);
     });
   });
 
@@ -827,6 +869,26 @@ void main() {
           accessKeyId: 'AKIA',
           secretAccessKey: 'secret',
         ));
+
+    test('listIncremental emits a growing snapshot per page', () async {
+      final mock = await MockS3.start((req, res) {
+        final token = req.query['continuation-token'];
+        if (token == null) {
+          xml(res, listingXml(contents: [(key: 'a.txt', size: 1)], truncated: true, nextToken: 'T2'));
+        } else {
+          xml(res, listingXml(contents: [(key: 'b.txt', size: 2)]));
+        }
+      });
+      addTearDown(mock.stop);
+      final b = backend(mock);
+      addTearDown(b.dispose);
+
+      final snapshots = await b.listIncremental('').toList();
+      expect(snapshots.length, 2, reason: 'one emission per S3 page');
+      // Each snapshot is cumulative: the first page's object is present in both.
+      expect(snapshots.first.map((e) => e.name), ['a.txt']);
+      expect(snapshots.last.map((e) => e.name), ['a.txt', 'b.txt']);
+    });
 
     test('list maps CommonPrefixes to folders and Contents to files, with ..', () async {
       final mock = await MockS3.start((req, res) {

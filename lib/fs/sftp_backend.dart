@@ -160,7 +160,18 @@ class SftpBackend extends StorageBackend {
     final stat = await file.stat();
     // Pass the size through as-is: null means the server didn't report one, so
     // the transfer streams the upload instead of declaring a 0-byte length.
-    return ReadHandle(file.read(), stat.size);
+    return ReadHandle(_readAndClose(file), stat.size);
+  }
+
+  /// Streams a remote file, closing its handle when the stream completes,
+  /// errors, or the consumer cancels (a paused/cancelled download). Without
+  /// this the SFTP file handle would leak on the server for every read.
+  Stream<Uint8List> _readAndClose(SftpFile file) async* {
+    try {
+      yield* file.read();
+    } finally {
+      await file.close();
+    }
   }
 
   @override

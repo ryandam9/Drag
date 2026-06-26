@@ -395,6 +395,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Text('Trusted SSH host keys',
                 style: FsType.sans(size: 15, weight: FontWeight.w700, color: FsColors.text1)),
           ),
+          if (store != null && store.status == KnownHostsStoreStatus.memoryOnly) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: FsColors.amber.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(FsColors.rPill),
+              ),
+              child: Text('Session only',
+                  style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.amber)),
+            ),
+            const SizedBox(width: 8),
+          ],
           if (store != null)
             FsButton('Forget all', kind: FsButtonKind.danger, fontSize: 11, onTap: () async {
               await store.clear();
@@ -410,6 +422,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           'legitimate key rotation.',
           style: FsType.sans(size: 11, color: FsColors.text3, height: 1.4),
         ),
+        if (store != null && store.status == KnownHostsStoreStatus.memoryOnly) ...[
+          const SizedBox(height: 6),
+          Text(
+            'The on-disk host-key store could not be opened, so trusted keys are '
+            'kept in memory only and will be forgotten when Drag closes — you\'ll '
+            'be re-prompted for each host next session.',
+            style: FsType.sans(size: 11, color: FsColors.amber, height: 1.4),
+          ),
+        ],
         const SizedBox(height: 14),
         if (store == null)
           Text('Host-key storage is unavailable.', style: FsType.sans(size: 12, color: FsColors.text3))

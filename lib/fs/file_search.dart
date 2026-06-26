@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import '../models/file_item.dart';
 import 'storage_backend.dart';
 
@@ -43,8 +45,14 @@ RegExp _glob(String pattern) {
 }
 
 /// Walks [backend] from [root] breadth-first, yielding every entry whose name
-/// matches [query]. Stops early on [cancel] or after [maxHits] matches.
-/// [onScanned] reports how many entries have been examined so far.
+/// matches [query]. [onScanned] reports how many entries have been examined.
+///
+/// The walk is bounded so a huge or pathological remote tree can't run forever:
+/// it stops early on [cancel], after [maxHits] matches, after examining
+/// [maxScanned] entries, beyond [maxDepth] directory levels below [root], or
+/// once [timeout] elapses. Hitting a bound simply ends the stream with the
+/// matches found so far. Uses a [Queue] so dequeuing each directory is O(1)
+/// rather than O(n).
 Stream<SearchHit> searchTree(
   StorageBackend backend,
   String root,
@@ -52,29 +60,37 @@ Stream<SearchHit> searchTree(
   SearchCancel? cancel,
   void Function(int scanned)? onScanned,
   int maxHits = 2000,
+  int maxScanned = 200000,
+  int? maxDepth,
+  Duration? timeout,
 }) async* {
-  final queue = <String>[root];
+  final deadline = timeout == null ? null : DateTime.now().add(timeout);
+  final queue = Queue<({String dir, int depth})>()..add((dir: root, depth: 0));
   var scanned = 0;
   var hits = 0;
   while (queue.isNotEmpty) {
     if (cancel?.cancelled ?? false) return;
-    final dir = queue.removeAt(0);
+    if (deadline != null && DateTime.now().isAfter(deadline)) return;
+    final node = queue.removeFirst();
     List<FileItem> items;
     try {
-      items = await backend.list(dir);
+      items = await backend.list(node.dir);
     } catch (_) {
       continue; // unreadable subtree — skip it
     }
     for (final it in items) {
       if (it.isParent) continue;
       scanned++;
-      final full = backend.childPath(dir, it.name, it.isDir);
+      final full = backend.childPath(node.dir, it.name, it.isDir);
       if (matchesQuery(it.name, query)) {
         yield SearchHit(name: it.name, path: full, isDir: it.isDir, sizeBytes: it.sizeBytes);
         if (++hits >= maxHits) return;
       }
-      if (it.isDir) queue.add(full);
+      if (it.isDir && (maxDepth == null || node.depth < maxDepth)) {
+        queue.add((dir: full, depth: node.depth + 1));
+      }
     }
     onScanned?.call(scanned);
+    if (scanned >= maxScanned) return; // bound total work on enormous trees
   }
 }

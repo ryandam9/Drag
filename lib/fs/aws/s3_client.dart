@@ -44,6 +44,10 @@ class S3Exception implements Exception {
   final String? hostId;
   final String? operation;
   final String? bucket;
+
+  /// The object key the failed operation targeted, when it was object-level
+  /// (get/put/copy/delete a specific key). Null for bucket/service-level calls.
+  final String? key;
   const S3Exception(
     this.statusCode,
     this.message, {
@@ -52,6 +56,7 @@ class S3Exception implements Exception {
     this.hostId,
     this.operation,
     this.bucket,
+    this.key,
   });
 
   @override
@@ -61,6 +66,7 @@ class S3Exception implements Exception {
     final detail = <String>[
       'HTTP $statusCode',
       if (bucket != null && bucket!.isNotEmpty) 'bucket=$bucket',
+      if (key != null && key!.isNotEmpty) 'key=$key',
       if (requestId != null && requestId!.isNotEmpty) 'requestId=$requestId',
       if (message.isNotEmpty) message,
     ].join(' · ');
@@ -310,7 +316,7 @@ class S3Client {
     final resp = await req.close();
     if (resp.statusCode ~/ 100 != 2) {
       final body = await resp.transform(utf8.decoder).join();
-      throw _error(resp.statusCode, body, op: 'GetObject');
+      throw _error(resp.statusCode, body, op: 'GetObject', key: key);
     }
     // For a 206 the content length is the remaining (ranged) byte count.
     final len = resp.contentLength < 0 ? 0 : resp.contentLength;
@@ -347,7 +353,7 @@ class S3Client {
     final resp = await req.close();
     if (resp.statusCode ~/ 100 != 2) {
       final body = await resp.transform(utf8.decoder).join();
-      throw _error(resp.statusCode, body, op: 'PutObject');
+      throw _error(resp.statusCode, body, op: 'PutObject', key: key);
     }
     await resp.drain<void>();
   }
@@ -401,7 +407,15 @@ class S3Client {
           if (all.length > size) buf.add(Uint8List.sublistView(all, size));
         }
       }
-      // The final (possibly only, possibly empty) part.
+      // A completely empty stream: a multipart upload of zero parts (or a
+      // zero-length part) is rejected by S3/MinIO. Abort it and write the empty
+      // object with a plain zero-byte PutObject instead.
+      if (parts.isEmpty && buf.length == 0) {
+        await _safeAbort(key, uploadId);
+        await putObject(key, const Stream<Uint8List>.empty(), 0, onProgress: onProgress);
+        return;
+      }
+      // The final (possibly only) part — flush whatever bytes remain.
       if (buf.length > 0 || parts.isEmpty) {
         await flush(buf.takeBytes());
       }
@@ -428,9 +442,9 @@ class S3Client {
     req.headers.contentLength = 0;
     final resp = await req.close();
     final body = await resp.transform(utf8.decoder).join();
-    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body, op: 'CreateMultipartUpload');
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, body, op: 'CreateMultipartUpload', key: key);
     final id = XmlDocument.parse(body).rootElement.getElement('UploadId')?.innerText;
-    if (id == null || id.isEmpty) throw S3Exception(resp.statusCode, 'missing UploadId');
+    if (id == null || id.isEmpty) throw S3Exception(resp.statusCode, 'missing UploadId', bucket: bucket, key: key);
     return id;
   }
 
@@ -452,12 +466,12 @@ class S3Client {
     final resp = await req.close();
     if (resp.statusCode ~/ 100 != 2) {
       final body = await resp.transform(utf8.decoder).join();
-      throw _error(resp.statusCode, body, op: 'UploadPart');
+      throw _error(resp.statusCode, body, op: 'UploadPart', key: key);
     }
     final etag = resp.headers.value('etag') ?? resp.headers.value('ETag');
     await resp.drain<void>();
     if (etag == null || etag.isEmpty) {
-      throw S3Exception(resp.statusCode, 'missing ETag for part $partNumber');
+      throw S3Exception(resp.statusCode, 'missing ETag for part $partNumber', bucket: bucket, key: key);
     }
     return etag;
   }
@@ -500,9 +514,9 @@ class S3Client {
     req.add(bytes);
     final resp = await req.close();
     final respBody = await resp.transform(utf8.decoder).join();
-    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, respBody, op: 'CompleteMultipartUpload');
+    if (resp.statusCode ~/ 100 != 2) throw _error(resp.statusCode, respBody, op: 'CompleteMultipartUpload', key: key);
     // S3 can return 200 with an <Error> body if completion fails mid-stream.
-    if (respBody.contains('<Error')) throw _error(resp.statusCode, respBody, op: 'CompleteMultipartUpload');
+    if (respBody.contains('<Error')) throw _error(resp.statusCode, respBody, op: 'CompleteMultipartUpload', key: key);
   }
 
   Future<void> abortMultipartUpload(String key, String uploadId) async {
@@ -546,7 +560,7 @@ class S3Client {
     final resp = await req.close();
     if (resp.statusCode ~/ 100 != 2) {
       final body = await resp.transform(utf8.decoder).join();
-      throw _error(resp.statusCode, body, op: 'DeleteObject');
+      throw _error(resp.statusCode, body, op: 'DeleteObject', key: key);
     }
     await resp.drain<void>();
   }
@@ -617,18 +631,18 @@ class S3Client {
     final resp = await req.close();
     final body = await resp.transform(utf8.decoder).join();
     if (resp.statusCode ~/ 100 != 2) {
-      throw _error(resp.statusCode, body, op: 'CopyObject');
+      throw _error(resp.statusCode, body, op: 'CopyObject', key: dstKey);
     }
     // S3 can return HTTP 200 with an <Error> in the body for a failed copy
     // (the status reflects "request received", not "copy succeeded"). Treat
     // that as failure so a rename built on copy+delete never deletes the
     // source after a copy that didn't actually complete.
     if (body.contains('<Error')) {
-      throw _error(resp.statusCode, body, op: 'CopyObject');
+      throw _error(resp.statusCode, body, op: 'CopyObject', key: dstKey);
     }
   }
 
-  S3Exception _error(int status, String body, {String? op}) {
+  S3Exception _error(int status, String body, {String? op, String? key}) {
     String? code, message, requestId, hostId;
     try {
       final root = XmlDocument.parse(body).rootElement;
@@ -648,6 +662,7 @@ class S3Client {
       hostId: hostId,
       operation: op,
       bucket: bucket,
+      key: key,
     );
   }
 

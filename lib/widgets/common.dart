@@ -200,11 +200,30 @@ class ToolButton extends StatelessWidget {
 
   /// Optional hover description (e.g. what the action does + its shortcut).
   final String? tooltip;
-  const ToolButton(this.label, {super.key, this.active = false, this.color, this.onTap, this.tooltip});
+
+  /// When false the button is dimmed and doesn't respond — used for actions
+  /// that don't apply in the current context (e.g. mutating an S3 bucket list).
+  final bool enabled;
+  const ToolButton(this.label,
+      {super.key,
+      this.active = false,
+      this.color,
+      this.onTap,
+      this.tooltip,
+      this.enabled = true});
 
   @override
   Widget build(BuildContext context) {
     return _Hoverable(builder: (hover) {
+      if (!enabled) {
+        return Opacity(
+          opacity: 0.4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Text(label, style: FsType.sans(size: 12, color: color ?? FsColors.text2)),
+          ),
+        );
+      }
       Color bg = Colors.transparent;
       Color fg = color ?? FsColors.text2;
       if (active) {
