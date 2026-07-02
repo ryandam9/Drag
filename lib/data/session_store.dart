@@ -21,20 +21,20 @@ class SessionRecord {
   });
 
   Map<String, Object?> toMap(int sort, bool active) => {
-        'sort': sort,
-        'left_conn': leftConnId,
-        'left_path': leftPath,
-        'right_conn': rightConnId,
-        'right_path': rightPath,
-        'active': active ? 1 : 0,
-      };
+    'sort': sort,
+    'left_conn': leftConnId,
+    'left_path': leftPath,
+    'right_conn': rightConnId,
+    'right_path': rightPath,
+    'active': active ? 1 : 0,
+  };
 
   factory SessionRecord.fromMap(Map<String, Object?> m) => SessionRecord(
-        leftConnId: m['left_conn'] as String?,
-        leftPath: (m['left_path'] as String?) ?? '',
-        rightConnId: m['right_conn'] as String?,
-        rightPath: (m['right_path'] as String?) ?? '',
-      );
+    leftConnId: m['left_conn'] as String?,
+    leftPath: (m['left_path'] as String?) ?? '',
+    rightConnId: m['right_conn'] as String?,
+    rightPath: (m['right_path'] as String?) ?? '',
+  );
 }
 
 /// The persisted session layout: the open tabs and which one was active.
@@ -82,7 +82,10 @@ class SessionStore {
   }
 
   /// Rewrites the whole table to match [sessions] (order = list order).
-  Future<void> replaceAll(List<SessionRecord> sessions, {int activeIndex = 0}) async {
+  Future<void> replaceAll(
+    List<SessionRecord> sessions, {
+    int activeIndex = 0,
+  }) async {
     await _db.transaction((txn) async {
       await txn.delete(_table);
       for (var i = 0; i < sessions.length; i++) {

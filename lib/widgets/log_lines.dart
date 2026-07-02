@@ -13,19 +13,23 @@ class LogLinesView extends StatelessWidget {
   const LogLinesView({super.key, required this.lines, required this.emptyText});
 
   static String _two(int n) => n < 10 ? '0$n' : '$n';
-  static String _stamp(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}:${_two(t.second)}';
+  static String _stamp(DateTime t) =>
+      '${_two(t.hour)}:${_two(t.minute)}:${_two(t.second)}';
 
   static Color _color(ToastKind kind) => switch (kind) {
-        ToastKind.success => FsColors.green,
-        ToastKind.error => FsColors.red,
-        ToastKind.info => FsColors.text2,
-      };
+    ToastKind.success => FsColors.green,
+    ToastKind.error => FsColors.red,
+    ToastKind.info => FsColors.text2,
+  };
 
   @override
   Widget build(BuildContext context) {
     if (lines.isEmpty) {
       return Center(
-        child: Text(emptyText, style: FsType.sans(size: 11, color: FsColors.text3)),
+        child: Text(
+          emptyText,
+          style: FsType.sans(size: 11, color: FsColors.text3),
+        ),
       );
     }
     return ListView.builder(
@@ -35,14 +39,26 @@ class LogLinesView extends StatelessWidget {
         final line = lines[lines.length - 1 - i]; // newest first
         return Padding(
           padding: const EdgeInsets.only(bottom: 4),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_stamp(line.time), style: FsType.mono(size: 11, color: FsColors.text3)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(line.message,
-                  style: FsType.mono(size: 11, color: _color(line.kind), height: 1.4)),
-            ),
-          ]),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _stamp(line.time),
+                style: FsType.mono(size: 11, color: FsColors.text3),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  line.message,
+                  style: FsType.mono(
+                    size: 11,
+                    color: _color(line.kind),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );

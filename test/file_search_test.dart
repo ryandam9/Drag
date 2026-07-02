@@ -39,17 +39,29 @@ void main() {
       final hits = await searchTree(LocalBackend(), root.path, 'log').toList();
       expect(hits.map((h) => h.name).toSet(), {'a.log', 'c.log'});
       // Paths are full and point at the right depth.
-      expect(hits.firstWhere((h) => h.name == 'c.log').path, endsWith(p.join('deep', 'c.log')));
+      expect(
+        hits.firstWhere((h) => h.name == 'c.log').path,
+        endsWith(p.join('deep', 'c.log')),
+      );
     });
 
     test('glob matches', () async {
-      final hits = await searchTree(LocalBackend(), root.path, '*.log').toList();
+      final hits = await searchTree(
+        LocalBackend(),
+        root.path,
+        '*.log',
+      ).toList();
       expect(hits.map((h) => h.name).toSet(), {'a.log', 'c.log'});
     });
 
     test('cancellation stops the walk', () async {
       final cancel = SearchCancel()..cancel();
-      final hits = await searchTree(LocalBackend(), root.path, 'log', cancel: cancel).toList();
+      final hits = await searchTree(
+        LocalBackend(),
+        root.path,
+        'log',
+        cancel: cancel,
+      ).toList();
       expect(hits, isEmpty);
     });
 
@@ -57,18 +69,31 @@ void main() {
       for (var i = 0; i < 5; i++) {
         await File(p.join(root.path, 'm$i.log')).writeAsString('x');
       }
-      final hits = await searchTree(LocalBackend(), root.path, 'log', maxHits: 2).toList();
+      final hits = await searchTree(
+        LocalBackend(),
+        root.path,
+        'log',
+        maxHits: 2,
+      ).toList();
       expect(hits.length, 2);
     });
 
     test('maxDepth bounds how deep the walk descends', () async {
       // Depth 0 → only the root level is scanned, so the nested sub/deep/c.log
       // is never reached; a.log (at the root) still matches.
-      final shallow =
-          await searchTree(LocalBackend(), root.path, '*.log', maxDepth: 0).toList();
+      final shallow = await searchTree(
+        LocalBackend(),
+        root.path,
+        '*.log',
+        maxDepth: 0,
+      ).toList();
       expect(shallow.map((h) => h.name).toSet(), {'a.log'});
       // Unbounded reaches the deep match too.
-      final deep = await searchTree(LocalBackend(), root.path, '*.log').toList();
+      final deep = await searchTree(
+        LocalBackend(),
+        root.path,
+        '*.log',
+      ).toList();
       expect(deep.map((h) => h.name).toSet(), {'a.log', 'c.log'});
     });
 
@@ -76,16 +101,23 @@ void main() {
       // BFS scans the whole root directory (a.log, note.md, sub) before
       // descending; with maxScanned: 1 it stops right after, so the deep
       // sub/deep/c.log is never examined.
-      final hits =
-          await searchTree(LocalBackend(), root.path, 'log', maxScanned: 1).toList();
+      final hits = await searchTree(
+        LocalBackend(),
+        root.path,
+        'log',
+        maxScanned: 1,
+      ).toList();
       expect(hits.map((h) => h.name).toSet(), {'a.log'});
     });
 
     test('timeout ends the walk', () async {
       // A zero (already-elapsed) timeout returns before scanning anything.
-      final hits = await searchTree(LocalBackend(), root.path, 'log',
-              timeout: Duration.zero)
-          .toList();
+      final hits = await searchTree(
+        LocalBackend(),
+        root.path,
+        'log',
+        timeout: Duration.zero,
+      ).toList();
       expect(hits, isEmpty);
     });
   });

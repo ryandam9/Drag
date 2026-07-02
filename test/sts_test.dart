@@ -14,7 +14,8 @@ class _Req {
 
 /// A tiny in-process STS server. Returns the canned response from [responder].
 Future<(HttpServer, List<_Req>)> _startSts(
-    FutureOr<void> Function(_Req req, HttpResponse res) responder) async {
+  FutureOr<void> Function(_Req req, HttpResponse res) responder,
+) async {
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   final reqs = <_Req>[];
   server.listen((req) async {
@@ -39,42 +40,55 @@ String _assumeXml({
     '</Credentials></AssumeRoleResult></AssumeRoleResponse>';
 
 void main() {
-  test('assumeRole posts AssumeRole and parses the temporary credentials', () async {
-    final (server, reqs) = await _startSts((r, res) {
-      res.headers.contentType = ContentType('text', 'xml');
-      res.write(_assumeXml(expiration: '2030-01-01T00:00:00Z'));
-    });
-    addTearDown(() => server.close(force: true));
+  test(
+    'assumeRole posts AssumeRole and parses the temporary credentials',
+    () async {
+      final (server, reqs) = await _startSts((r, res) {
+        res.headers.contentType = ContentType('text', 'xml');
+        res.write(_assumeXml(expiration: '2030-01-01T00:00:00Z'));
+      });
+      addTearDown(() => server.close(force: true));
 
-    final c = StsClient(region: 'us-east-1', endpoint: '127.0.0.1:${server.port}', useSsl: false);
-    addTearDown(c.close);
+      final c = StsClient(
+        region: 'us-east-1',
+        endpoint: '127.0.0.1:${server.port}',
+        useSsl: false,
+      );
+      addTearDown(c.close);
 
-    final assumed = await c.assumeRole(
-      roleArn: 'arn:aws:iam::123456789012:role/Reader',
-      sessionName: 'drag',
-      baseCredentials: const AwsCredentials('AKIABASE', 'basesecret'),
-    );
+      final assumed = await c.assumeRole(
+        roleArn: 'arn:aws:iam::123456789012:role/Reader',
+        sessionName: 'drag',
+        baseCredentials: const AwsCredentials('AKIABASE', 'basesecret'),
+      );
 
-    expect(assumed.credentials.accessKeyId, 'ASIAEXAMPLE');
-    expect(assumed.credentials.secretAccessKey, 'tempsecret');
-    expect(assumed.credentials.sessionToken, 'tok');
-    expect(assumed.expiration, DateTime.utc(2030, 1, 1));
+      expect(assumed.credentials.accessKeyId, 'ASIAEXAMPLE');
+      expect(assumed.credentials.secretAccessKey, 'tempsecret');
+      expect(assumed.credentials.sessionToken, 'tok');
+      expect(assumed.expiration, DateTime.utc(2030, 1, 1));
 
-    final body = reqs.single.body;
-    expect(body, contains('Action=AssumeRole'));
-    expect(body, contains('RoleArn=arn')); // form-encoded ARN
-    expect(body, contains('RoleSessionName=drag'));
-  });
+      final body = reqs.single.body;
+      expect(body, contains('Action=AssumeRole'));
+      expect(body, contains('RoleArn=arn')); // form-encoded ARN
+      expect(body, contains('RoleSessionName=drag'));
+    },
+  );
 
   test('the credential provider caches, then re-assumes near expiry', () async {
     var calls = 0;
     final (server, _) = await _startSts((r, res) {
       calls++;
-      res.write(_assumeXml(ak: 'ASIA$calls', expiration: '2030-01-01T01:00:00Z'));
+      res.write(
+        _assumeXml(ak: 'ASIA$calls', expiration: '2030-01-01T01:00:00Z'),
+      );
     });
     addTearDown(() => server.close(force: true));
 
-    final sts = StsClient(region: 'us-east-1', endpoint: '127.0.0.1:${server.port}', useSsl: false);
+    final sts = StsClient(
+      region: 'us-east-1',
+      endpoint: '127.0.0.1:${server.port}',
+      useSsl: false,
+    );
     addTearDown(sts.close);
 
     var now = DateTime.utc(2030, 1, 1, 0, 0, 0); // an hour before expiry
@@ -100,17 +114,33 @@ void main() {
   test('an STS error surfaces a parsed S3Exception', () async {
     final (server, _) = await _startSts((r, res) {
       res.statusCode = 403;
-      res.write('<ErrorResponse><Error><Code>AccessDenied</Code>'
-          '<Message>not authorized to assume</Message></Error></ErrorResponse>');
+      res.write(
+        '<ErrorResponse><Error><Code>AccessDenied</Code>'
+        '<Message>not authorized to assume</Message></Error></ErrorResponse>',
+      );
     });
     addTearDown(() => server.close(force: true));
 
-    final c = StsClient(region: 'us-east-1', endpoint: '127.0.0.1:${server.port}', useSsl: false);
+    final c = StsClient(
+      region: 'us-east-1',
+      endpoint: '127.0.0.1:${server.port}',
+      useSsl: false,
+    );
     addTearDown(c.close);
 
     await expectLater(
-      c.assumeRole(roleArn: 'arn', sessionName: 'drag', baseCredentials: const AwsCredentials('A', 'S')),
-      throwsA(isA<S3Exception>().having((e) => e.message, 'message', 'not authorized to assume')),
+      c.assumeRole(
+        roleArn: 'arn',
+        sessionName: 'drag',
+        baseCredentials: const AwsCredentials('A', 'S'),
+      ),
+      throwsA(
+        isA<S3Exception>().having(
+          (e) => e.message,
+          'message',
+          'not authorized to assume',
+        ),
+      ),
     );
   });
 }

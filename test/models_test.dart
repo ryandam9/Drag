@@ -23,7 +23,10 @@ void main() {
   group('formatModified', () {
     test('zero-pads to the table format', () {
       expect(formatModified(DateTime(2025, 6, 9, 8, 4)), '2025-06-09  08:04');
-      expect(formatModified(DateTime(2025, 12, 19, 22, 11)), '2025-12-19  22:11');
+      expect(
+        formatModified(DateTime(2025, 12, 19, 22, 11)),
+        '2025-12-19  22:11',
+      );
     });
 
     test('null → empty', () => expect(formatModified(null), ''));
@@ -93,7 +96,11 @@ void main() {
       expect(s3.hasS3Credentials, isTrue);
 
       // The "use AWS profile" toggle satisfies readiness without typed keys.
-      final prof = Connection(name: 'p', protocol: Protocol.s3, useAwsProfile: true);
+      final prof = Connection(
+        name: 'p',
+        protocol: Protocol.s3,
+        useAwsProfile: true,
+      );
       expect(prof.hasS3Credentials, isTrue);
     });
 
@@ -132,9 +139,16 @@ void main() {
 
   group('Transfer', () {
     test('elapsed + elapsedLabel', () {
-      final t = Transfer(name: 'f', route: 'r', direction: TransferDirection.upload, sizeBytes: 1, session: 's')
-        ..startedAt = DateTime(2025, 1, 1, 0, 0, 0)
-        ..finishedAt = DateTime(2025, 1, 1, 0, 0, 3);
+      final t =
+          Transfer(
+              name: 'f',
+              route: 'r',
+              direction: TransferDirection.upload,
+              sizeBytes: 1,
+              session: 's',
+            )
+            ..startedAt = DateTime(2025, 1, 1, 0, 0, 0)
+            ..finishedAt = DateTime(2025, 1, 1, 0, 0, 3);
       expect(t.elapsed, const Duration(seconds: 3));
       expect(t.elapsedLabel, '3.0s');
     });

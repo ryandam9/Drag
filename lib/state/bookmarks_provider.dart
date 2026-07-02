@@ -10,7 +10,8 @@ class BookmarksNotifier extends Notifier<List<Bookmark>> {
   BookmarkStore? get _store => ref.read(bookmarkStoreProvider);
 
   @override
-  List<Bookmark> build() => List.of(ref.read(initialBookmarksProvider) ?? const []);
+  List<Bookmark> build() =>
+      List.of(ref.read(initialBookmarksProvider) ?? const []);
 
   /// Bookmarks for one endpoint ([connId] null = Local).
   List<Bookmark> forEndpoint(String? connId) =>
@@ -34,7 +35,9 @@ class BookmarksNotifier extends Notifier<List<Bookmark>> {
 
   /// Toggle the bookmark for ([connId], [path]).
   Future<void> toggle(String? connId, String path, String label) async {
-    final existing = state.where((b) => b.connId == connId && b.path == path).toList();
+    final existing = state
+        .where((b) => b.connId == connId && b.path == path)
+        .toList();
     if (existing.isEmpty) {
       await add(connId, path, label);
     } else {
@@ -45,5 +48,6 @@ class BookmarksNotifier extends Notifier<List<Bookmark>> {
   }
 }
 
-final bookmarksProvider =
-    NotifierProvider<BookmarksNotifier, List<Bookmark>>(BookmarksNotifier.new);
+final bookmarksProvider = NotifierProvider<BookmarksNotifier, List<Bookmark>>(
+  BookmarksNotifier.new,
+);

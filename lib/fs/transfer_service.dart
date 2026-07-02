@@ -127,8 +127,9 @@ class TransferService {
       // ranged read + append, instead of re-downloading from zero.
       final resumeFrom = await _resumeOffset(t, src, dst, writePath, verify);
       t.pausedWithPartial = false; // consumed (or superseded) by this attempt
-      final handle =
-          resumeFrom > 0 ? await src.openReadRange(srcPath, resumeFrom) : await src.openRead(srcPath);
+      final handle = resumeFrom > 0
+          ? await src.openReadRange(srcPath, resumeFrom)
+          : await src.openRead(srcPath);
       // handle.length is the *remaining* bytes when resuming; total is the full
       // object size. Prefer the handle's size, else what the queue knew; null
       // when the source can't report a size at all (distinct from a known 0).
@@ -146,7 +147,8 @@ class TransferService {
       ByteConversionSink? hasher;
       if (algo != null) {
         final out = ChunkedConversionSink<Digest>.withCallback(
-            (digests) => srcDigest = digests.single);
+          (digests) => srcDigest = digests.single,
+        );
         hasher = algo.startChunkedConversion(out);
       }
 
@@ -164,13 +166,23 @@ class TransferService {
       }
 
       if (resumeFrom > 0 && dst is LocalBackend) {
-        await dst.writeResume(writePath, pump(), from: resumeFrom, onProgress: (s) => report(s));
+        await dst.writeResume(
+          writePath,
+          pump(),
+          from: resumeFrom,
+          onProgress: (s) => report(s),
+        );
       } else if (total == null && dst is S3Backend) {
         // Unknown source size → stream the S3 upload via multipart instead of
         // declaring a (wrong) Content-Length. Local/SFTP writes ignore length.
         await dst.writeUnsized(writePath, pump(), onProgress: (s) => report(s));
       } else {
-        await dst.write(writePath, pump(), total ?? 0, onProgress: (s) => report(s));
+        await dst.write(
+          writePath,
+          pump(),
+          total ?? 0,
+          onProgress: (s) => report(s),
+        );
       }
       hasher?.close();
 
@@ -230,8 +242,9 @@ class TransferService {
     final destSize = total == null ? null : await dst.sizeOf(dstPath);
     if (destSize != null && destSize != total) {
       throw Exception(
-          'Verification failed: destination is ${formatBytes(destSize)}, '
-          'expected ${formatBytes(total!)}');
+        'Verification failed: destination is ${formatBytes(destSize)}, '
+        'expected ${formatBytes(total!)}',
+      );
     }
 
     final algo = _digestFor(level);
@@ -239,7 +252,9 @@ class TransferService {
       final handle = await dst.openRead(dstPath);
       final destDigest = await algo.bind(handle.stream).single;
       if (destDigest != srcDigest) {
-        throw Exception('Checksum mismatch: the copy does not match the source');
+        throw Exception(
+          'Checksum mismatch: the copy does not match the source',
+        );
       }
     }
   }
@@ -247,10 +262,10 @@ class TransferService {
   /// The hash for a verify [level], or null when no content hash is needed
   /// (`off` / `size`). `checksum` is MD5 (fast); `sha256` is stronger.
   static Hash? _digestFor(String level) => switch (level) {
-        'checksum' => md5,
-        'sha256' => sha256,
-        _ => null,
-      };
+    'checksum' => md5,
+    'sha256' => sha256,
+    _ => null,
+  };
 
   /// How many bytes of [dstPath] are already on disk from a previous,
   /// interrupted attempt — the offset to resume the download from. Returns 0
@@ -262,9 +277,17 @@ class TransferService {
   ///   • the destination is local (so we can stat + append);
   ///   • verification isn't checksum (which must hash the whole file).
   Future<int> _resumeOffset(
-      Transfer t, StorageBackend src, StorageBackend dst, String dstPath, String verify) async {
+    Transfer t,
+    StorageBackend src,
+    StorageBackend dst,
+    String dstPath,
+    String verify,
+  ) async {
     final ours = t.attempts > 1 || t.pausedWithPartial;
-    if (!ours || _digestFor(verify) != null || !src.supportsResume || dst is! LocalBackend) {
+    if (!ours ||
+        _digestFor(verify) != null ||
+        !src.supportsResume ||
+        dst is! LocalBackend) {
       return 0; // a content hash must cover the whole file → no partial resume
     }
     final existing = await dst.sizeOf(dstPath);
@@ -278,7 +301,11 @@ class TransferService {
   /// resume. Called by the queue when a paused transfer is cancelled — no run
   /// is in flight then to clean up after itself. No-op for atomic backends,
   /// which never stage a partial.
-  Future<void> discardPartial(StorageBackend dst, String dstPath, Transfer t) async {
+  Future<void> discardPartial(
+    StorageBackend dst,
+    String dstPath,
+    Transfer t,
+  ) async {
     if (dst.atomicWrite) return;
     await _safeDelete(dst, '$dstPath.drag-partial-${t.id}');
   }
@@ -304,7 +331,11 @@ class TransferService {
   /// destination file. We distinguish the cases by checking, after the failure,
   /// that the destination exists *and* our partial is still intact before
   /// clobbering.
-  Future<void> _finalize(StorageBackend dst, String partial, String finalPath) async {
+  Future<void> _finalize(
+    StorageBackend dst,
+    String partial,
+    String finalPath,
+  ) async {
     try {
       await dst.rename(partial, finalPath);
     } catch (_) {

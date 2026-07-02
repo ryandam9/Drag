@@ -19,10 +19,13 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  File write(String name, String body) => File('${dir.path}/$name')..writeAsStringSync(body);
+  File write(String name, String body) =>
+      File('${dir.path}/$name')..writeAsStringSync(body);
 
-  test('loads default and named profiles, including the session token', () async {
-    final f = write('credentials', '''
+  test(
+    'loads default and named profiles, including the session token',
+    () async {
+      final f = write('credentials', '''
 # a comment
 ; another comment
 [default]
@@ -34,20 +37,27 @@ aws_access_key_id = AKIAWORK
 aws_secret_access_key = secretwork
 aws_session_token = TOKEN123
 ''');
-    final def = (await loadAwsCredentials('default', path: f.path))!;
-    expect(def.accessKeyId, 'AKIADEFAULT');
-    expect(def.secretAccessKey, 'secretdef');
-    expect(def.sessionToken, isNull);
+      final def = (await loadAwsCredentials('default', path: f.path))!;
+      expect(def.accessKeyId, 'AKIADEFAULT');
+      expect(def.secretAccessKey, 'secretdef');
+      expect(def.sessionToken, isNull);
 
-    final work = (await loadAwsCredentials('work', path: f.path))!;
-    expect(work.accessKeyId, 'AKIAWORK');
-    expect(work.sessionToken, 'TOKEN123');
-  });
+      final work = (await loadAwsCredentials('work', path: f.path))!;
+      expect(work.accessKeyId, 'AKIAWORK');
+      expect(work.sessionToken, 'TOKEN123');
+    },
+  );
 
   test('returns null for a missing profile or missing file', () async {
-    final f = write('credentials', '[default]\naws_access_key_id=x\naws_secret_access_key=y\n');
+    final f = write(
+      'credentials',
+      '[default]\naws_access_key_id=x\naws_secret_access_key=y\n',
+    );
     expect(await loadAwsCredentials('nope', path: f.path), isNull);
-    expect(await loadAwsCredentials('default', path: '${dir.path}/missing'), isNull);
+    expect(
+      await loadAwsCredentials('default', path: '${dir.path}/missing'),
+      isNull,
+    );
   });
 
   test('an incomplete profile (no secret) resolves to null', () async {
@@ -74,25 +84,33 @@ region = eu-west-1
     expect(resolveAwsProfile(Connection(name: 's')), isNotEmpty);
   });
 
-  test('credential_process runs the helper and parses its JSON output', () async {
-    final f = write('credentials', '''
+  test(
+    'credential_process runs the helper and parses its JSON output',
+    () async {
+      final f = write('credentials', '''
 [sso]
 credential_process = printf '{"Version":1,"AccessKeyId":"AKIAPROC","SecretAccessKey":"procsecret","SessionToken":"PROCTOKEN"}'
 ''');
-    final creds = await loadAwsCredentials('sso', path: f.path);
-    expect(creds, isNotNull);
-    expect(creds!.accessKeyId, 'AKIAPROC');
-    expect(creds.secretAccessKey, 'procsecret');
-    expect(creds.sessionToken, 'PROCTOKEN');
-  }, skip: Platform.isWindows ? 'uses /bin/sh' : false);
+      final creds = await loadAwsCredentials('sso', path: f.path);
+      expect(creds, isNotNull);
+      expect(creds!.accessKeyId, 'AKIAPROC');
+      expect(creds.secretAccessKey, 'procsecret');
+      expect(creds.sessionToken, 'PROCTOKEN');
+    },
+    skip: Platform.isWindows ? 'uses /bin/sh' : false,
+  );
 
-  test('a failing credential_process yields no credentials', () async {
-    final f = write('credentials', '''
+  test(
+    'a failing credential_process yields no credentials',
+    () async {
+      final f = write('credentials', '''
 [bad]
 credential_process = sh -c 'exit 3'
 ''');
-    expect(await loadAwsCredentials('bad', path: f.path), isNull);
-  }, skip: Platform.isWindows ? 'uses /bin/sh' : false);
+      expect(await loadAwsCredentials('bad', path: f.path), isNull);
+    },
+    skip: Platform.isWindows ? 'uses /bin/sh' : false,
+  );
 
   test('a profile defined only in ~/.aws/config is honoured', () async {
     debugAwsCredentialsPath = '${dir.path}/credentials'; // absent
@@ -130,8 +148,12 @@ credential_process = my-helper --profile sso
       debugCredentialProcessRunner = (command) async {
         runs++;
         expect(command, 'my-helper --profile sso');
-        return ProcessResult(0, 0,
-            '{"Version":1,"AccessKeyId":"AKIA1","SecretAccessKey":"s1"}', '');
+        return ProcessResult(
+          0,
+          0,
+          '{"Version":1,"AccessKeyId":"AKIA1","SecretAccessKey":"s1"}',
+          '',
+        );
       };
       final f = credFile();
       final a = await loadAwsCredentials('sso', path: f.path);
@@ -147,18 +169,28 @@ credential_process = my-helper --profile sso
       debugAwsNow = () => now;
       debugCredentialProcessRunner = (command) async {
         runs++;
-        return ProcessResult(0, 0,
-            '{"Version":1,"AccessKeyId":"AKIA$runs","SecretAccessKey":"s"}', '');
+        return ProcessResult(
+          0,
+          0,
+          '{"Version":1,"AccessKeyId":"AKIA$runs","SecretAccessKey":"s"}',
+          '',
+        );
       };
       final f = credFile();
 
       await loadAwsCredentials('sso', path: f.path);
       now = now.add(const Duration(minutes: 4));
-      expect((await loadAwsCredentials('sso', path: f.path))!.accessKeyId, 'AKIA1');
+      expect(
+        (await loadAwsCredentials('sso', path: f.path))!.accessKeyId,
+        'AKIA1',
+      );
       expect(runs, 1, reason: 'still inside the default TTL');
 
       now = now.add(const Duration(minutes: 2)); // 6 min total → expired
-      expect((await loadAwsCredentials('sso', path: f.path))!.accessKeyId, 'AKIA2');
+      expect(
+        (await loadAwsCredentials('sso', path: f.path))!.accessKeyId,
+        'AKIA2',
+      );
       expect(runs, 2, reason: 'the default TTL lapsed → helper re-run');
     });
 
@@ -169,9 +201,13 @@ credential_process = my-helper --profile sso
       final expiration = now.add(const Duration(minutes: 10)).toIso8601String();
       debugCredentialProcessRunner = (command) async {
         runs++;
-        return ProcessResult(0, 0,
-            '{"Version":1,"AccessKeyId":"AKIA$runs","SecretAccessKey":"s",'
-            '"SessionToken":"t","Expiration":"$expiration"}', '');
+        return ProcessResult(
+          0,
+          0,
+          '{"Version":1,"AccessKeyId":"AKIA$runs","SecretAccessKey":"s",'
+              '"SessionToken":"t","Expiration":"$expiration"}',
+          '',
+        );
       };
       final f = credFile();
 
@@ -194,11 +230,19 @@ credential_process = my-helper --profile sso
         runs++;
         return runs == 1
             ? ProcessResult(0, 3, '', 'boom') // transient failure
-            : ProcessResult(0, 0, '{"Version":1,"AccessKeyId":"AKIAOK","SecretAccessKey":"s"}', '');
+            : ProcessResult(
+                0,
+                0,
+                '{"Version":1,"AccessKeyId":"AKIAOK","SecretAccessKey":"s"}',
+                '',
+              );
       };
       final f = credFile();
       expect(await loadAwsCredentials('sso', path: f.path), isNull);
-      expect((await loadAwsCredentials('sso', path: f.path))!.accessKeyId, 'AKIAOK');
+      expect(
+        (await loadAwsCredentials('sso', path: f.path))!.accessKeyId,
+        'AKIAOK',
+      );
       expect(runs, 2);
     });
 
@@ -206,8 +250,12 @@ credential_process = my-helper --profile sso
       var runs = 0;
       debugCredentialProcessRunner = (command) async {
         runs++;
-        return ProcessResult(0, 0,
-            '{"Version":1,"AccessKeyId":"AKIA-${command.hashCode}","SecretAccessKey":"s"}', '');
+        return ProcessResult(
+          0,
+          0,
+          '{"Version":1,"AccessKeyId":"AKIA-${command.hashCode}","SecretAccessKey":"s"}',
+          '',
+        );
       };
       final f = write('credentials', '''
 [one]
@@ -220,14 +268,26 @@ credential_process = helper-two
       expect(runs, 2, reason: 'distinct profiles must not share a cache entry');
     });
 
-    test('static file-based credentials stay fresh per request (never cached)', () async {
-      final f = write('credentials',
-          '[default]\naws_access_key_id=AKIAONE\naws_secret_access_key=s1\n');
-      expect((await loadAwsCredentials('default', path: f.path))!.accessKeyId, 'AKIAONE');
-      // An external process rotates the file — the next load must see it.
-      f.writeAsStringSync(
-          '[default]\naws_access_key_id=AKIATWO\naws_secret_access_key=s2\n');
-      expect((await loadAwsCredentials('default', path: f.path))!.accessKeyId, 'AKIATWO');
-    });
+    test(
+      'static file-based credentials stay fresh per request (never cached)',
+      () async {
+        final f = write(
+          'credentials',
+          '[default]\naws_access_key_id=AKIAONE\naws_secret_access_key=s1\n',
+        );
+        expect(
+          (await loadAwsCredentials('default', path: f.path))!.accessKeyId,
+          'AKIAONE',
+        );
+        // An external process rotates the file — the next load must see it.
+        f.writeAsStringSync(
+          '[default]\naws_access_key_id=AKIATWO\naws_secret_access_key=s2\n',
+        );
+        expect(
+          (await loadAwsCredentials('default', path: f.path))!.accessKeyId,
+          'AKIATWO',
+        );
+      },
+    );
   });
 }

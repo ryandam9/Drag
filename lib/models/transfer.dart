@@ -80,8 +80,9 @@ class Transfer {
   });
 
   /// Elapsed transfer time, once finished.
-  Duration? get elapsed =>
-      (startedAt != null && finishedAt != null) ? finishedAt!.difference(startedAt!) : null;
+  Duration? get elapsed => (startedAt != null && finishedAt != null)
+      ? finishedAt!.difference(startedAt!)
+      : null;
 
   /// Human-friendly elapsed time, e.g. "0.8s", "1m 04s".
   String get elapsedLabel => formatDuration(elapsed);
@@ -97,4 +98,3 @@ String formatDuration(Duration? d) {
   final s = d.inSeconds % 60;
   return '${m}m ${s.toString().padLeft(2, '0')}s';
 }
-

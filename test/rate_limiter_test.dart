@@ -11,7 +11,9 @@ void main() {
   group('RateLimiter', () {
     test('unlimited never sleeps', () async {
       final waits = <Duration>[];
-      final rl = RateLimiter(sleep: (d) async => waits.add(d)); // bytesPerSecond null
+      final rl = RateLimiter(
+        sleep: (d) async => waits.add(d),
+      ); // bytesPerSecond null
       await rl.acquire(1 << 20);
       expect(waits, isEmpty);
     });
@@ -33,16 +35,19 @@ void main() {
       expect(now, 2000); // 2000 bytes over 2000ms = 1000 B/s
     });
 
-    test('concurrent acquires share the cap (serialised, not each full-rate)', () async {
-      var now = 0;
-      final rl = RateLimiter(
-        bytesPerSecond: 1000,
-        clockMs: () => now,
-        sleep: (d) async => now += d.inMilliseconds,
-      );
-      await Future.wait([rl.acquire(1000), rl.acquire(1000)]);
-      expect(now, 2000); // queued behind each other, not 1000
-    });
+    test(
+      'concurrent acquires share the cap (serialised, not each full-rate)',
+      () async {
+        var now = 0;
+        final rl = RateLimiter(
+          bytesPerSecond: 1000,
+          clockMs: () => now,
+          sleep: (d) async => now += d.inMilliseconds,
+        );
+        await Future.wait([rl.acquire(1000), rl.acquire(1000)]);
+        expect(now, 2000); // queued behind each other, not 1000
+      },
+    );
 
     test('an idle bucket lets a later chunk through without waiting', () async {
       var now = 0;
@@ -63,7 +68,10 @@ void main() {
 
     test('lifting the limit to 0 stops throttling', () async {
       final waits = <Duration>[];
-      final rl = RateLimiter(bytesPerSecond: 1000, sleep: (d) async => waits.add(d));
+      final rl = RateLimiter(
+        bytesPerSecond: 1000,
+        sleep: (d) async => waits.add(d),
+      );
       rl.bytesPerSecond = 0;
       await rl.acquire(1 << 20);
       expect(waits, isEmpty);
@@ -112,7 +120,10 @@ void main() {
 
     test('no cap means no throttling delay', () async {
       var now = 0;
-      final limiter = RateLimiter(clockMs: () => now, sleep: (d) async => now += d.inMilliseconds);
+      final limiter = RateLimiter(
+        clockMs: () => now,
+        sleep: (d) async => now += d.inMilliseconds,
+      );
       final service = TransferService(limiter: limiter);
 
       final src = MemoryBackend(files: {'/f.bin': Uint8List(4000)});

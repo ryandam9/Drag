@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('S3Backend path math', () {
-    final backend = S3Backend(Connection(name: 's3', protocol: Protocol.s3, bucket: 'b'));
+    final backend = S3Backend(
+      Connection(name: 's3', protocol: Protocol.s3, bucket: 'b'),
+    );
 
     test('childPath appends key / prefix', () {
       expect(backend.childPath('', 'file.txt', false), 'file.txt');

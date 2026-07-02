@@ -63,7 +63,13 @@ void main() {
       final item = s.leftPane.items.firstWhere((e) => e.name == 'a.bin');
       s.dropTransfer(DragPayload(item, true), false);
       final t = c.read(transfersProvider).transfers.first;
-      for (var i = 0; i < 300 && t.status != TransferStatus.done && t.status != TransferStatus.error; i++) {
+      for (
+        var i = 0;
+        i < 300 &&
+            t.status != TransferStatus.done &&
+            t.status != TransferStatus.error;
+        i++
+      ) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       // The completion callback (record / notify) runs after `run()` resolves —

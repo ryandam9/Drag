@@ -16,25 +16,27 @@ Transfer _active({
   String speed = '2.0 MB/s',
   String eta = '0:30',
   TransferDirection dir = TransferDirection.upload,
-}) =>
-    Transfer(
-        name: name,
-        route: 'Local → s3://bucket/$name',
-        direction: dir,
-        sizeBytes: size,
-        session: 's',
-        status: TransferStatus.active,
-        progress: progress,
-        speed: speed,
-        eta: eta);
+}) => Transfer(
+  name: name,
+  route: 'Local → s3://bucket/$name',
+  direction: dir,
+  sizeBytes: size,
+  session: 's',
+  status: TransferStatus.active,
+  progress: progress,
+  speed: speed,
+  eta: eta,
+);
 
 Future<void> _pump(WidgetTester tester, ProviderContainer c) async {
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: c,
-    child: const MaterialApp(
-      home: Scaffold(body: Stack(children: [ActiveTransferOverlay()])),
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: c,
+      child: const MaterialApp(
+        home: Scaffold(body: Stack(children: [ActiveTransferOverlay()])),
+      ),
     ),
-  ));
+  );
   await tester.pump();
 }
 
@@ -45,10 +47,7 @@ void main() {
     b.platformDispatcher.views.first.devicePixelRatio = 1.0;
   });
   tearDown(() {
-    TestWidgetsFlutterBinding.ensureInitialized()
-        .platformDispatcher
-        .views
-        .first
+    TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher.views.first
         .resetPhysicalSize();
   });
 
@@ -59,7 +58,9 @@ void main() {
     expect(find.textContaining('ETA'), findsNothing);
   });
 
-  testWidgets('shows the big-file card with ring %, speed and ETA', (tester) async {
+  testWidgets('shows the big-file card with ring %, speed and ETA', (
+    tester,
+  ) async {
     final c = makeContainer();
     c.read(transfersProvider.notifier).debugSetTransfers([
       _active(name: 'movie.mkv', size: 200 * _mB, progress: 0.5),
@@ -82,7 +83,9 @@ void main() {
     expect(find.text('Uploading'), findsOneWidget);
   });
 
-  testWidgets('an indeterminate (0%) transfer shows the … ring', (tester) async {
+  testWidgets('an indeterminate (0%) transfer shows the … ring', (
+    tester,
+  ) async {
     final c = makeContainer();
     c.read(transfersProvider.notifier).debugSetTransfers([
       _active(name: 'pending.bin', size: 5 * _mB, progress: 0, eta: '—'),
@@ -103,7 +106,9 @@ void main() {
     expect(find.text('+ 1 more transferring…'), findsOneWidget);
   });
 
-  testWidgets('is hidden on the connections and settings screens', (tester) async {
+  testWidgets('is hidden on the connections and settings screens', (
+    tester,
+  ) async {
     final c = makeContainer();
     c.read(transfersProvider.notifier).debugSetTransfers([
       _active(name: 'hidden.bin', size: 100 * _mB),

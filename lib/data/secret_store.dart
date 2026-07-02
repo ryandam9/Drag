@@ -37,11 +37,11 @@ abstract class SecretStore {
 
   // ── Shared (de)serialisation of the secret subset ──
   static Map<String, String> secretsOf(Connection c) => {
-        'password': c.password,
-        'passphrase': c.passphrase,
-        'secretAccessKey': c.secretAccessKey,
-        'sessionToken': c.sessionToken,
-      };
+    'password': c.password,
+    'passphrase': c.passphrase,
+    'secretAccessKey': c.secretAccessKey,
+    'sessionToken': c.sessionToken,
+  };
 
   static void apply(Connection c, Map<String, dynamic> m) {
     String s(String k) => (m[k] as String?) ?? '';
@@ -93,7 +93,7 @@ class MemorySecretStore implements SecretStore {
 /// transparently degrades to an in-memory map so the app keeps working.
 class KeychainSecretStore implements SecretStore {
   KeychainSecretStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
   final Map<String, String> _fallback = {};

@@ -13,8 +13,10 @@ Future<HttpServer> _okS3() async {
     req.response
       ..statusCode = 200
       ..headers.contentType = ContentType('application', 'xml')
-      ..write('<?xml version="1.0"?><ListBucketResult><Name>b</Name>'
-          '<IsTruncated>false</IsTruncated></ListBucketResult>');
+      ..write(
+        '<?xml version="1.0"?><ListBucketResult><Name>b</Name>'
+        '<IsTruncated>false</IsTruncated></ListBucketResult>',
+      );
     await req.response.close();
   });
   return server;
@@ -24,16 +26,22 @@ void main() {
   group('testConnection validation', () {
     test('SFTP without a host reports an error', () async {
       final c = makeContainer();
-      await c.read(sessionsProvider.notifier)
-          .testConnection(Connection(name: 'srv', protocol: Protocol.sftp, username: 'u'));
+      await c
+          .read(sessionsProvider.notifier)
+          .testConnection(
+            Connection(name: 'srv', protocol: Protocol.sftp, username: 'u'),
+          );
       expect(c.read(toastsProvider).last.title, 'Missing details');
       expect(c.read(toastsProvider).last.kind, ToastKind.error);
     });
 
     test('S3 without credentials reports an error', () async {
       final c = makeContainer();
-      await c.read(sessionsProvider.notifier)
-          .testConnection(Connection(name: 's3', protocol: Protocol.s3, bucket: 'b'));
+      await c
+          .read(sessionsProvider.notifier)
+          .testConnection(
+            Connection(name: 's3', protocol: Protocol.s3, bucket: 'b'),
+          );
       expect(c.read(toastsProvider).last.title, 'Missing credentials');
       expect(c.read(toastsProvider).last.kind, ToastKind.error);
     });
@@ -70,68 +78,77 @@ void main() {
       expect(log.last.message, contains('connected'));
     });
 
-    test('an unreachable S3 endpoint reports failure and marks it offline', () async {
-      final c = makeContainer();
-      final conn = Connection(
-        name: 's3-bad',
-        protocol: Protocol.s3,
-        bucket: 'b',
-        region: 'us-east-1',
-        endpoint: '127.0.0.1:1', // closed port
-        useSsl: false,
-        accessKeyId: 'AKIA',
-        secretAccessKey: 'secret',
-      )..status = ConnectionStatus.connected;
-      await c.read(sessionsProvider.notifier).testConnection(conn);
-      expect(c.read(toastsProvider).last.title, 'Connection failed');
-      expect(c.read(toastsProvider).last.kind, ToastKind.error);
-      expect(conn.online, isFalse);
-      // Richer status (#24): failed, with the full error retained.
-      expect(conn.status, ConnectionStatus.failed);
-      expect(conn.lastError, isNotNull);
-      expect(conn.lastError, isNotEmpty);
+    test(
+      'an unreachable S3 endpoint reports failure and marks it offline',
+      () async {
+        final c = makeContainer();
+        final conn = Connection(
+          name: 's3-bad',
+          protocol: Protocol.s3,
+          bucket: 'b',
+          region: 'us-east-1',
+          endpoint: '127.0.0.1:1', // closed port
+          useSsl: false,
+          accessKeyId: 'AKIA',
+          secretAccessKey: 'secret',
+        )..status = ConnectionStatus.connected;
+        await c.read(sessionsProvider.notifier).testConnection(conn);
+        expect(c.read(toastsProvider).last.title, 'Connection failed');
+        expect(c.read(toastsProvider).last.kind, ToastKind.error);
+        expect(conn.online, isFalse);
+        // Richer status (#24): failed, with the full error retained.
+        expect(conn.status, ConnectionStatus.failed);
+        expect(conn.lastError, isNotNull);
+        expect(conn.lastError, isNotEmpty);
 
-      final log = c.read(connectionLogProvider);
-      expect(log.last.kind, ToastKind.error);
-      expect(log.last.message, contains('s3-bad'));
-    });
+        final log = c.read(connectionLogProvider);
+        expect(log.last.kind, ToastKind.error);
+        expect(log.last.message, contains('s3-bad'));
+      },
+    );
 
-    test('connect() verifies a reachable S3 endpoint before reporting online', () async {
-      final server = await _okS3();
-      addTearDown(() => server.close(force: true));
-      final c = makeContainer();
-      final conn = Connection(
-        name: 's3-connect',
-        protocol: Protocol.s3,
-        bucket: 'b',
-        region: 'us-east-1',
-        endpoint: '127.0.0.1:${server.port}',
-        useSsl: false,
-        accessKeyId: 'AKIA',
-        secretAccessKey: 'secret',
-      );
-      await c.read(sessionsProvider.notifier).connect(conn);
-      expect(conn.online, isTrue);
-      expect(c.read(toastsProvider).last.title, 'Session connected');
-      expect(c.read(toastsProvider).last.kind, ToastKind.success);
-    });
+    test(
+      'connect() verifies a reachable S3 endpoint before reporting online',
+      () async {
+        final server = await _okS3();
+        addTearDown(() => server.close(force: true));
+        final c = makeContainer();
+        final conn = Connection(
+          name: 's3-connect',
+          protocol: Protocol.s3,
+          bucket: 'b',
+          region: 'us-east-1',
+          endpoint: '127.0.0.1:${server.port}',
+          useSsl: false,
+          accessKeyId: 'AKIA',
+          secretAccessKey: 'secret',
+        );
+        await c.read(sessionsProvider.notifier).connect(conn);
+        expect(conn.online, isTrue);
+        expect(c.read(toastsProvider).last.title, 'Session connected');
+        expect(c.read(toastsProvider).last.kind, ToastKind.success);
+      },
+    );
 
-    test('connect() reports failure and stays offline for an unreachable endpoint', () async {
-      final c = makeContainer();
-      final conn = Connection(
-        name: 's3-down',
-        protocol: Protocol.s3,
-        bucket: 'b',
-        region: 'us-east-1',
-        endpoint: '127.0.0.1:1',
-        useSsl: false,
-        accessKeyId: 'AKIA',
-        secretAccessKey: 'secret',
-      )..status = ConnectionStatus.connected;
-      await c.read(sessionsProvider.notifier).connect(conn);
-      expect(conn.online, isFalse);
-      expect(c.read(toastsProvider).last.title, 'Connection failed');
-    });
+    test(
+      'connect() reports failure and stays offline for an unreachable endpoint',
+      () async {
+        final c = makeContainer();
+        final conn = Connection(
+          name: 's3-down',
+          protocol: Protocol.s3,
+          bucket: 'b',
+          region: 'us-east-1',
+          endpoint: '127.0.0.1:1',
+          useSsl: false,
+          accessKeyId: 'AKIA',
+          secretAccessKey: 'secret',
+        )..status = ConnectionStatus.connected;
+        await c.read(sessionsProvider.notifier).connect(conn);
+        expect(conn.online, isFalse);
+        expect(c.read(toastsProvider).last.title, 'Connection failed');
+      },
+    );
 
     test('clear() empties the connection log', () async {
       final c = makeContainer();

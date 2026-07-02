@@ -36,5 +36,6 @@ class ToastsNotifier extends Notifier<List<ToastMessage>> {
   }
 }
 
-final toastsProvider =
-    NotifierProvider<ToastsNotifier, List<ToastMessage>>(ToastsNotifier.new);
+final toastsProvider = NotifierProvider<ToastsNotifier, List<ToastMessage>>(
+  ToastsNotifier.new,
+);

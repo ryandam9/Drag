@@ -15,7 +15,9 @@ void main() {
     setUp(() async {
       dir = await Directory.systemTemp.createTemp('fs_local');
       await File(p.join(dir.path, 'readme.txt')).writeAsString('hello');
-      await File(p.join(dir.path, 'data.bin')).writeAsBytes(List.filled(2048, 7));
+      await File(
+        p.join(dir.path, 'data.bin'),
+      ).writeAsBytes(List.filled(2048, 7));
       await Directory(p.join(dir.path, 'sub')).create();
     });
     tearDown(() => dir.delete(recursive: true));
@@ -43,7 +45,12 @@ void main() {
 
       final outPath = p.join(dir.path, 'copy.bin');
       var lastSent = 0;
-      await backend.write(outPath, handle.stream, handle.length!, onProgress: (s) => lastSent = s);
+      await backend.write(
+        outPath,
+        handle.stream,
+        handle.length!,
+        onProgress: (s) => lastSent = s,
+      );
       expect(lastSent, 2048);
       expect(await File(outPath).readAsBytes(), List.filled(2048, 7));
     });
@@ -64,7 +71,10 @@ void main() {
       expect(backend.parseInputPath('  /a/b  '), '/a/b');
       expect(backend.parseInputPath('file:///a/b'), '/a/b');
       expect(backend.parseInputPath('~'), backend.initialPath);
-      expect(backend.parseInputPath('~/docs'), p.join(backend.initialPath, 'docs'));
+      expect(
+        backend.parseInputPath('~/docs'),
+        p.join(backend.initialPath, 'docs'),
+      );
     });
 
     test('makeDir creates a directory', () async {
@@ -94,11 +104,16 @@ void main() {
       expect(await Directory(p.join(dir.path, 'sub')).exists(), isFalse);
     });
 
-    test('supportsMutation is true', () => expect(backend.supportsMutation, isTrue));
+    test(
+      'supportsMutation is true',
+      () => expect(backend.supportsMutation, isTrue),
+    );
   });
 
   group('S3Backend (offline path math)', () {
-    final b = S3Backend(Connection(name: 's', protocol: Protocol.s3, bucket: 'bk'));
+    final b = S3Backend(
+      Connection(name: 's', protocol: Protocol.s3, bucket: 'bk'),
+    );
 
     test('not ready without credentials', () => expect(b.isReady, isFalse));
     test('badge/kind', () {
@@ -116,19 +131,27 @@ void main() {
     test('displayPath uses s3:// scheme', () {
       expect(b.displayPath('k'), 's3://bk/k');
     });
-    test('parseInputPath strips s3:// + bucket and ensures a trailing slash', () {
-      expect(b.parseInputPath('s3://bk/logs/'), 'logs/');
-      expect(b.parseInputPath('bk/logs'), 'logs/');
-      expect(b.parseInputPath('logs'), 'logs/');
-      expect(b.parseInputPath('s3://bk/'), '');
-      expect(b.parseInputPath('s3://bk'), '');
-      expect(b.parseInputPath(''), '');
-    });
+    test(
+      'parseInputPath strips s3:// + bucket and ensures a trailing slash',
+      () {
+        expect(b.parseInputPath('s3://bk/logs/'), 'logs/');
+        expect(b.parseInputPath('bk/logs'), 'logs/');
+        expect(b.parseInputPath('logs'), 'logs/');
+        expect(b.parseInputPath('s3://bk/'), '');
+        expect(b.parseInputPath('s3://bk'), '');
+        expect(b.parseInputPath(''), '');
+      },
+    );
     test('supportsMutation is true', () => expect(b.supportsMutation, isTrue));
   });
 
   group('FakeRemoteBackend (SFTP stand-in)', () {
-    final conn = Connection(name: 'host', protocol: Protocol.sftp, username: 'u', remotePath: '/srv');
+    final conn = Connection(
+      name: 'host',
+      protocol: Protocol.sftp,
+      username: 'u',
+      remotePath: '/srv',
+    );
     final b = FakeRemoteBackend(conn);
 
     test('is read-only (no mutation, no transfer)', () {
@@ -143,7 +166,10 @@ void main() {
     });
     test('transfers are unsupported (simulated)', () {
       expect(() => b.openRead('/srv/x'), throwsUnsupportedError);
-      expect(() => b.write('/srv/x', const Stream.empty(), 0), throwsUnsupportedError);
+      expect(
+        () => b.write('/srv/x', const Stream.empty(), 0),
+        throwsUnsupportedError,
+      );
     });
     test('badge & initial path', () {
       expect(b.badge, 'REMOTE');

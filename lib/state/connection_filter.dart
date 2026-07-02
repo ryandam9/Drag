@@ -18,8 +18,10 @@ bool connectionMatches(Connection c, String query) {
 }
 
 /// Filters [all] by [query], preserving order.
-List<Connection> filterConnections(List<Connection> all, String query) =>
-    [for (final c in all) if (connectionMatches(c, query)) c];
+List<Connection> filterConnections(List<Connection> all, String query) => [
+  for (final c in all)
+    if (connectionMatches(c, query)) c,
+];
 
 /// Groups [conns] by their [Connection.tag], preserving each connection's
 /// original order within a group. Tagged groups come first in case-insensitive

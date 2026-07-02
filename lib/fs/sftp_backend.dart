@@ -35,10 +35,12 @@ class SftpBackend extends StorageBackend {
   String get badge => 'SFTP';
 
   @override
-  bool get isReady => connection.host.isNotEmpty && connection.username.isNotEmpty;
+  bool get isReady =>
+      connection.host.isNotEmpty && connection.username.isNotEmpty;
 
   @override
-  String get initialPath => connection.remotePath.isEmpty ? '/' : connection.remotePath;
+  String get initialPath =>
+      connection.remotePath.isEmpty ? '/' : connection.remotePath;
 
   @override
   String displayPath(String path) =>
@@ -50,7 +52,8 @@ class SftpBackend extends StorageBackend {
     // reusing (or re-opening) an SSH session that was already torn down.
     if (_disposed) {
       throw StateError(
-          'SftpBackend for ${connection.host} was disposed; open a new connection');
+        'SftpBackend for ${connection.host} was disposed; open a new connection',
+      );
     }
     if (_sftp != null) return Future.value(_sftp!);
     return _connecting ??= _connect();
@@ -89,7 +92,12 @@ class SftpBackend extends StorageBackend {
   Future<bool> _verifyHostKey(String type, Uint8List fingerprint) async {
     final verifier = globalHostKeyVerifier;
     if (verifier == null) return true;
-    return verifier.verify(connection.host, connection.port, type, utf8.decode(fingerprint));
+    return verifier.verify(
+      connection.host,
+      connection.port,
+      type,
+      utf8.decode(fingerprint),
+    );
   }
 
   Future<List<SSHKeyPair>?> _identities() async {
@@ -124,7 +132,10 @@ class SftpBackend extends StorageBackend {
 
   static String _expandHome(String path) {
     if (!path.startsWith('~')) return path;
-    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    final home =
+        Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ??
+        '';
     return path.replaceFirst('~', home);
   }
 
@@ -143,17 +154,22 @@ class SftpBackend extends StorageBackend {
       if (name == '.' || name == '..') continue;
       final attr = entry.attr;
       final longname = entry.longname;
-      final isDir = attr.type == SftpFileType.directory ||
+      final isDir =
+          attr.type == SftpFileType.directory ||
           (longname.isNotEmpty && longname.startsWith('d'));
-      items.add(FileItem(
-        name: name,
-        isDir: isDir,
-        sizeBytes: isDir ? null : attr.size,
-        modified: attr.modifyTime != null
-            ? formatModified(DateTime.fromMillisecondsSinceEpoch(attr.modifyTime! * 1000))
-            : '',
-        perms: longname.length >= 10 ? longname.substring(0, 10) : '',
-      ));
+      items.add(
+        FileItem(
+          name: name,
+          isDir: isDir,
+          sizeBytes: isDir ? null : attr.size,
+          modified: attr.modifyTime != null
+              ? formatModified(
+                  DateTime.fromMillisecondsSinceEpoch(attr.modifyTime! * 1000),
+                )
+              : '',
+          perms: longname.length >= 10 ? longname.substring(0, 10) : '',
+        ),
+      );
     }
     items.sort(StorageBackend.dirsFirst);
     return items;
@@ -191,7 +207,8 @@ class SftpBackend extends StorageBackend {
     final sftp = await _ensure();
     final file = await sftp.open(
       path,
-      mode: SftpFileOpenMode.create |
+      mode:
+          SftpFileOpenMode.create |
           SftpFileOpenMode.write |
           SftpFileOpenMode.truncate,
     );

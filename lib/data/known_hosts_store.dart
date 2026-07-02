@@ -37,20 +37,20 @@ class KnownHost {
   String get endpoint => port == 22 ? host : '$host:$port';
 
   Map<String, Object?> toRow() => {
-        'host': host,
-        'port': port,
-        'type': type,
-        'fingerprint': fingerprint,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      };
+    'host': host,
+    'port': port,
+    'type': type,
+    'fingerprint': fingerprint,
+    'created_at': DateTime.now().toUtc().toIso8601String(),
+  };
 
   factory KnownHost.fromRow(Map<String, Object?> r) => KnownHost(
-        id: r['id'] as int?,
-        host: r['host'] as String? ?? '',
-        port: (r['port'] as int?) ?? 22,
-        type: r['type'] as String? ?? '',
-        fingerprint: r['fingerprint'] as String? ?? '',
-      );
+    id: r['id'] as int?,
+    host: r['host'] as String? ?? '',
+    port: (r['port'] as int?) ?? 22,
+    type: r['type'] as String? ?? '',
+    fingerprint: r['fingerprint'] as String? ?? '',
+  );
 }
 
 /// Persists trusted SSH host keys in a local SQLite database.
@@ -84,7 +84,8 @@ class KnownHostsStore {
         ''');
         // One trusted key per host:port — upsert on re-trust, no duplicates.
         await db.execute(
-            'CREATE UNIQUE INDEX $_hostPortIndex ON $_table(host, port)');
+          'CREATE UNIQUE INDEX $_hostPortIndex ON $_table(host, port)',
+        );
       },
     );
     // The default path is always an on-disk file; only an explicit in-memory
@@ -102,21 +103,32 @@ class KnownHostsStore {
 
   /// The remembered key for [host]:[port], or null if never seen.
   Future<KnownHost?> find(String host, int port) async {
-    final rows = await _db.query(_table,
-        where: 'host = ? AND port = ?', whereArgs: [host, port], limit: 1);
+    final rows = await _db.query(
+      _table,
+      where: 'host = ? AND port = ?',
+      whereArgs: [host, port],
+      limit: 1,
+    );
     return rows.isEmpty ? null : KnownHost.fromRow(rows.first);
   }
 
   /// Remember [h]. Upserts on `(host, port)` — re-trusting a host (e.g. after a
   /// legitimate key rotation the user re-confirmed) replaces the stored
   /// fingerprint instead of leaving a duplicate row.
-  Future<void> trust(KnownHost h) =>
-      _db.insert(_table, h.toRow(), conflictAlgorithm: ConflictAlgorithm.replace);
+  Future<void> trust(KnownHost h) => _db.insert(
+    _table,
+    h.toRow(),
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
 
-  Future<void> remove(int id) => _db.delete(_table, where: 'id = ?', whereArgs: [id]);
+  Future<void> remove(int id) =>
+      _db.delete(_table, where: 'id = ?', whereArgs: [id]);
 
-  Future<void> forget(String host, int port) =>
-      _db.delete(_table, where: 'host = ? AND port = ?', whereArgs: [host, port]);
+  Future<void> forget(String host, int port) => _db.delete(
+    _table,
+    where: 'host = ? AND port = ?',
+    whereArgs: [host, port],
+  );
 
   Future<void> clear() => _db.delete(_table);
 
@@ -134,6 +146,7 @@ final _migrations = <int, Migration>{
       )
     ''');
     await db.execute(
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_known_hosts_host_port ON known_hosts(host, port)');
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_known_hosts_host_port ON known_hosts(host, port)',
+    );
   },
 };

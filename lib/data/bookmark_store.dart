@@ -10,23 +10,29 @@ class Bookmark {
   final String? connId;
   final String path;
   final String label;
-  const Bookmark({this.id, this.connId, required this.path, required this.label});
+  const Bookmark({
+    this.id,
+    this.connId,
+    required this.path,
+    required this.label,
+  });
 
-  Bookmark withId(int id) => Bookmark(id: id, connId: connId, path: path, label: label);
+  Bookmark withId(int id) =>
+      Bookmark(id: id, connId: connId, path: path, label: label);
 
   Map<String, Object?> toRow() => {
-        'conn_id': connId,
-        'path': path,
-        'label': label,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      };
+    'conn_id': connId,
+    'path': path,
+    'label': label,
+    'created_at': DateTime.now().toUtc().toIso8601String(),
+  };
 
   factory Bookmark.fromRow(Map<String, Object?> r) => Bookmark(
-        id: r['id'] as int?,
-        connId: r['conn_id'] as String?,
-        path: r['path'] as String? ?? '',
-        label: r['label'] as String? ?? '',
-      );
+    id: r['id'] as int?,
+    connId: r['conn_id'] as String?,
+    path: r['path'] as String? ?? '',
+    label: r['label'] as String? ?? '',
+  );
 }
 
 /// Persists [Bookmark]s in a local SQLite database, newest first.
@@ -61,7 +67,8 @@ class BookmarkStore {
 
   Future<int> add(Bookmark b) => _db.insert(_table, b.toRow());
 
-  Future<void> remove(int id) => _db.delete(_table, where: 'id = ?', whereArgs: [id]);
+  Future<void> remove(int id) =>
+      _db.delete(_table, where: 'id = ?', whereArgs: [id]);
 
   Future<void> close() => _db.close();
 }

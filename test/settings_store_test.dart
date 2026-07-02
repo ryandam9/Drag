@@ -80,7 +80,9 @@ void main() {
     });
 
     test('save then load persists the single row', () async {
-      await store.save(AppSettings(accentValue: 0xFFA855F7, showHiddenFiles: false));
+      await store.save(
+        AppSettings(accentValue: 0xFFA855F7, showHiddenFiles: false),
+      );
       final s = await store.load();
       expect(s.accentValue, 0xFFA855F7);
       expect(s.showHiddenFiles, isFalse);
@@ -102,7 +104,8 @@ void main() {
 
     test('applies persisted settings on construction', () {
       final c = makeContainer(
-          settings: AppSettings(uiFontSize: 14, showHiddenFiles: false));
+        settings: AppSettings(uiFontSize: 14, showHiddenFiles: false),
+      );
       final settings = c.read(settingsProvider);
       expect(settings.uiFontSize, 14);
       expect(settings.showHiddenFiles, isFalse);
@@ -113,7 +116,10 @@ void main() {
     test('setTheme seeds the light Material 3 palette from a bird primary', () {
       final c = makeContainer();
       final galah = birdThemeByName('Galah');
-      final cs = ColorScheme.fromSeed(seedColor: galah.primary, brightness: Brightness.light);
+      final cs = ColorScheme.fromSeed(
+        seedColor: galah.primary,
+        brightness: Brightness.light,
+      );
       c.read(settingsProvider.notifier).setTheme(galah);
       final settings = c.read(settingsProvider);
       expect(settings.themeName, 'Galah');
@@ -128,32 +134,39 @@ void main() {
       expect(resolveBrightness('light'), Brightness.light);
       expect(resolveBrightness('dark'), Brightness.dark);
       // 'system' / anything else defers to the OS preference.
-      expect(resolveBrightness('system'),
-          PlatformDispatcher.instance.platformBrightness);
+      expect(
+        resolveBrightness('system'),
+        PlatformDispatcher.instance.platformBrightness,
+      );
     });
 
-    test('setBrightnessMode regenerates the palette at the chosen brightness', () {
-      final c = makeContainer();
-      final n = c.read(settingsProvider.notifier);
+    test(
+      'setBrightnessMode regenerates the palette at the chosen brightness',
+      () {
+        final c = makeContainer();
+        final n = c.read(settingsProvider.notifier);
 
-      n.setBrightnessMode('light');
-      expect(c.read(settingsProvider).brightnessMode, 'light');
-      expect(FsColors.brightness, Brightness.light);
-      expect(FsColors.scheme.brightness, Brightness.light);
-      final lightScaffold = FsColors.bgScaffold;
-      final lightText = FsColors.text1;
+        n.setBrightnessMode('light');
+        expect(c.read(settingsProvider).brightnessMode, 'light');
+        expect(FsColors.brightness, Brightness.light);
+        expect(FsColors.scheme.brightness, Brightness.light);
+        final lightScaffold = FsColors.bgScaffold;
+        final lightText = FsColors.text1;
 
-      n.setBrightnessMode('dark');
-      expect(c.read(settingsProvider).brightnessMode, 'dark');
-      expect(FsColors.brightness, Brightness.dark);
-      expect(FsColors.scheme.brightness, Brightness.dark);
-      // The dark ramp differs from the light one (same seed, opposite surfaces).
-      expect(FsColors.bgScaffold, isNot(lightScaffold));
-      expect(FsColors.text1, isNot(lightText));
-      // Dark text sits on dark surfaces → light foreground.
-      expect(FsColors.text1.computeLuminance(),
-          greaterThan(FsColors.bgScaffold.computeLuminance()));
-    });
+        n.setBrightnessMode('dark');
+        expect(c.read(settingsProvider).brightnessMode, 'dark');
+        expect(FsColors.brightness, Brightness.dark);
+        expect(FsColors.scheme.brightness, Brightness.dark);
+        // The dark ramp differs from the light one (same seed, opposite surfaces).
+        expect(FsColors.bgScaffold, isNot(lightScaffold));
+        expect(FsColors.text1, isNot(lightText));
+        // Dark text sits on dark surfaces → light foreground.
+        expect(
+          FsColors.text1.computeLuminance(),
+          greaterThan(FsColors.bgScaffold.computeLuminance()),
+        );
+      },
+    );
 
     test('birdThemeByName falls back to the default for an unknown name', () {
       expect(birdThemeByName('Nope').name, kDefaultThemeName);
@@ -171,15 +184,18 @@ void main() {
       expect(FsType.monoFontFamily, 'Fira Code');
     });
 
-    test('AppFont sanitises unknown / mismatched families to slot defaults', () {
-      // A bogus name, or a mono font in the UI slot, falls back sensibly.
-      expect(AppFont.resolve('Comic Sans', mono: false), 'Inter');
-      expect(AppFont.resolve('Fira Code', mono: false), 'Inter');
-      expect(AppFont.resolve('Menlo', mono: true), 'JetBrains Mono');
-      expect(AppFont.resolve('Fira Code', mono: true), 'Fira Code');
-      expect(AppFont.sansFonts.every((f) => !f.mono), isTrue);
-      expect(AppFont.monoFonts.every((f) => f.mono), isTrue);
-    });
+    test(
+      'AppFont sanitises unknown / mismatched families to slot defaults',
+      () {
+        // A bogus name, or a mono font in the UI slot, falls back sensibly.
+        expect(AppFont.resolve('Comic Sans', mono: false), 'Inter');
+        expect(AppFont.resolve('Fira Code', mono: false), 'Inter');
+        expect(AppFont.resolve('Menlo', mono: true), 'JetBrains Mono');
+        expect(AppFont.resolve('Fira Code', mono: true), 'Fira Code');
+        expect(AppFont.sansFonts.every((f) => !f.mono), isTrue);
+        expect(AppFont.monoFonts.every((f) => f.mono), isTrue);
+      },
+    );
 
     test('buildDragTheme tolerates a bundled (non-catalogue) UI font', () {
       // Roboto Condensed ships as an asset, not via google_fonts — building the
@@ -212,7 +228,9 @@ void main() {
       expect(c.read(settingsProvider).uiFontSize, 13);
       expect(c.read(settingsProvider).themeName, kDefaultThemeName);
       final def = ColorScheme.fromSeed(
-          seedColor: birdThemeByName(kDefaultThemeName).primary, brightness: Brightness.light);
+        seedColor: birdThemeByName(kDefaultThemeName).primary,
+        brightness: Brightness.light,
+      );
       expect(FsColors.accent, def.primary);
     });
   });

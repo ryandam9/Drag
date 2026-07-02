@@ -44,7 +44,10 @@ class _ToastCard extends ConsumerWidget {
       builder: (context, v, child) => Opacity(
         opacity: v.clamp(0, 1),
         // Slide down + in from the top-right as it appears.
-        child: Transform.translate(offset: Offset((1 - v) * 26, (1 - v) * -10), child: child),
+        child: Transform.translate(
+          offset: Offset((1 - v) * 26, (1 - v) * -10),
+          child: child,
+        ),
       ),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
@@ -89,38 +92,55 @@ class _ToastCard extends ConsumerWidget {
                               color: t.kind.color.withValues(alpha: 0.16),
                               borderRadius: BorderRadius.circular(9),
                             ),
-                            child: Text(t.kind.icon, style: const TextStyle(fontSize: 18)),
+                            child: Text(
+                              t.kind.icon,
+                              style: const TextStyle(fontSize: 18),
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(t.title,
-                                    style: FsType.sans(
-                                        size: 14, weight: FontWeight.w700, color: t.kind.fg)),
+                                Text(
+                                  t.title,
+                                  style: FsType.sans(
+                                    size: 14,
+                                    weight: FontWeight.w700,
+                                    color: t.kind.fg,
+                                  ),
+                                ),
                                 const SizedBox(height: 3),
-                                Text(t.subtitle,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: FsType.sans(
-                                        size: 12.5,
-                                        height: 1.35,
-                                        color: t.kind.fg.withValues(alpha: 0.88))),
+                                Text(
+                                  t.subtitle,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: FsType.sans(
+                                    size: 12.5,
+                                    height: 1.35,
+                                    color: t.kind.fg.withValues(alpha: 0.88),
+                                  ),
+                                ),
                                 if (t.detail != null) ...[
                                   const SizedBox(height: 5),
-                                  Text(t.detail!,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: FsType.sans(
-                                          size: 11, color: t.kind.fg.withValues(alpha: 0.7))),
+                                  Text(
+                                    t.detail!,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: FsType.sans(
+                                      size: 11,
+                                      color: t.kind.fg.withValues(alpha: 0.7),
+                                    ),
+                                  ),
                                 ],
                               ],
                             ),
                           ),
                           const SizedBox(width: 4),
                           _CloseButton(
-                              onTap: () => ref.read(toastsProvider.notifier).dismiss(t.id)),
+                            onTap: () =>
+                                ref.read(toastsProvider.notifier).dismiss(t.id),
+                          ),
                         ],
                       ),
                     ),

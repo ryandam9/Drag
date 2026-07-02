@@ -42,8 +42,9 @@ void main() {
         path,
         options: OpenDatabaseOptions(
           version: 1,
-          onCreate: (db, _) =>
-              db.execute('CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT NOT NULL)'),
+          onCreate: (db, _) => db.execute(
+            'CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
+          ),
         ),
       );
       await db1.insert('t', {'id': 1, 'name': 'alpha'});
@@ -58,14 +59,24 @@ void main() {
         options: OpenDatabaseOptions(
           version: 2,
           onCreate: (db, _) => db.execute(
-              "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT NOT NULL, note TEXT DEFAULT '')"),
-          onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, migrations),
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT NOT NULL, note TEXT DEFAULT '')",
+          ),
+          onUpgrade: (db, oldV, newV) =>
+              runMigrations(db, oldV, newV, migrations),
         ),
       );
 
       final rows = await db2.query('t');
-      expect(rows.single['name'], 'alpha', reason: 'existing data survives the upgrade');
-      expect(rows.single['note'], '', reason: 'the new column exists with its default');
+      expect(
+        rows.single['name'],
+        'alpha',
+        reason: 'existing data survives the upgrade',
+      );
+      expect(
+        rows.single['note'],
+        '',
+        reason: 'the new column exists with its default',
+      );
       await db2.close();
     });
   });

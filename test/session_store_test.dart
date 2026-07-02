@@ -17,25 +17,43 @@ void main() {
       expect(layout.sessions, isEmpty);
     });
 
-    test('replaceAll + load round-trips records and the active index', () async {
-      await store.replaceAll([
-        const SessionRecord(leftConnId: null, leftPath: '/home', rightConnId: 's3a', rightPath: 'logs/'),
-        const SessionRecord(leftConnId: null, leftPath: '/tmp', rightConnId: null, rightPath: '/var'),
-      ], activeIndex: 1);
-      final layout = await store.load();
-      expect(layout.sessions.length, 2);
-      expect(layout.activeIndex, 1);
-      expect(layout.sessions.first.leftPath, '/home');
-      expect(layout.sessions.first.rightConnId, 's3a');
-      expect(layout.sessions.first.rightPath, 'logs/');
-      expect(layout.sessions[1].rightConnId, isNull);
-    });
+    test(
+      'replaceAll + load round-trips records and the active index',
+      () async {
+        await store.replaceAll([
+          const SessionRecord(
+            leftConnId: null,
+            leftPath: '/home',
+            rightConnId: 's3a',
+            rightPath: 'logs/',
+          ),
+          const SessionRecord(
+            leftConnId: null,
+            leftPath: '/tmp',
+            rightConnId: null,
+            rightPath: '/var',
+          ),
+        ], activeIndex: 1);
+        final layout = await store.load();
+        expect(layout.sessions.length, 2);
+        expect(layout.activeIndex, 1);
+        expect(layout.sessions.first.leftPath, '/home');
+        expect(layout.sessions.first.rightConnId, 's3a');
+        expect(layout.sessions.first.rightPath, 'logs/');
+        expect(layout.sessions[1].rightConnId, isNull);
+      },
+    );
   });
 
   group('session restore', () {
     test('rebuilds the persisted tabs and pane endpoints', () {
       final layout = SessionLayout(const [
-        SessionRecord(leftConnId: null, leftPath: '/home/me', rightConnId: 's3a', rightPath: 'reports/'),
+        SessionRecord(
+          leftConnId: null,
+          leftPath: '/home/me',
+          rightConnId: 's3a',
+          rightPath: 'reports/',
+        ),
       ], 0);
       final c = makeContainer(connections: sampleConnections(), layout: layout);
 
@@ -57,14 +75,25 @@ void main() {
       expect(c.read(sessionsProvider.notifier).leftPane.connection, isNull);
     });
 
-    test('drops a tab whose connection id no longer exists (resolves to Local)', () {
-      final layout = SessionLayout(const [
-        SessionRecord(leftConnId: null, leftPath: '/a', rightConnId: 'gone', rightPath: 'x/'),
-      ], 0);
-      final c = makeContainer(connections: sampleConnections(), layout: layout);
-      // Unknown id resolves to Local rather than crashing.
-      expect(c.read(sessionsProvider.notifier).rightPane.connection, isNull);
-    });
+    test(
+      'drops a tab whose connection id no longer exists (resolves to Local)',
+      () {
+        final layout = SessionLayout(const [
+          SessionRecord(
+            leftConnId: null,
+            leftPath: '/a',
+            rightConnId: 'gone',
+            rightPath: 'x/',
+          ),
+        ], 0);
+        final c = makeContainer(
+          connections: sampleConnections(),
+          layout: layout,
+        );
+        // Unknown id resolves to Local rather than crashing.
+        expect(c.read(sessionsProvider.notifier).rightPane.connection, isNull);
+      },
+    );
   });
 
   group('session persistence', () {
@@ -76,7 +105,9 @@ void main() {
         sessionStore: store,
       );
       final s = c.read(sessionsProvider.notifier);
-      s.openSession(c.read(connectionsProvider).connections.firstWhere((x) => x.isS3));
+      s.openSession(
+        c.read(connectionsProvider).connections.firstWhere((x) => x.isS3),
+      );
 
       // The save is debounced (~400ms); wait it out.
       await Future<void>.delayed(const Duration(milliseconds: 600));

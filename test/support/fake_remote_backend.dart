@@ -26,7 +26,8 @@ class FakeRemoteBackend extends StorageBackend {
   bool get supportsMutation => false;
 
   @override
-  String get initialPath => connection.remotePath.isEmpty ? '/' : connection.remotePath;
+  String get initialPath =>
+      connection.remotePath.isEmpty ? '/' : connection.remotePath;
 
   @override
   String displayPath(String path) =>
@@ -46,9 +47,12 @@ class FakeRemoteBackend extends StorageBackend {
       throw UnsupportedError('FakeRemoteBackend does not transfer bytes');
 
   @override
-  Future<void> write(String path, Stream<Uint8List> data, int length,
-          {void Function(int sent)? onProgress}) =>
-      throw UnsupportedError('FakeRemoteBackend does not transfer bytes');
+  Future<void> write(
+    String path,
+    Stream<Uint8List> data,
+    int length, {
+    void Function(int sent)? onProgress,
+  }) => throw UnsupportedError('FakeRemoteBackend does not transfer bytes');
 
   @override
   String childPath(String path, String name, bool isDir) {
@@ -58,7 +62,9 @@ class FakeRemoteBackend extends StorageBackend {
 
   @override
   String parentPath(String path) {
-    final trimmed = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+    final trimmed = path.endsWith('/')
+        ? path.substring(0, path.length - 1)
+        : path;
     final idx = trimmed.lastIndexOf('/');
     return idx <= 0 ? '/' : trimmed.substring(0, idx);
   }

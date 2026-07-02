@@ -2,9 +2,9 @@ enum Protocol { sftp, s3 }
 
 extension ProtocolLabel on Protocol {
   String get label => switch (this) {
-        Protocol.sftp => 'SFTP',
-        Protocol.s3 => 'S3',
-      };
+    Protocol.sftp => 'SFTP',
+    Protocol.s3 => 'S3',
+  };
 }
 
 /// How a pane talks to its storage. Drives which backend is built.
@@ -14,9 +14,9 @@ enum AuthMethod { password, privateKey }
 
 extension AuthMethodLabel on AuthMethod {
   String get label => switch (this) {
-        AuthMethod.password => 'Password',
-        AuthMethod.privateKey => 'Private Key',
-      };
+    AuthMethod.password => 'Password',
+    AuthMethod.privateKey => 'Private Key',
+  };
 }
 
 enum ConnGroup { recent, saved }
@@ -42,12 +42,12 @@ enum ConnectionStatus {
 
 extension ConnectionStatusLabel on ConnectionStatus {
   String get label => switch (this) {
-        ConnectionStatus.notConfigured => 'Not configured',
-        ConnectionStatus.saved => 'Saved',
-        ConnectionStatus.testing => 'Testing…',
-        ConnectionStatus.connected => 'Connected',
-        ConnectionStatus.failed => 'Failed',
-      };
+    ConnectionStatus.notConfigured => 'Not configured',
+    ConnectionStatus.saved => 'Saved',
+    ConnectionStatus.testing => 'Testing…',
+    ConnectionStatus.connected => 'Connected',
+    ConnectionStatus.failed => 'Failed',
+  };
 }
 
 int _idSeq = 0;
@@ -119,7 +119,8 @@ class Connection {
   /// Optional external ID required by some cross-account role trust policies.
   String roleExternalId;
 
-  EndpointKind get kind => protocol == Protocol.s3 ? EndpointKind.s3 : EndpointKind.sftp;
+  EndpointKind get kind =>
+      protocol == Protocol.s3 ? EndpointKind.s3 : EndpointKind.sftp;
   bool get isS3 => protocol == Protocol.s3;
 
   /// Enough S3 settings present to attempt a connection: typed key/secret, or
@@ -172,34 +173,34 @@ class Connection {
   /// Serializes everything EXCEPT secrets (password, passphrase, secret access
   /// key, session token). Secrets belong in the OS keychain — see issue #16.
   Map<String, Object?> toJson() => {
-        'id': id,
-        'name': name,
-        'host': host,
-        'port': port,
-        'username': username,
-        'protocol': protocol.name,
-        'auth': auth.name,
-        'keyFile': keyFile,
-        'remotePath': remotePath,
-        'localPath': localPath,
-        'timeout': timeout,
-        'keepAlive': keepAlive,
-        'openInNewTab': openInNewTab,
-        'group': group.name,
-        'tag': tag,
-        'details': details,
-        'lastConnected': lastConnected,
-        'accessKeyId': accessKeyId,
-        'region': region,
-        'bucket': bucket,
-        'endpoint': endpoint,
-        'useSsl': useSsl,
-        'useAwsProfile': useAwsProfile,
-        'awsProfile': awsProfile,
-        'assumeRoleArn': assumeRoleArn,
-        'roleSessionName': roleSessionName,
-        'roleExternalId': roleExternalId,
-      };
+    'id': id,
+    'name': name,
+    'host': host,
+    'port': port,
+    'username': username,
+    'protocol': protocol.name,
+    'auth': auth.name,
+    'keyFile': keyFile,
+    'remotePath': remotePath,
+    'localPath': localPath,
+    'timeout': timeout,
+    'keepAlive': keepAlive,
+    'openInNewTab': openInNewTab,
+    'group': group.name,
+    'tag': tag,
+    'details': details,
+    'lastConnected': lastConnected,
+    'accessKeyId': accessKeyId,
+    'region': region,
+    'bucket': bucket,
+    'endpoint': endpoint,
+    'useSsl': useSsl,
+    'useAwsProfile': useAwsProfile,
+    'awsProfile': awsProfile,
+    'assumeRoleArn': assumeRoleArn,
+    'roleSessionName': roleSessionName,
+    'roleExternalId': roleExternalId,
+  };
 
   factory Connection.fromJson(Map<String, Object?> m) {
     T byName<T extends Enum>(List<T> values, Object? v, T fallback) =>

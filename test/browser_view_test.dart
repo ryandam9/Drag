@@ -6,8 +6,19 @@ import 'package:drag/state/pane_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
-FileItem _f(String name, {bool dir = false, int? size, String modified = '', String perms = ''}) =>
-    FileItem(name: name, isDir: dir, sizeBytes: size, modified: modified, perms: perms);
+FileItem _f(
+  String name, {
+  bool dir = false,
+  int? size,
+  String modified = '',
+  String perms = '',
+}) => FileItem(
+  name: name,
+  isDir: dir,
+  sizeBytes: size,
+  modified: modified,
+  perms: perms,
+);
 
 void main() {
   group('sortItems', () {
@@ -23,7 +34,14 @@ void main() {
     test('name ascending keeps ".." first and dirs before files', () {
       final s = sortItems(items, SortKey.name, true);
       expect(s.first.name, '..');
-      expect(s.map((e) => e.name).toList(), ['..', 'alpha', 'zeta', 'a.txt', 'b.txt', 'c.txt']);
+      expect(s.map((e) => e.name).toList(), [
+        '..',
+        'alpha',
+        'zeta',
+        'a.txt',
+        'b.txt',
+        'c.txt',
+      ]);
     });
 
     test('descending flips within groups but keeps .. and dirs pinned', () {
@@ -35,12 +53,20 @@ void main() {
     });
 
     test('size sort orders files by bytes (dirs grouped first)', () {
-      final asc = sortItems(items, SortKey.size, true).where((e) => !e.isDir).map((e) => e.name).toList();
+      final asc = sortItems(
+        items,
+        SortKey.size,
+        true,
+      ).where((e) => !e.isDir).map((e) => e.name).toList();
       expect(asc, ['b.txt', 'c.txt', 'a.txt']); // 100, 200, 300
     });
 
     test('modified sort uses the lexical timestamp (chronological)', () {
-      final asc = sortItems(items, SortKey.modified, true).where((e) => !e.isDir).map((e) => e.name).toList();
+      final asc = sortItems(
+        items,
+        SortKey.modified,
+        true,
+      ).where((e) => !e.isDir).map((e) => e.name).toList();
       expect(asc, ['a.txt', 'b.txt', 'c.txt']);
     });
   });
@@ -56,13 +82,17 @@ void main() {
     });
     tearDown(() => dir.delete(recursive: true));
 
-    PaneController pane() => PaneController(backend: LocalBackend(), onChanged: () {})..path = dir.path;
+    PaneController pane() =>
+        PaneController(backend: LocalBackend(), onChanged: () {})
+          ..path = dir.path;
 
     test('setFilter narrows the listing live (parent kept)', () async {
       final pc = pane();
       await pc.refresh();
       pc.setFilter('rry'); // matches cherry
-      expect(pc.items.where((e) => !e.isParent).map((e) => e.name), ['cherry.txt']);
+      expect(pc.items.where((e) => !e.isParent).map((e) => e.name), [
+        'cherry.txt',
+      ]);
       pc.setFilter('');
       expect(pc.items.where((e) => !e.isParent).length, 4); // 3 files + docs
     });
@@ -73,7 +103,10 @@ void main() {
       pc.select(1);
       pc.setSort(SortKey.name);
       expect(pc.sortKey, SortKey.name);
-      expect(pc.sortAscending, isFalse); // name was the default; repeating flips
+      expect(
+        pc.sortAscending,
+        isFalse,
+      ); // name was the default; repeating flips
       expect(pc.selection, isEmpty);
       pc.setSort(SortKey.size);
       expect(pc.sortKey, SortKey.size);
@@ -85,8 +118,10 @@ void main() {
     test('walks up multiple directories at once', () async {
       final root = await Directory.systemTemp.createTemp('levels');
       addTearDown(() => root.delete(recursive: true));
-      final deep = Directory(p.join(root.path, 'a', 'b', 'c'))..createSync(recursive: true);
-      final pc = PaneController(backend: LocalBackend(), onChanged: () {})..path = deep.path;
+      final deep = Directory(p.join(root.path, 'a', 'b', 'c'))
+        ..createSync(recursive: true);
+      final pc = PaneController(backend: LocalBackend(), onChanged: () {})
+        ..path = deep.path;
       await pc.refresh();
       await pc.goUpLevels(2); // c -> b -> a
       expect(pc.path, p.join(root.path, 'a'));

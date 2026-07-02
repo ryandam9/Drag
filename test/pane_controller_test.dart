@@ -23,7 +23,10 @@ void main() {
   tearDown(() => dir.delete(recursive: true));
 
   PaneController localPane({VoidCallback? onChanged}) {
-    final pc = PaneController(backend: LocalBackend(), onChanged: onChanged ?? () {});
+    final pc = PaneController(
+      backend: LocalBackend(),
+      onChanged: onChanged ?? () {},
+    );
     pc.path = dir.path;
     return pc;
   }
@@ -101,7 +104,10 @@ void main() {
 
     pane.toggleSelect(iN);
     expect(pane.selection.containsAll({iA, iN}), isTrue);
-    expect(pane.selectedItems().map((e) => e.name), containsAll(['a.txt', 'nested']));
+    expect(
+      pane.selectedItems().map((e) => e.name),
+      containsAll(['a.txt', 'nested']),
+    );
 
     pane.toggleSelect(iA);
     expect(pane.isSelected(iA), isFalse);
@@ -122,30 +128,35 @@ void main() {
     expect(notified, 1);
   });
 
-  test('hidden-file filter hides/show dot-files and clears selection', () async {
-    await File(p.join(dir.path, '.secret')).writeAsString('x');
-    final pane = localPane();
-    await pane.refresh();
-    // Shown by default.
-    expect(pane.items.any((e) => e.name == '.secret'), isTrue);
+  test(
+    'hidden-file filter hides/show dot-files and clears selection',
+    () async {
+      await File(p.join(dir.path, '.secret')).writeAsString('x');
+      final pane = localPane();
+      await pane.refresh();
+      // Shown by default.
+      expect(pane.items.any((e) => e.name == '.secret'), isTrue);
 
-    pane.select(0);
-    pane.setShowHidden(false);
-    expect(pane.items.any((e) => e.name == '.secret'), isFalse);
-    // Visible (non-dot) entries remain.
-    expect(pane.items.any((e) => e.name == 'a.txt'), isTrue);
-    // Toggling re-filters and clears the now-stale selection.
-    expect(pane.selection, isEmpty);
+      pane.select(0);
+      pane.setShowHidden(false);
+      expect(pane.items.any((e) => e.name == '.secret'), isFalse);
+      // Visible (non-dot) entries remain.
+      expect(pane.items.any((e) => e.name == 'a.txt'), isTrue);
+      // Toggling re-filters and clears the now-stale selection.
+      expect(pane.selection, isEmpty);
 
-    pane.setShowHidden(true);
-    expect(pane.items.any((e) => e.name == '.secret'), isTrue);
-  });
+      pane.setShowHidden(true);
+      expect(pane.items.any((e) => e.name == '.secret'), isTrue);
+    },
+  );
 
   test('hidden filter set before refresh applies on first listing', () async {
     await File(p.join(dir.path, '.env')).writeAsString('x');
     final pane = PaneController(
-        backend: LocalBackend(), onChanged: () {}, showHidden: false)
-      ..path = dir.path;
+      backend: LocalBackend(),
+      onChanged: () {},
+      showHidden: false,
+    )..path = dir.path;
     await pane.refresh();
     expect(pane.items.any((e) => e.name == '.env'), isFalse);
     // '..' parent entry is never filtered.
@@ -154,7 +165,9 @@ void main() {
 
   test('not-ready backend short-circuits refresh with empty items', () async {
     final pane = PaneController(
-      backend: S3Backend(Connection(name: 's', protocol: Protocol.s3, bucket: 'b')),
+      backend: S3Backend(
+        Connection(name: 's', protocol: Protocol.s3, bucket: 'b'),
+      ),
       connection: Connection(name: 's', protocol: Protocol.s3, bucket: 'b'),
       onChanged: () {},
     );
@@ -168,19 +181,39 @@ void main() {
     final local = localPane();
     expect(local.breadcrumb.first, '~');
 
-    final s3conn = Connection(name: 's3', protocol: Protocol.s3, bucket: 'my-bucket');
-    final s3 = PaneController(backend: S3Backend(s3conn), connection: s3conn, onChanged: () {});
+    final s3conn = Connection(
+      name: 's3',
+      protocol: Protocol.s3,
+      bucket: 'my-bucket',
+    );
+    final s3 = PaneController(
+      backend: S3Backend(s3conn),
+      connection: s3conn,
+      onChanged: () {},
+    );
     expect(s3.breadcrumb.first, 'my-bucket');
 
-    final sftpConn = Connection(name: 'h', protocol: Protocol.sftp, remotePath: '/srv');
-    final sftp = PaneController(backend: FakeRemoteBackend(sftpConn), connection: sftpConn, onChanged: () {});
+    final sftpConn = Connection(
+      name: 'h',
+      protocol: Protocol.sftp,
+      remotePath: '/srv',
+    );
+    final sftp = PaneController(
+      backend: FakeRemoteBackend(sftpConn),
+      connection: sftpConn,
+      onChanged: () {},
+    );
     expect(sftp.breadcrumb.first, '/');
   });
 
   test('switchTo swaps backend, resets path and lists', () async {
     final pane = localPane();
     await pane.refresh();
-    final sftpConn = Connection(name: 'h', protocol: Protocol.sftp, remotePath: '/srv');
+    final sftpConn = Connection(
+      name: 'h',
+      protocol: Protocol.sftp,
+      remotePath: '/srv',
+    );
     await pane.switchTo(FakeRemoteBackend(sftpConn), sftpConn);
     expect(pane.kind, EndpointKind.sftp);
     expect(pane.path, '/srv');
@@ -192,7 +225,8 @@ void main() {
   });
 
   test('a listing larger than the cap is truncated', () async {
-    final pane = PaneController(backend: _BigBackend(), onChanged: () {})..path = '/';
+    final pane = PaneController(backend: _BigBackend(), onChanged: () {})
+      ..path = '/';
     await pane.refresh();
     expect(pane.listingTruncated, isTrue);
     expect(pane.loadedCount, PaneController.listingMax);
@@ -210,14 +244,19 @@ class _BigBackend extends StorageBackend {
   @override
   String get initialPath => '/';
   @override
-  Future<List<FileItem>> list(String path) async =>
-      [for (var i = 0; i < PaneController.listingMax + 50; i++) FileItem(name: 'f$i', sizeBytes: i)];
+  Future<List<FileItem>> list(String path) async => [
+    for (var i = 0; i < PaneController.listingMax + 50; i++)
+      FileItem(name: 'f$i', sizeBytes: i),
+  ];
   @override
   Future<ReadHandle> openRead(String path) => throw UnsupportedError('no');
   @override
-  Future<void> write(String path, Stream<Uint8List> data, int length,
-          {void Function(int sent)? onProgress}) =>
-      throw UnsupportedError('no');
+  Future<void> write(
+    String path,
+    Stream<Uint8List> data,
+    int length, {
+    void Function(int sent)? onProgress,
+  }) => throw UnsupportedError('no');
   @override
   String childPath(String path, String name, bool isDir) => '$path$name';
   @override

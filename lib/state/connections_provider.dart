@@ -12,8 +12,13 @@ class ConnectionsState {
   final Connection? selected;
   const ConnectionsState(this.connections, this.selected);
 
-  ConnectionsState copyWith({List<Connection>? connections, Connection? selected}) =>
-      ConnectionsState(connections ?? this.connections, selected ?? this.selected);
+  ConnectionsState copyWith({
+    List<Connection>? connections,
+    Connection? selected,
+  }) => ConnectionsState(
+    connections ?? this.connections,
+    selected ?? this.selected,
+  );
 }
 
 /// Owns the saved connections and the current selection, with CRUD that
@@ -65,7 +70,11 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
 
   /// Create a blank connection, select it, and persist.
   Future<Connection> create() async {
-    final c = Connection(id: Connection.newId(), name: 'New connection', host: '');
+    final c = Connection(
+      id: Connection.newId(),
+      name: 'New connection',
+      host: '',
+    );
     final next = [..._list, c];
     state = ConnectionsState(next, c);
     await _persist();
@@ -130,4 +139,6 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
 }
 
 final connectionsProvider =
-    NotifierProvider<ConnectionsNotifier, ConnectionsState>(ConnectionsNotifier.new);
+    NotifierProvider<ConnectionsNotifier, ConnectionsState>(
+      ConnectionsNotifier.new,
+    );

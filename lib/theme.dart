@@ -13,12 +13,16 @@ class FsColors {
   // ── Surface ramp (light) ──
   // NOT const: [applyTheme] recomputes these from the active ColorScheme.
   // Defaults are a neutral light scheme for the first frame before settings load.
-  static Color bgScaffold = const Color(0xFFF4F6F1); // page background (warm off-white)
+  static Color bgScaffold = const Color(
+    0xFFF4F6F1,
+  ); // page background (warm off-white)
   static Color bgDeep = const Color(0xFFEFF2EC); // sidebar / title bar
   static Color bgSurface = const Color(0xFFFFFFFF); // cards
   static Color bgPanel = const Color(0xFFFFFFFF); // panels / dialogs
   static Color bgHover = const Color(0xFFE9ECE4); // subtle hover
-  static Color bgActive = const Color(0xFFD7E8D2); // soft selected pill (secondaryContainer)
+  static Color bgActive = const Color(
+    0xFFD7E8D2,
+  ); // soft selected pill (secondaryContainer)
 
   static Color border = const Color(0xFFDDE2D6); // hairline (outlineVariant)
   static Color borderHi = const Color(0xFFB9BFB0); // stronger (outline)
@@ -35,10 +39,12 @@ class FsColors {
   static ColorScheme scheme = const ColorScheme.light(primary: accentDefault);
 
   /// Derives a lighter tint of [base] (kept for callers that want a soft fill).
-  static Color highlightFor(Color base) => Color.lerp(base, Colors.white, 0.28)!;
+  static Color highlightFor(Color base) =>
+      Color.lerp(base, Colors.white, 0.28)!;
 
   /// Darkens [c] toward black by [amt] — used for pressed/hover button states.
-  static Color darken(Color c, [double amt = 0.10]) => Color.lerp(c, Colors.black, amt)!;
+  static Color darken(Color c, [double amt = 0.10]) =>
+      Color.lerp(c, Colors.black, amt)!;
 
   // Status colours — semantic, fixed, tuned for legibility on light surfaces.
   static const green = Color(0xFF2E7D32);
@@ -52,8 +58,8 @@ class FsColors {
 
   /// Soft drop shadow used by cards and the window frame.
   static List<BoxShadow> get cardShadow => const [
-        BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6)),
-      ];
+    BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6)),
+  ];
 
   /// The brightness the ramp was last generated for.
   static Brightness brightness = Brightness.light;
@@ -62,9 +68,15 @@ class FsColors {
   /// requested [brightness]. The same surfaceContainer* / onSurface role mapping
   /// works for both brightnesses, so each bird palette gets a coherent light and
   /// dark variant.
-  static void applyTheme(BirdTheme t, {Brightness brightness = Brightness.light}) {
+  static void applyTheme(
+    BirdTheme t, {
+    Brightness brightness = Brightness.light,
+  }) {
     FsColors.brightness = brightness;
-    final cs = ColorScheme.fromSeed(seedColor: t.primary, brightness: brightness);
+    final cs = ColorScheme.fromSeed(
+      seedColor: t.primary,
+      brightness: brightness,
+    );
     scheme = cs;
     accent = cs.primary;
     accentHi = cs.onSecondaryContainer;
@@ -126,24 +138,80 @@ class BirdTheme {
 const String kDefaultThemeName = 'Rainbow Bee-eater';
 
 const List<BirdTheme> kBirdThemes = [
-  BirdTheme('Rainbow Bee-eater', Color(0xFF00346E), Color(0xFF007CBF), Color(0xFF06ABDF)),
-  BirdTheme('Spotted Pardalote', Color(0xFFCB0300), Color(0xFFFECA00), Color(0xFFD36328)),
-  BirdTheme('Plains-wanderer', Color(0xFFEDD8C5), Color(0xFFE7AA01), Color(0xFFD09A5E)),
-  BirdTheme('Rose-crowned Fruit Dove', Color(0xFFBD338F), Color(0xFFEB8252), Color(0xFF8FA33F)),
-  BirdTheme('Eastern Rosella', Color(0xFF2F533C), Color(0xFFF4C623), Color(0xFF2F7AB9)),
-  BirdTheme('Olivaceous Oriole', Color(0xFFB8A53F), Color(0xFFA29EB8), Color(0xFFBB5645)),
-  BirdTheme('Princess Parrot', Color(0xFF7090C9), Color(0xFF6EB245), Color(0xFFCF2236)),
-  BirdTheme('Superb Fairy-wren', Color(0xFFB03F05), Color(0xFFAA7853), Color(0xFF4F3321)),
-  BirdTheme('Cassowary', Color(0xFF0169C4), Color(0xFFBDA14D), Color(0xFFD5114E)),
-  BirdTheme('Eastern Yellow Robin', Color(0xFF979EB9), Color(0xFFE19E00), Color(0xFF85773A)),
+  BirdTheme(
+    'Rainbow Bee-eater',
+    Color(0xFF00346E),
+    Color(0xFF007CBF),
+    Color(0xFF06ABDF),
+  ),
+  BirdTheme(
+    'Spotted Pardalote',
+    Color(0xFFCB0300),
+    Color(0xFFFECA00),
+    Color(0xFFD36328),
+  ),
+  BirdTheme(
+    'Plains-wanderer',
+    Color(0xFFEDD8C5),
+    Color(0xFFE7AA01),
+    Color(0xFFD09A5E),
+  ),
+  BirdTheme(
+    'Rose-crowned Fruit Dove',
+    Color(0xFFBD338F),
+    Color(0xFFEB8252),
+    Color(0xFF8FA33F),
+  ),
+  BirdTheme(
+    'Eastern Rosella',
+    Color(0xFF2F533C),
+    Color(0xFFF4C623),
+    Color(0xFF2F7AB9),
+  ),
+  BirdTheme(
+    'Olivaceous Oriole',
+    Color(0xFFB8A53F),
+    Color(0xFFA29EB8),
+    Color(0xFFBB5645),
+  ),
+  BirdTheme(
+    'Princess Parrot',
+    Color(0xFF7090C9),
+    Color(0xFF6EB245),
+    Color(0xFFCF2236),
+  ),
+  BirdTheme(
+    'Superb Fairy-wren',
+    Color(0xFFB03F05),
+    Color(0xFFAA7853),
+    Color(0xFF4F3321),
+  ),
+  BirdTheme(
+    'Cassowary',
+    Color(0xFF0169C4),
+    Color(0xFFBDA14D),
+    Color(0xFFD5114E),
+  ),
+  BirdTheme(
+    'Eastern Yellow Robin',
+    Color(0xFF979EB9),
+    Color(0xFFE19E00),
+    Color(0xFF85773A),
+  ),
   BirdTheme('Galah', Color(0xFFD05478), Color(0xFFE9A7BB), Color(0xFF4C5766)),
-  BirdTheme('Blue-winged Kookaburra', Color(0xFFAD8D9F), Color(0xFF0B7595), Color(0xFFB5EFFB)),
+  BirdTheme(
+    'Blue-winged Kookaburra',
+    Color(0xFFAD8D9F),
+    Color(0xFF0B7595),
+    Color(0xFFB5EFFB),
+  ),
 ];
 
 /// Looks up a theme by [name], falling back to the default Bee-eater palette.
-BirdTheme birdThemeByName(String name) =>
-    kBirdThemes.firstWhere((t) => t.name == name,
-        orElse: () => kBirdThemes.first);
+BirdTheme birdThemeByName(String name) => kBirdThemes.firstWhere(
+  (t) => t.name == name,
+  orElse: () => kBirdThemes.first,
+);
 
 /// Resolves a brightness-mode string (`'light'` / `'dark'` / `'system'`) to a
 /// concrete [Brightness]. `'system'` reads the current OS preference.
@@ -175,14 +243,15 @@ class FsType {
     double? letterSpacing,
     double? height,
     bool tabular = false,
-  }) =>
-      _resolve(uiFontFamily,
-          size: size,
-          weight: weight,
-          color: color ?? FsColors.text1,
-          letterSpacing: letterSpacing,
-          height: height,
-          tabular: tabular);
+  }) => _resolve(
+    uiFontFamily,
+    size: size,
+    weight: weight,
+    color: color ?? FsColors.text1,
+    letterSpacing: letterSpacing,
+    height: height,
+    tabular: tabular,
+  );
 
   static TextStyle mono({
     double size = 11,
@@ -190,13 +259,14 @@ class FsType {
     Color? color,
     double? letterSpacing,
     double? height,
-  }) =>
-      _resolve(monoFontFamily,
-          size: size,
-          weight: weight,
-          color: color ?? FsColors.text2,
-          letterSpacing: letterSpacing,
-          height: height);
+  }) => _resolve(
+    monoFontFamily,
+    size: size,
+    weight: weight,
+    color: color ?? FsColors.text2,
+    letterSpacing: letterSpacing,
+    height: height,
+  );
 
   /// A style in a specific font [family] — used to preview each font in its own
   /// typeface inside the font pickers.
@@ -205,8 +275,12 @@ class FsType {
     double size = 12,
     FontWeight weight = FontWeight.w400,
     Color? color,
-  }) =>
-      _resolve(family, size: size, weight: weight, color: color ?? FsColors.text1);
+  }) => _resolve(
+    family,
+    size: size,
+    weight: weight,
+    color: color ?? FsColors.text1,
+  );
 
   /// Resolves [family] via Google Fonts when it's in the catalogue, otherwise
   /// falls back to a bundled/system font of that name. This keeps families that
@@ -223,12 +297,14 @@ class FsType {
   }) {
     final features = tabular ? const [FontFeature.tabularFigures()] : null;
     try {
-      return GoogleFonts.getFont(family,
-          fontSize: size,
-          fontWeight: weight,
-          color: color,
-          letterSpacing: letterSpacing,
-          height: height).copyWith(fontFeatures: features);
+      return GoogleFonts.getFont(
+        family,
+        fontSize: size,
+        fontWeight: weight,
+        color: color,
+        letterSpacing: letterSpacing,
+        height: height,
+      ).copyWith(fontFeatures: features);
     } catch (_) {
       return TextStyle(
         fontFamily: family,
