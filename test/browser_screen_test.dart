@@ -180,12 +180,21 @@ void main() {
     expect(find.textContaining('Transferring — moving.bin'), findsOneWidget);
   });
 
-  testWidgets('the log panel toggles from the toolbar', (tester) async {
-    await setup(tester);
-    expect(find.text('Local endpoint ready'), findsNothing);
+  testWidgets('the log panel toggles from the toolbar and shows real log lines', (tester) async {
+    final (c, _, _) = await setup(tester);
+    c.read(connectionLogProvider.notifier).success('prod-server-01: connected');
+    expect(find.text('prod-server-01: connected'), findsNothing);
     await tester.tap(find.text('📋 Log'));
     await tester.pump();
-    expect(find.text('Local endpoint ready'), findsOneWidget);
+    // The panel renders the shared connection log, not canned placeholder text.
+    expect(find.text('prod-server-01: connected'), findsOneWidget);
+  });
+
+  testWidgets('the log panel shows a subtle empty state with no activity', (tester) async {
+    await setup(tester);
+    await tester.tap(find.text('📋 Log'));
+    await tester.pump();
+    expect(find.text('No activity yet.'), findsOneWidget);
   });
 
   testWidgets('session tabs reflect open sessions and can be closed', (tester) async {
@@ -314,6 +323,19 @@ void main() {
     expect(c.read(sessionsProvider.notifier).leftPane.filterQuery, 'beta');
   });
 
+  testWidgets('pane shortcuts do not fire while typing in the filter box', (tester) async {
+    final (c, _, _) = await setup(tester, leftPath: '/nested');
+    final pane = c.read(sessionsProvider.notifier).leftPane;
+    expect(pane.path, '/nested');
+
+    // Focus the toolbar filter and type; Backspace must edit the text, not
+    // navigate the pane up a folder.
+    await tester.enterText(find.byType(TextField).first, 'inner');
+    await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+    await tester.pump();
+    expect(pane.path, '/nested'); // unchanged — the key stayed with the field
+  });
+
   testWidgets('type-ahead jumps to the matching row', (tester) async {
     final (c, _, _) = await setup(tester);
     final pane = c.read(sessionsProvider.notifier).leftPane;
@@ -335,5 +357,46 @@ void main() {
     }
     expect((await right.list('/')).any((e) => e.name == 'alpha.txt'), isTrue);
     await tester.pump(const Duration(seconds: 11));
+  });
+
+  testWidgets('dragging a folder onto the other pane transfers it recursively', (tester) async {
+    final (c, _, right) = await setup(tester);
+    expect((await right.list('/')).any((e) => e.name == 'nested'), isFalse);
+
+    await tester.drag(find.text('nested'), const Offset(1100, 0));
+    await tester.pumpAndSettle();
+
+    // Let the recursive walk + streamed copies finish.
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect((await right.list('/')).any((e) => e.name == 'nested' && e.isDir), isTrue);
+    expect((await right.list('/nested')).any((e) => e.name == 'inner.txt'), isTrue);
+    await tester.pump(const Duration(seconds: 11));
+  });
+
+  testWidgets('name prompts reject empty and separator-containing input', (tester) async {
+    final (c, left, _) = await setup(tester);
+    await tester.tap(find.text('⊕ New Folder'));
+    await tester.pumpAndSettle();
+    final field = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
+
+    // A name with a path separator can't be confirmed (button inert, Enter no-op).
+    await tester.enterText(field, 'bad/name');
+    await tester.tap(find.text('Create'));
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsOneWidget); // still open
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    // A padded valid name is trimmed before use.
+    await tester.enterText(field, '  ok  ');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect((await left.list('/')).any((e) => e.name == 'ok' && e.isDir), isTrue);
+    expect((await left.list('/')).any((e) => e.name == 'bad'), isFalse);
+    await tester.pump(const Duration(seconds: 11)); // drain the success-toast timer
   });
 }

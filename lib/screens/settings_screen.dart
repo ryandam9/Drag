@@ -92,10 +92,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         }),
         const SizedBox(height: 24),
         Row(children: [
-          FsButton('Save',
-              kind: FsButtonKind.primary,
-              onTap: () => toast('Preferences saved', 'Your settings were applied', ToastKind.success)),
-          const SizedBox(width: 10),
+          // Every setting persists the moment it changes, so there is no Save
+          // button — just say so.
+          Text('Changes are saved automatically',
+              style: FsType.sans(size: 11, color: FsColors.text3)),
+          const SizedBox(width: 14),
           FsButton('Reset defaults', onTap: () {
             notifier.resetSettings();
             toast('Defaults restored', 'Settings reset to defaults', ToastKind.info);

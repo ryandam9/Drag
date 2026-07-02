@@ -209,7 +209,13 @@ class ToolSep extends StatelessWidget {
 }
 
 /// Outlined / focusable text field matching `.form-input`.
-class FsTextField extends StatelessWidget {
+///
+/// Stateful so a [value]-driven field keeps one controller for its lifetime:
+/// creating a fresh controller per build would leak it and reset the text and
+/// caret mid-edit whenever the surrounding screen rebuilds (e.g. on a live
+/// transfer tick). [value] is synced into the owned controller only while the
+/// field is unfocused, so external updates show up without clobbering typing.
+class FsTextField extends StatefulWidget {
   final String? value;
   final String? hint;
   final bool mono;
@@ -236,25 +242,59 @@ class FsTextField extends StatelessWidget {
   });
 
   @override
+  State<FsTextField> createState() => _FsTextFieldState();
+}
+
+class _FsTextFieldState extends State<FsTextField> {
+  /// Owned only when the caller didn't pass its own [FsTextField.controller].
+  TextEditingController? _owned;
+  final FocusNode _focus = FocusNode();
+
+  TextEditingController? get _effective {
+    if (widget.controller != null) return widget.controller;
+    if (widget.value == null) return null;
+    return _owned ??= TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(FsTextField old) {
+    super.didUpdateWidget(old);
+    // Reflect an externally-changed [value], but never while the user is
+    // editing — that would reset the text and jump the caret.
+    final v = widget.value;
+    if (widget.controller == null && v != null && !_focus.hasFocus && _owned != null && _owned!.text != v) {
+      _owned!.text = v;
+    }
+  }
+
+  @override
+  void dispose() {
+    _owned?.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final style = mono
+    final style = widget.mono
         ? FsType.mono(size: 12, color: FsColors.text1)
         : FsType.sans(size: 12, color: FsColors.text1);
     return SizedBox(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       child: TextField(
-        controller: controller ?? (value != null ? TextEditingController(text: value) : null),
-        readOnly: readOnly,
-        obscureText: obscure,
-        textAlign: align,
-        onChanged: onChanged,
+        controller: _effective,
+        focusNode: _focus,
+        readOnly: widget.readOnly,
+        obscureText: widget.obscure,
+        textAlign: widget.align,
+        onChanged: widget.onChanged,
         style: style,
         cursorColor: FsColors.accent,
         cursorWidth: 1.5,
         decoration: InputDecoration(
           isDense: true,
-          hintText: hint,
+          hintText: widget.hint,
           hintStyle: style.copyWith(color: FsColors.text3),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           filled: true,

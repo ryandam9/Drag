@@ -149,6 +149,30 @@ void main() {
       expect(find.text('No connections yet'), findsOneWidget);
     });
 
+    testWidgets('deleting a connection asks for confirmation first', (tester) async {
+      final c = makeContainer(connections: sampleConnections());
+      c.read(connectionsProvider.notifier).select(c.read(connectionsProvider).connections.first);
+      await pumpScreen(tester, c, const ConnectionManagerScreen());
+      final count = c.read(connectionsProvider).connections.length;
+
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('permanently removes the connection'), findsOneWidget);
+
+      // Cancel keeps the connection…
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(c.read(connectionsProvider).connections.length, count);
+
+      // …confirming removes it.
+      await tester.tap(find.text('Delete')); // header button again
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete').last); // the dialog's confirm button
+      await tester.pumpAndSettle();
+      expect(c.read(connectionsProvider).connections.length, count - 1);
+      await tester.pump(const Duration(seconds: 11)); // drain the toast timer
+    });
+
     testWidgets('groups by tag and filters the list live via search', (tester) async {
       final conns = [
         Connection(id: '1', name: 'Prod SFTP', host: 'prod.example.com', tag: 'Production'),
@@ -222,6 +246,57 @@ void main() {
       final c = makeContainer();
       await pumpScreen(tester, c, const TransferQueueScreen());
       expect(find.text('No transfers yet'), findsOneWidget);
+    });
+
+    testWidgets('the filter field narrows the visible transfers live', (tester) async {
+      final c = makeContainer();
+      c.read(transfersProvider.notifier).debugSetTransfers([
+        t('report.pdf', TransferStatus.queued),
+        t('backup.tar', TransferStatus.queued),
+      ]);
+      await pumpScreen(tester, c, const TransferQueueScreen());
+      expect(find.text('report.pdf'), findsOneWidget);
+      expect(find.text('backup.tar'), findsOneWidget);
+
+      // Case-insensitive substring match against name/paths/session.
+      final filter = find.byType(TextField).first; // header filter box
+      await tester.enterText(filter, 'REPORT');
+      await tester.pump();
+      expect(find.text('report.pdf'), findsOneWidget);
+      expect(find.text('backup.tar'), findsNothing);
+
+      // No hits → a note instead of an empty table.
+      await tester.enterText(filter, 'zzzz');
+      await tester.pump();
+      expect(find.textContaining('No transfers match'), findsOneWidget);
+
+      // The ✕ affordance clears the filter.
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+      expect(find.text('report.pdf'), findsOneWidget);
+      expect(find.text('backup.tar'), findsOneWidget);
+    });
+
+    testWidgets('Threads field keeps an in-progress edit across live ticks', (tester) async {
+      final c = makeContainer();
+      c.read(transfersProvider.notifier)
+          .debugSetTransfers([t('moving.bin', TransferStatus.active)]);
+      await pumpScreen(tester, c, const TransferQueueScreen());
+
+      // The threads box shows the current max (default 5).
+      final threads = find.widgetWithText(TextField, '5');
+      expect(threads, findsOneWidget);
+      final ctl = tester.widget<TextField>(threads).controller!;
+
+      // Clear it (an in-progress edit — not a valid number yet), then fire a
+      // live progress tick, which rebuilds the stats bar.
+      await tester.enterText(threads, '');
+      c.read(transfersProvider).transfers.first.touchLive();
+      await tester.pump();
+
+      // The focused field keeps the edit instead of resetting to '5'.
+      expect(ctl.text, '');
+      expect(find.widgetWithText(TextField, '5'), findsNothing);
     });
 
     testWidgets('tapping a transfer row opens its details panel', (tester) async {
@@ -299,6 +374,9 @@ void main() {
       expect(find.text('Transfers'), findsOneWidget);
       expect(find.text('Show hidden files'), findsOneWidget);
       expect(find.text('Show transfer log on startup'), findsOneWidget);
+      // No Save button — settings persist as they change, and the page says so.
+      expect(find.text('Changes are saved automatically'), findsOneWidget);
+      expect(find.text('Save'), findsNothing);
     });
 
     testWidgets('toggling a checkbox updates settings', (tester) async {

@@ -6,6 +6,7 @@ import '../state/app.dart';
 import '../state/connection_filter.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/log_lines.dart';
 
 class ConnectionManagerScreen extends ConsumerStatefulWidget {
   const ConnectionManagerScreen({super.key});
@@ -409,15 +410,35 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
         label: const Text('Duplicate'),
       ),
       OutlinedButton.icon(
-        onPressed: () {
-          ref.read(connectionsProvider.notifier).delete(c);
-          _toast('Deleted', '${c.name} removed', ToastKind.info);
-        },
+        onPressed: _confirmDelete,
         style: OutlinedButton.styleFrom(foregroundColor: FsColors.red),
         icon: const Icon(Icons.delete_outline, size: 18),
         label: const Text('Delete'),
       ),
     ]);
+  }
+
+  /// Deleting a connection is permanent (its saved settings go with it), so
+  /// ask first — same dialog style as the browser's file-delete confirmation.
+  Future<void> _confirmDelete() async {
+    final name = c.name.trim().isEmpty ? 'Unnamed connection' : c.name;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: FsColors.bgPanel,
+        title: Text('Delete "$name"?',
+            style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+        content: Text('This permanently removes the connection and its stored settings.',
+            style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
+        actions: [
+          FsButton('Cancel', onTap: () => Navigator.pop(ctx, false)),
+          FsButton('Delete', kind: FsButtonKind.danger, onTap: () => Navigator.pop(ctx, true)),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    ref.read(connectionsProvider.notifier).delete(c);
+    _toast('Deleted', '$name removed', ToastKind.info);
   }
 
   /// The settings tabs for the current protocol. Each tab's `body` is the list
@@ -585,44 +606,12 @@ class _ConnectionFormState extends ConsumerState<ConnectionForm> {
           borderRadius: BorderRadius.circular(FsColors.rField),
           border: Border.all(color: FsColors.border),
         ),
-        child: lines.isEmpty
-            ? Center(
-                child: Text('Test or connect to see diagnostics here.',
-                    style: FsType.sans(size: 11, color: FsColors.text3)),
-              )
-            : ListView.builder(
-                padding: EdgeInsets.zero,
-                itemCount: lines.length,
-                itemBuilder: (_, i) {
-                  final line = lines[lines.length - 1 - i]; // newest first
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(_stamp(line.time),
-                          style: FsType.mono(size: 11, color: FsColors.text3)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(line.message,
-                            style: FsType.mono(size: 11, color: _logColor(line.kind), height: 1.4)),
-                      ),
-                    ]),
-                  );
-                },
-              ),
+        child: LogLinesView(lines: lines, emptyText: 'Test or connect to see diagnostics here.'),
       ),
       ),
     ]),
     );
   }
-
-  static String _two(int n) => n < 10 ? '0$n' : '$n';
-  static String _stamp(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}:${_two(t.second)}';
-
-  Color _logColor(ToastKind kind) => switch (kind) {
-        ToastKind.success => FsColors.green,
-        ToastKind.error => FsColors.red,
-        ToastKind.info => FsColors.text2,
-      };
 
   // ── S3 tabs ──
   List<Widget> _s3ConnectionFields() => [

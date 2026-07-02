@@ -7,13 +7,40 @@ import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-class TransferQueueScreen extends ConsumerWidget {
+class TransferQueueScreen extends ConsumerStatefulWidget {
   const TransferQueueScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TransferQueueScreen> createState() => _TransferQueueScreenState();
+}
+
+class _TransferQueueScreenState extends ConsumerState<TransferQueueScreen> {
+  // Live text filter over the visible transfer list (counts/stats stay global).
+  final TextEditingController _filterCtl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _filterCtl.dispose();
+    super.dispose();
+  }
+
+  /// Case-insensitive substring match against what a row shows: file name,
+  /// source/destination path and session label.
+  bool _matches(Transfer t, String q) {
+    for (final field in [t.name, t.sourcePath, t.destPath, t.session]) {
+      if (field.toLowerCase().contains(q)) return true;
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(transfersProvider);
     final notifier = ref.read(transfersProvider.notifier);
+    final q = _query.trim().toLowerCase();
+    final visible =
+        q.isEmpty ? state.transfers : state.transfers.where((t) => _matches(t, q)).toList();
     return Container(
       color: FsColors.bgScaffold,
       child: Column(
@@ -27,7 +54,7 @@ class TransferQueueScreen extends ConsumerWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: _queueCard(ref, state, notifier),
+              child: _queueCard(ref, state, visible, notifier),
             ),
           ),
         ],
@@ -68,7 +95,31 @@ class TransferQueueScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: 12),
-            const FsTextField(hint: 'Filter transfers…', mono: false, width: 200, height: 32),
+            FsTextField(
+              controller: _filterCtl,
+              hint: 'Filter transfers…',
+              mono: false,
+              width: 200,
+              height: 32,
+              onChanged: (v) => setState(() => _query = v),
+            ),
+            // A small clear button while a filter is active.
+            if (_query.trim().isNotEmpty) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () => setState(() {
+                  _filterCtl.clear();
+                  _query = '';
+                }),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Tooltip(
+                    message: 'Clear filter',
+                    child: Icon(Icons.close, size: 16, color: FsColors.text3),
+                  ),
+                ),
+              ),
+            ],
           ]),
         ],
       ),
@@ -131,7 +182,7 @@ class TransferQueueScreen extends ConsumerWidget {
   }
 
   // ── Transfer table card ──
-  Widget _queueCard(WidgetRef ref, TransfersState s, TransfersNotifier n) {
+  Widget _queueCard(WidgetRef ref, TransfersState s, List<Transfer> visible, TransfersNotifier n) {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -141,14 +192,14 @@ class TransferQueueScreen extends ConsumerWidget {
         boxShadow: FsColors.cardShadow,
       ),
       child: Column(children: [
-        Expanded(child: _table(ref, s, n)),
+        Expanded(child: _table(ref, s, visible, n)),
         _statsBar(s, n),
       ]),
     );
   }
 
-  // ── Transfer table ──
-  Widget _table(WidgetRef ref, TransfersState s, TransfersNotifier n) {
+  // ── Transfer table (shows [visible] — the text-filtered list) ──
+  Widget _table(WidgetRef ref, TransfersState s, List<Transfer> visible, TransfersNotifier n) {
     if (s.transfers.isEmpty) {
       return Container(
         alignment: Alignment.center,
@@ -172,12 +223,19 @@ class TransferQueueScreen extends ConsumerWidget {
         ]),
       );
     }
+    if (visible.isEmpty) {
+      return Container(
+        alignment: Alignment.center,
+        child: Text('No transfers match "${_query.trim()}"',
+            style: FsType.sans(size: 12, color: FsColors.text3)),
+      );
+    }
     return Column(children: [
       _head(),
       Expanded(
         child: ListView.builder(
-          itemCount: s.transfers.length,
-          itemBuilder: (context, i) => _row(context, ref, n, s.transfers[i]),
+          itemCount: visible.length,
+          itemBuilder: (context, i) => _row(context, ref, n, visible[i]),
         ),
       ),
     ]);

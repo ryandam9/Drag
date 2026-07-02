@@ -15,6 +15,7 @@ import '../models/transfer.dart';
 import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/log_lines.dart';
 
 class BrowserScreen extends ConsumerStatefulWidget {
   const BrowserScreen({super.key});
@@ -89,7 +90,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   /// Shows the Skip / Overwrite / Rename dialog for a name clash, with an
   /// "apply to all" option. Returns null if dismissed (treated as skip).
   Future<ConflictResolution?> _resolveConflict(ConflictPrompt p) async {
-    if (!mounted) return const ConflictResolution(ConflictAction.overwrite);
+    // No screen to ask on → skip, matching the dismissed-dialog behaviour
+    // (never overwrite without an explicit answer).
+    if (!mounted) return const ConflictResolution(ConflictAction.skip);
     var all = false;
     return showDialog<ConflictResolution>(
       context: context,
@@ -223,6 +226,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       position: RelativeRect.fromLTRB(origin.dx, origin.dy, overlay.size.width - origin.dx - 240, 0),
       items: items,
     );
+    if (!mounted) return;
     if (choice != null) await pane.navigateTo(choice);
   }
 
@@ -268,8 +272,17 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   KeyEventResult _onKey(KeyEvent event) {
-    // While the inline path editor is open, let the text field own every key
-    // (typing, Enter, Escape) — don't run pane navigation/type-ahead.
+    // Never hijack typing: while any text field owns focus (the toolbar filter,
+    // the inline path editor, …) every key belongs to it — Backspace must
+    // delete a character, not navigate up a folder.
+    final focusCtx = FocusManager.instance.primaryFocus?.context;
+    if (focusCtx != null &&
+        (focusCtx.widget is EditableText ||
+            focusCtx.findAncestorWidgetOfExactType<EditableText>() != null)) {
+      return KeyEventResult.ignored;
+    }
+    // The path editor also gets the frame between opening and its field taking
+    // focus (requestFocus lands next frame), so keep its explicit exemption.
     if (_editingPathLeft != null) return KeyEventResult.ignored;
 
     // Ignore key-up; let held arrows/page keys auto-repeat (KeyRepeatEvent).
@@ -477,6 +490,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         PopupMenuItem(value: 'copyPath', child: _menuText('📋 Copy path')),
       ],
     );
+    if (!mounted) return;
     switch (choice) {
       case 'transfer':
         _sessions.dropTransfer(DragPayload(item, left), !left);
@@ -484,6 +498,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         await _showPreview(pane, item);
       case 'rename':
         final name = await _promptText(title: 'Rename', initial: item.name, confirm: 'Rename');
+        if (!mounted) return;
         if (name != null) await _sessions.renameItem(pane, item, name);
       case 'delete':
         await _deleteSelected(pane);
@@ -495,6 +510,7 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           message: 'This removes a leftover partial-transfer temp file. '
               'The original/destination file (if any) is left untouched.',
         );
+        if (!mounted) return;
         if (ok) await _sessions.deleteItems(pane, [item]);
       case 'copyPath':
         // The full location (s3://bucket/key, sftp://host/path, or the local
@@ -575,6 +591,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     MirrorPlan? resolved;
     MirrorCancel? scanCancel;
     final scanned = ValueNotifier<int>(0);
+    // Set once the dialog is gone (however it was closed) so a straggling scan
+    // callback can't touch the disposed notifier.
+    var closed = false;
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
@@ -590,7 +609,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             deleteExtras: deleteExtras,
             mode: mode,
             cancel: cancel,
-            onScanned: (n) => scanned.value = n,
+            onScanned: (n) {
+              if (!closed) scanned.value = n;
+            },
             maxDepth: 64,
             maxFiles: 50000,
           );
@@ -739,7 +760,13 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           ],
         );
       }),
-    );
+    ).whenComplete(() {
+      // Runs on any close — including a barrier dismiss, which would otherwise
+      // leave a (possibly remote) recursive scan running and leak the notifier.
+      scanCancel?.cancel();
+      closed = true;
+      scanned.dispose();
+    });
   }
 
   // ── Dialogs ──
@@ -749,34 +776,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     String hint = '',
     String confirm = 'OK',
   }) {
-    final ctl = TextEditingController(text: initial);
-    ctl.selection = TextSelection(baseOffset: 0, extentOffset: initial.length);
     return showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: FsColors.bgPanel,
-        title: Text(title, style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-        content: SizedBox(
-          width: 360,
-          child: TextField(
-            controller: ctl,
-            autofocus: true,
-            onSubmitted: (v) => Navigator.pop(ctx, v),
-            style: FsType.sans(size: 13, color: FsColors.text1),
-            cursorColor: FsColors.accent,
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: FsType.sans(size: 13, color: FsColors.text3),
-              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: FsColors.border)),
-              focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: FsColors.accent)),
-            ),
-          ),
-        ),
-        actions: [
-          FsButton('Cancel', onTap: () => Navigator.pop(ctx)),
-          FsButton(confirm, kind: FsButtonKind.primary, onTap: () => Navigator.pop(ctx, ctl.text)),
-        ],
-      ),
+      builder: (_) => _PromptDialog(title: title, initial: initial, hint: hint, confirm: confirm),
     );
   }
 
@@ -1427,7 +1429,11 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
               final f = pane.items[i];
               final selected = pane.isSelected(i);
               final row = _fileRow(pane, f, i, showPerms, left: left, selected: selected);
-              if (!f.isDir) {
+              // Files and folders are both draggable (folders transfer
+              // recursively, like the context menu's transfer action); only
+              // the ".." parent row is not. Drag needs movement past the touch
+              // slop, so tap-select and double-click-to-open still work.
+              if (!f.isParent) {
                 return Draggable<DragPayload>(
                   data: DragPayload(f, left),
                   dragAnchorStrategy: pointerDragAnchorStrategy,
@@ -1662,31 +1668,21 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
 
   // ── SFTP / activity log console ──
   Widget _logPanel() {
-    Widget line(String marker, Color markerColor, String msg) => Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(marker, style: FsType.mono(size: 10, color: markerColor)),
-            const SizedBox(width: 10),
-            Expanded(child: Text(msg, style: FsType.mono(size: 10, color: FsColors.text3))),
-          ]),
-        );
-    return Container(
-      height: 96,
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: FsColors.bgDeep,
-        border: Border(top: BorderSide(color: FsColors.border)),
-      ),
-      child: SingleChildScrollView(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          line('»', FsColors.accent, 'Drag files between panes to transfer (Local ⇄ S3, S3 ⇄ S3, SFTP).'),
-          line('✓', FsColors.green, 'Local endpoint ready'),
-          line('»', FsColors.accent, 'Select an S3 or SFTP endpoint in either pane to browse it'),
-          line('ℹ', FsColors.accentHi, 'Add credentials in Connection Manager to connect'),
-        ]),
-      ),
-    );
+    // The same live diagnostics feed the Connection Manager shows — watched in
+    // a Consumer so new log lines repaint this strip only, not the file tables.
+    return Consumer(builder: (context, ref, _) {
+      final lines = ref.watch(connectionLogProvider);
+      return Container(
+        height: 96,
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: FsColors.bgDeep,
+          border: Border(top: BorderSide(color: FsColors.border)),
+        ),
+        child: LogLinesView(lines: lines, emptyText: 'No activity yet.'),
+      );
+    });
   }
 }
 
@@ -2005,4 +2001,84 @@ class _PreviewDialogState extends State<_PreviewDialog> {
           ]),
         ),
       );
+}
+
+/// A single-field name prompt (new folder / rename). Pops with the trimmed
+/// name; the confirm action stays disabled while the input is empty or contains
+/// a path separator. Stateful so the controller is owned and disposed here.
+class _PromptDialog extends StatefulWidget {
+  final String title;
+  final String initial;
+  final String hint;
+  final String confirm;
+  const _PromptDialog({
+    required this.title,
+    required this.initial,
+    required this.hint,
+    required this.confirm,
+  });
+
+  @override
+  State<_PromptDialog> createState() => _PromptDialogState();
+}
+
+class _PromptDialogState extends State<_PromptDialog> {
+  late final TextEditingController _ctl = TextEditingController(text: widget.initial)
+    ..selection = TextSelection(baseOffset: 0, extentOffset: widget.initial.length);
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  /// The submittable name, or null when the input is empty (after trimming) or
+  /// contains a path separator (which would silently target another location).
+  String? get _name {
+    final t = _ctl.text.trim();
+    if (t.isEmpty || t.contains('/') || t.contains(r'\')) return null;
+    return t;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = _name;
+    return AlertDialog(
+      backgroundColor: FsColors.bgPanel,
+      title: Text(widget.title,
+          style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+      content: SizedBox(
+        width: 360,
+        child: TextField(
+          controller: _ctl,
+          autofocus: true,
+          onChanged: (_) => setState(() {}), // re-evaluate the confirm button
+          onSubmitted: (_) {
+            final n = _name;
+            if (n != null) Navigator.pop(context, n);
+          },
+          style: FsType.sans(size: 13, color: FsColors.text1),
+          cursorColor: FsColors.accent,
+          decoration: InputDecoration(
+            hintText: widget.hint,
+            hintStyle: FsType.sans(size: 13, color: FsColors.text3),
+            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: FsColors.border)),
+            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: FsColors.accent)),
+          ),
+        ),
+      ),
+      actions: [
+        FsButton('Cancel', onTap: () => Navigator.pop(context)),
+        // Dimmed while the name is invalid (same look as ToolButton's disabled
+        // state); validity is re-checked on tap so it can never pop bad input.
+        Opacity(
+          opacity: name != null ? 1 : 0.4,
+          child: FsButton(widget.confirm, kind: FsButtonKind.primary, onTap: () {
+            final n = _name;
+            if (n != null) Navigator.pop(context, n);
+          }),
+        ),
+      ],
+    );
+  }
 }
