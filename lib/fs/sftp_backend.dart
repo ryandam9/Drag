@@ -26,6 +26,7 @@ class SftpBackend extends StorageBackend {
   SSHClient? _client;
   SftpClient? _sftp;
   Future<SftpClient>? _connecting;
+  bool _disposed = false;
 
   @override
   EndpointKind get kind => EndpointKind.sftp;
@@ -45,6 +46,12 @@ class SftpBackend extends StorageBackend {
 
   // ── Connection (lazy, shared) ──
   Future<SftpClient> _ensure() {
+    // A disposed backend must fail fast with a clear error instead of quietly
+    // reusing (or re-opening) an SSH session that was already torn down.
+    if (_disposed) {
+      throw StateError(
+          'SftpBackend for ${connection.host} was disposed; open a new connection');
+    }
     if (_sftp != null) return Future.value(_sftp!);
     return _connecting ??= _connect();
   }
@@ -264,9 +271,27 @@ class SftpBackend extends StorageBackend {
     return s;
   }
 
+  /// One SFTP `stat` call instead of the base-class fallback, which lists and
+  /// scans the whole parent directory just to find one file's size.
+  @override
+  Future<int?> sizeOf(String path) async {
+    try {
+      final sftp = await _ensure();
+      return (await sftp.stat(path)).size;
+    } catch (_) {
+      return null; // missing file / no access → "unknown", like the base class
+    }
+  }
+
   @override
   void dispose() {
+    _disposed = true;
     _sftp?.close();
     _client?.close();
+    // Null the dead session out so nothing can accidentally pick it up; any
+    // later operation trips the [_ensure] guard instead.
+    _sftp = null;
+    _client = null;
+    _connecting = null;
   }
 }

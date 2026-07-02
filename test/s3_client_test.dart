@@ -265,6 +265,79 @@ void main() {
       expect(progress.last, 2048);
     });
 
+    test('a server that ignores Range (plain 200) still resumes correctly', () async {
+      final full = List<int>.generate(100, (i) => i);
+      final mock = await MockS3.start((req, res) {
+        // Some S3-compatible servers ignore Range and return the whole object.
+        expect(req.headers.value('range'), 'bytes=40-');
+        res.statusCode = 200;
+        res.contentLength = full.length;
+        res.add(full);
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      final resp = await c.getObject('f.bin', rangeStart: 40);
+      expect(resp.contentLength, 60, reason: 'reports only the remaining bytes');
+      final got = <int>[];
+      await for (final ch in resp.stream) {
+        got.addAll(ch);
+      }
+      // The already-downloaded prefix is skipped, so appending stays correct.
+      expect(got, full.sublist(40));
+    });
+
+    test('a 206 whose Content-Range starts at the wrong offset is rejected', () async {
+      final full = List<int>.generate(100, (i) => i);
+      final mock = await MockS3.start((req, res) {
+        res.statusCode = 206;
+        res.headers.set('content-range', 'bytes 0-99/100'); // wrong offset
+        res.contentLength = full.length;
+        res.add(full);
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      await expectLater(
+        c.getObject('f.bin', rangeStart: 40),
+        throwsA(isA<S3Exception>()
+            .having((e) => e.message, 'message', contains('expected 40'))),
+      );
+    });
+
+    test('headObject returns content length + ETag from a HEAD request', () async {
+      final mock = await MockS3.start((req, res) {
+        res.statusCode = 200;
+        res.contentLength = 1234;
+        res.headers.set('ETag', '"abc123"');
+      });
+      addTearDown(mock.stop);
+      final c = client(mock);
+      addTearDown(c.close);
+
+      final head = await c.headObject('dir/file.bin');
+      expect(head.contentLength, 1234);
+      expect(head.etag, '"abc123"');
+      expect(mock.last.method, 'HEAD');
+      expect(mock.last.path, '/bk/dir/file.bin');
+      // A HEAD has no body, so it's signed with the empty-payload hash.
+      expect(mock.last.headers.value('x-amz-content-sha256'), emptyBodySha256);
+    });
+
+    test('headObject surfaces a 404 as an S3Exception without retrying', () async {
+      final mock = await MockS3.start((req, res) => res.statusCode = 404);
+      addTearDown(mock.stop);
+      final c = client(mock)..retryBackoff = (_) => Duration.zero;
+      addTearDown(c.close);
+      await expectLater(
+        c.headObject('nope.bin'),
+        throwsA(isA<S3Exception>().having((e) => e.statusCode, 'statusCode', 404)),
+      );
+      expect(mock.requests.length, 1, reason: 'a 404 is permanent — no retries');
+    });
+
     test('getObject sends a Range header and streams the tail when resuming', () async {
       final full = List<int>.generate(100, (i) => i);
       final mock = await MockS3.start((req, res) {
@@ -1026,6 +1099,177 @@ void main() {
       expect(handle.length, payload.length);
       await b.write('dst.bin', handle.stream.map(Uint8List.fromList), handle.length!);
       expect(stored, payload);
+    });
+
+    test('sizeOf issues one HEAD instead of listing the parent prefix', () async {
+      final mock = await MockS3.start((req, res) {
+        expect(req.method, 'HEAD', reason: 'must not fall back to a listing');
+        res.statusCode = 200;
+        res.contentLength = 4096;
+        res.headers.set('ETag', '"e"');
+      });
+      addTearDown(mock.stop);
+      final b = backend(mock);
+      addTearDown(b.dispose);
+      expect(await b.sizeOf('folder/file.bin'), 4096);
+      expect(mock.requests.length, 1);
+      expect(mock.last.path, '/bk/folder/file.bin');
+    });
+
+    test('sizeOf returns null for a missing object (HEAD 404)', () async {
+      final mock = await MockS3.start((req, res) => res.statusCode = 404);
+      addTearDown(mock.stop);
+      final b = backend(mock);
+      addTearDown(b.dispose);
+      expect(await b.sizeOf('nope.bin'), isNull);
+    });
+  });
+
+  group('S3Client — retry classification', () {
+    test('isRetryableS3Failure: transient failures yes, client errors no', () {
+      // Retryable: throttling / server-side trouble / socket-level failures.
+      expect(isRetryableS3Failure(const S3Exception(500, 'x')), isTrue);
+      expect(isRetryableS3Failure(const S3Exception(502, 'x')), isTrue);
+      expect(isRetryableS3Failure(const S3Exception(503, 'x')), isTrue);
+      expect(isRetryableS3Failure(const S3Exception(504, 'x')), isTrue);
+      expect(isRetryableS3Failure(const S3Exception(429, 'x')), isTrue);
+      expect(isRetryableS3Failure(const S3Exception(200, 'x', code: 'SlowDown')), isTrue);
+      expect(isRetryableS3Failure(const S3Exception(400, 'x', code: 'RequestTimeout')), isTrue);
+      expect(isRetryableS3Failure(const S3Exception(200, 'x', code: 'InternalError')), isTrue);
+      expect(isRetryableS3Failure(const SocketException('connection reset')), isTrue);
+      expect(isRetryableS3Failure(TimeoutException('slow')), isTrue);
+      // Permanent: auth/client errors must fail immediately.
+      expect(isRetryableS3Failure(const S3Exception(403, 'x', code: 'AccessDenied')), isFalse);
+      expect(isRetryableS3Failure(const S3Exception(404, 'x', code: 'NoSuchKey')), isFalse);
+      expect(isRetryableS3Failure(const S3Exception(400, 'x', code: 'InvalidRequest')), isFalse);
+      expect(isRetryableS3Failure(ArgumentError('not s3')), isFalse);
+    });
+
+    test('an idempotent request retries a 503 and then succeeds', () async {
+      var attempts = 0;
+      final mock = await MockS3.start((req, res) {
+        attempts++;
+        if (attempts == 1) {
+          xml(res, '<Error><Code>SlowDown</Code><Message>chill</Message></Error>', status: 503);
+        } else {
+          xml(res, listingXml(contents: [(key: 'a', size: 1)]));
+        }
+      });
+      addTearDown(mock.stop);
+      final c = client(mock)..retryBackoff = (_) => Duration.zero;
+      addTearDown(c.close);
+
+      final page = await c.listObjects();
+      expect(page.objects.single.key, 'a');
+      expect(attempts, 2, reason: 'first attempt 503, second succeeded');
+    });
+
+    test('a 403 is never retried', () async {
+      final mock = await MockS3.start((req, res) {
+        xml(res, '<Error><Code>AccessDenied</Code><Message>nope</Message></Error>', status: 403);
+      });
+      addTearDown(mock.stop);
+      final c = client(mock)..retryBackoff = (_) => Duration.zero;
+      addTearDown(c.close);
+
+      await expectLater(c.listObjects(), throwsA(isA<S3Exception>()));
+      expect(mock.requests.length, 1, reason: '403 is permanent — one attempt only');
+    });
+
+    test('retries stop after maxRequestAttempts, surfacing the last error', () async {
+      final mock = await MockS3.start((req, res) {
+        xml(res, '<Error><Code>InternalError</Code><Message>down</Message></Error>', status: 500);
+      });
+      addTearDown(mock.stop);
+      final c = S3Client(
+        bucket: 'bk',
+        region: 'us-east-1',
+        endpoint: mock.endpoint,
+        useSsl: false,
+        credentials: () => const AwsCredentials('AKIA', 'secret'),
+        maxRequestAttempts: 2,
+      )..retryBackoff = (_) => Duration.zero;
+      addTearDown(c.close);
+
+      await expectLater(c.deleteObject('x'), throwsA(isA<S3Exception>()));
+      expect(mock.requests.length, 2);
+    });
+
+    test('a 403 part failure aborts immediately instead of burning retries', () async {
+      var partAttempts = 0;
+      var aborted = false;
+      final mock = await MockS3.start((req, res) {
+        final q = req.query;
+        if (req.method == 'POST' && q.containsKey('uploads')) {
+          xml(res, '<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>');
+        } else if (req.method == 'PUT' && q.containsKey('partNumber')) {
+          partAttempts++;
+          xml(res, '<Error><Code>AccessDenied</Code><Message>denied</Message></Error>', status: 403);
+        } else if (req.method == 'DELETE' && q.containsKey('uploadId')) {
+          aborted = true;
+          res.statusCode = 204;
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+      final c = client(mock)..partBackoff = (_) => Duration.zero;
+      addTearDown(c.close);
+
+      await expectLater(
+        c.putObjectMultipart('big.bin', Stream.value(Uint8List(25)), partSize: 10),
+        throwsA(isA<S3Exception>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+      expect(partAttempts, 1, reason: 'a 403 would fail identically every time');
+      expect(aborted, isTrue);
+    });
+  });
+
+  group('S3Backend — incremental bucket discovery regions', () {
+    test('yields the bucket list promptly, then fills regions in bounded batches', () async {
+      const bucketCount = 20;
+      var inFlight = 0, maxInFlight = 0;
+      final mock = await MockS3.start((req, res) async {
+        if (req.path == '/') {
+          final xmlBuckets = [
+            for (var i = 0; i < bucketCount; i++) '<Bucket><Name>bucket-$i</Name></Bucket>'
+          ].join();
+          xml(res, '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets>'
+              '$xmlBuckets</Buckets></ListAllMyBucketsResult>');
+        } else if (req.query.containsKey('location')) {
+          inFlight++;
+          maxInFlight = inFlight > maxInFlight ? inFlight : maxInFlight;
+          await Future<void>.delayed(const Duration(milliseconds: 15));
+          inFlight--;
+          xml(res, '<LocationConstraint>eu-west-1</LocationConstraint>');
+        } else {
+          res.statusCode = 200;
+        }
+      });
+      addTearDown(mock.stop);
+      final b = S3Backend(Connection(
+        name: 's3', protocol: Protocol.s3, bucket: '', region: 'us-east-1',
+        endpoint: mock.endpoint, useSsl: false, accessKeyId: 'AKIA', secretAccessKey: 's'))
+        ..debugResolveRegionsWithEndpoint = true;
+      addTearDown(b.dispose);
+
+      final snapshots = await b.listIncremental('').toList();
+      // First snapshot arrives before any GetBucketLocation completes…
+      expect(snapshots.first.length, bucketCount);
+      expect(snapshots.first.every((e) => e.perms.isEmpty), isTrue,
+          reason: 'regions start blank — the list must not block on them');
+      // …and the final one has every region filled in.
+      expect(snapshots.last.every((e) => e.perms == 'eu-west-1'), isTrue);
+      // 20 buckets in batches of 8 → 1 prompt snapshot + 3 region batches.
+      expect(snapshots.length, 4);
+      expect(maxInFlight, lessThanOrEqualTo(8),
+          reason: 'region lookups must be bounded, not one-per-bucket in parallel');
+
+      // The regions were cached: a re-list resolves nothing new.
+      final before = mock.requests.length;
+      final again = await b.listIncremental('').toList();
+      expect(again.single.every((e) => e.perms == 'eu-west-1'), isTrue);
+      expect(mock.requests.length, before + 1, reason: 'only ListBuckets again');
     });
   });
 }

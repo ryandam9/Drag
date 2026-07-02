@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:xml/xml.dart';
 
-import 's3_client.dart' show S3Exception;
+import 's3_client.dart' show S3Exception, parseAwsEndpoint;
 import 'sigv4.dart';
 
 /// Temporary credentials returned by STS `AssumeRole`, with their expiry.
@@ -21,16 +22,11 @@ class StsClient {
   StsClient({required String region, String endpoint = '', this.useSsl = true})
       : region = region.isEmpty ? 'us-east-1' : region,
         _scheme = useSsl ? 'https' : 'http' {
-    var host = endpoint.isNotEmpty
+    final parsed = parseAwsEndpoint(endpoint.isNotEmpty
         ? endpoint
-        : (region.isEmpty ? 'sts.amazonaws.com' : 'sts.$region.amazonaws.com');
-    host = host.replaceFirst(RegExp(r'^https?://'), '');
-    final colon = host.indexOf(':');
-    if (colon != -1) {
-      _port = int.tryParse(host.substring(colon + 1));
-      host = host.substring(0, colon);
-    }
-    _host = host;
+        : (region.isEmpty ? 'sts.amazonaws.com' : 'sts.$region.amazonaws.com'));
+    _host = parsed.host;
+    _port = parsed.port;
   }
 
   final String region;
@@ -39,7 +35,11 @@ class StsClient {
   late final String _host;
   int? _port;
 
-  final HttpClient _http = HttpClient();
+  /// Same connect/idle timeouts as the S3 client, so a hung STS endpoint can't
+  /// leave an AssumeRole (and every operation waiting on it) pending forever.
+  final HttpClient _http = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 20)
+    ..idleTimeout = const Duration(seconds: 30);
 
   String get _hostHeader {
     final isDefault = _port == null || (useSsl && _port == 443) || (!useSsl && _port == 80);
@@ -132,8 +132,9 @@ class AssumeRoleCredentialsProvider {
   final int durationSeconds;
   final Duration refreshWindow;
 
-  /// Resolves the base (long-lived) credentials used to call AssumeRole.
-  final AwsCredentials Function() baseCredentials;
+  /// Resolves the base (long-lived) credentials used to call AssumeRole. May
+  /// be async (e.g. a profile whose credentials come from a helper process).
+  final FutureOr<AwsCredentials> Function() baseCredentials;
 
   final DateTime Function() _now;
   AssumedRole? _cached;
@@ -148,7 +149,7 @@ class AssumeRoleCredentialsProvider {
     final assumed = await sts.assumeRole(
       roleArn: roleArn,
       sessionName: sessionName,
-      baseCredentials: baseCredentials(),
+      baseCredentials: await baseCredentials(),
       externalId: externalId,
       durationSeconds: durationSeconds,
     );

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 
 import '../models/connection.dart';
@@ -331,6 +332,12 @@ class S3Backend extends StorageBackend {
   final Map<String, String> _bucketRegions = {};
   S3Client? _service;
 
+  /// Test seam — resolves bucket regions even against a custom endpoint, so
+  /// the incremental discovery listing can be exercised with a mock server
+  /// (normally region routing doesn't apply to custom endpoints).
+  @visibleForTesting
+  bool debugResolveRegionsWithEndpoint = false;
+
   @override
   EndpointKind get kind => EndpointKind.s3;
 
@@ -378,7 +385,8 @@ class S3Backend extends StorageBackend {
 
   /// The credentials to sign the next request with: the cached assumed-role
   /// credentials when role mode is active, otherwise the base chain.
-  AwsCredentials _currentCredentials() => _assumed ?? _resolveCredentials(connection);
+  Future<AwsCredentials> _currentCredentials() async =>
+      _assumed ?? await _resolveCredentials(connection);
 
   /// Ensures valid credentials are available before an operation: in
   /// assume-role mode this calls STS (cached + auto-refreshed); otherwise it's
@@ -397,15 +405,16 @@ class S3Backend extends StorageBackend {
 
   /// The credentials to sign the next request with — either read fresh from the
   /// AWS shared-credentials profile, or the typed key/secret/token.
-  static AwsCredentials _resolveCredentials(Connection c) {
+  static Future<AwsCredentials> _resolveCredentials(Connection c) async {
     if (c.useAwsProfile) {
       // Standard AWS chain: environment variables take precedence, then the
       // shared credentials file profile. Both are re-read per request, so
-      // refreshed temporary credentials are picked up automatically.
+      // refreshed temporary credentials are picked up automatically (a
+      // profile's `credential_process` result is cached by aws_profile.dart).
       final env = loadAwsEnvCredentials();
       if (env != null) return env;
       final name = resolveAwsProfile(c);
-      final creds = loadAwsCredentials(name);
+      final creds = await loadAwsCredentials(name);
       if (creds == null) {
         throw S3Exception(0,
             'No AWS credentials in the environment or profile "$name" (${awsCredentialsPath()})');
@@ -462,25 +471,37 @@ class S3Backend extends StorageBackend {
 
     // Root of a discovery connection → list the account's buckets, annotated
     // with their creation date (free from ListBuckets) and region (one
-    // GetBucketLocation per bucket, resolved in parallel and cached). Region
-    // routing doesn't apply to custom endpoints (MinIO etc.), so skip it there.
+    // GetBucketLocation per bucket, cached). The bucket list is yielded
+    // immediately with whatever regions are already cached, then regions are
+    // resolved a bounded batch at a time — an account with hundreds of buckets
+    // renders promptly instead of blocking on hundreds of parallel calls.
     if (_discovery && bucket.isEmpty) {
       final buckets = await _serviceClient().listBuckets();
-      final regions = <String, String>{};
-      if (connection.endpoint.isEmpty) {
-        await Future.wait(buckets.map((b) async {
-          regions[b.name] = _bucketRegions[b.name] ??= await _resolveRegion(b.name);
-        }));
-      }
-      yield [
+      List<FileItem> snapshot() => [
+            for (final b in buckets)
+              FileItem(
+                name: b.name,
+                isDir: true,
+                modified: b.created == null ? '' : formatModified(b.created!),
+                perms: _bucketRegions[b.name] ?? '', // blank until resolved
+              ),
+          ]..sort(StorageBackend.dirsFirst);
+      yield snapshot();
+
+      // Region routing doesn't apply to custom endpoints (MinIO etc.), so the
+      // REGION column stays blank there.
+      if (connection.endpoint.isNotEmpty && !debugResolveRegionsWithEndpoint) return;
+      const batchSize = 8; // GetBucketLocation calls in flight at once
+      final pending = [
         for (final b in buckets)
-          FileItem(
-            name: b.name,
-            isDir: true,
-            modified: b.created == null ? '' : formatModified(b.created!),
-            perms: regions[b.name] ?? '',
-          ),
-      ]..sort(StorageBackend.dirsFirst);
+          if (!_bucketRegions.containsKey(b.name)) b.name
+      ];
+      for (var i = 0; i < pending.length; i += batchSize) {
+        await Future.wait(pending.skip(i).take(batchSize).map((name) async {
+          _bucketRegions[name] = await _resolveRegion(name);
+        }));
+        yield snapshot(); // progressively fill the REGION column
+      }
       return;
     }
 
@@ -536,6 +557,21 @@ class S3Backend extends StorageBackend {
     final client = await _clientFor(bucket);
     final resp = await client.getObject(key, rangeStart: start);
     return ReadHandle(resp.stream.map(Uint8List.fromList), resp.contentLength);
+  }
+
+  /// One HeadObject instead of the base-class fallback, which pages through
+  /// the entire parent prefix listing just to find one key's size.
+  @override
+  Future<int?> sizeOf(String path) async {
+    final (bucket, key) = _split(path);
+    // A bucket root or folder prefix isn't an object — no size to report.
+    if (bucket.isEmpty || key.isEmpty || key.endsWith('/')) return null;
+    try {
+      final client = await _clientFor(bucket);
+      return (await client.headObject(key)).contentLength;
+    } catch (_) {
+      return null; // missing / inaccessible object → "unknown", like the base
+    }
   }
 
   @override
