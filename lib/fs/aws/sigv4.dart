@@ -9,7 +9,11 @@ class AwsCredentials {
   final String accessKeyId;
   final String secretAccessKey;
   final String? sessionToken;
-  const AwsCredentials(this.accessKeyId, this.secretAccessKey, {this.sessionToken});
+  const AwsCredentials(
+    this.accessKeyId,
+    this.secretAccessKey, {
+    this.sessionToken,
+  });
 }
 
 /// SHA-256 hex of an empty body (used as the payload hash for GET requests).
@@ -59,13 +63,16 @@ class SigV4Signer {
       'x-amz-date': amzDate,
       'x-amz-content-sha256': payloadHash,
     };
-    if (credentials.sessionToken != null && credentials.sessionToken!.isNotEmpty) {
+    if (credentials.sessionToken != null &&
+        credentials.sessionToken!.isNotEmpty) {
       signed['x-amz-security-token'] = credentials.sessionToken!;
     }
 
     // ── Canonical headers / signed-headers list ──
     final sortedKeys = signed.keys.map((k) => k.toLowerCase()).toList()..sort();
-    final lower = {for (final e in signed.entries) e.key.toLowerCase(): e.value.trim()};
+    final lower = {
+      for (final e in signed.entries) e.key.toLowerCase(): e.value.trim(),
+    };
     final canonicalHeaders = sortedKeys.map((k) => '$k:${lower[k]}\n').join();
     final signedHeaders = sortedKeys.join(';');
 
@@ -94,7 +101,8 @@ class SigV4Signer {
     final signingKey = _signingKey(dateStamp);
     final signature = _hex(_hmac(signingKey, utf8.encode(stringToSign)));
 
-    signed['Authorization'] = 'AWS4-HMAC-SHA256 '
+    signed['Authorization'] =
+        'AWS4-HMAC-SHA256 '
         'Credential=${credentials.accessKeyId}/$scope, '
         'SignedHeaders=$signedHeaders, '
         'Signature=$signature';
@@ -106,7 +114,12 @@ class SigV4Signer {
 
   /// Derives the SigV4 signing key (HMAC chain). Exposed so it can be checked
   /// against AWS's published test vectors.
-  static List<int> deriveSigningKey(String secret, String dateStamp, String region, String service) {
+  static List<int> deriveSigningKey(
+    String secret,
+    String dateStamp,
+    String region,
+    String service,
+  ) {
     final kDate = _hmac(utf8.encode('AWS4$secret'), utf8.encode(dateStamp));
     final kRegion = _hmac(kDate, utf8.encode(region));
     final kService = _hmac(kRegion, utf8.encode(service));

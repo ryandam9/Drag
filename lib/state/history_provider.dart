@@ -42,7 +42,7 @@ class HistoryNotifier extends Notifier<HistoryState> {
       _refreshTimer?.cancel();
     });
     final hasDb = _repo != null;
-    if (hasDb) refresh();
+    if (hasDb) unawaited(refresh());
     return HistoryState(hasDb: hasDb);
   }
 
@@ -54,7 +54,9 @@ class HistoryNotifier extends Notifier<HistoryState> {
     try {
       await repo.add(TransferRecord.fromTransfer(t));
       _scheduleRefresh();
-    } catch (_) {/* history is best-effort */}
+    } catch (_) {
+      /* history is best-effort */
+    }
   }
 
   /// Trailing-edge debounce: each record pushes the reload back, so a burst
@@ -62,7 +64,7 @@ class HistoryNotifier extends Notifier<HistoryState> {
   void _scheduleRefresh() {
     _refreshTimer?.cancel();
     _refreshTimer = Timer(refreshDebounce, () {
-      if (!_disposed) refresh();
+      if (!_disposed) unawaited(refresh());
     });
   }
 
@@ -81,5 +83,6 @@ class HistoryNotifier extends Notifier<HistoryState> {
   }
 }
 
-final historyProvider =
-    NotifierProvider<HistoryNotifier, HistoryState>(HistoryNotifier.new);
+final historyProvider = NotifierProvider<HistoryNotifier, HistoryState>(
+  HistoryNotifier.new,
+);

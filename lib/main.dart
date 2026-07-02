@@ -16,13 +16,14 @@ import 'data/session_store.dart';
 import 'data/settings_store.dart';
 import 'fs/host_key_verifier.dart';
 import 'models/app_font.dart';
-import 'platform/desktop_notifications.dart';
 import 'models/connection.dart';
+import 'platform/desktop_notifications.dart';
 import 'state/app.dart';
 import 'theme.dart';
 
 /// Desktop platforms where native window management applies.
-bool get _isDesktop => Platform.isLinux || Platform.isMacOS || Platform.isWindows;
+bool get _isDesktop =>
+    Platform.isLinux || Platform.isMacOS || Platform.isWindows;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -96,8 +97,10 @@ Future<void> main() async {
 
   // Apply the persisted theme + fonts to the global palette before the first frame.
   if (settings != null) {
-    FsColors.applyTheme(birdThemeByName(settings.themeName),
-        brightness: resolveBrightness(settings.brightnessMode));
+    FsColors.applyTheme(
+      birdThemeByName(settings.themeName),
+      brightness: resolveBrightness(settings.brightnessMode),
+    );
     FsType.uiFontFamily = AppFont.resolve(settings.uiFont, mono: false);
     FsType.monoFontFamily = AppFont.resolve(settings.monospaceFont, mono: true);
   }
@@ -111,7 +114,11 @@ Future<void> main() async {
           ? Size(s!.windowWidth!, s.windowHeight!)
           : const Size(1320, 860);
       await windowManager.waitUntilReadyToShow(
-        WindowOptions(size: size, minimumSize: const Size(880, 600), title: 'Drag'),
+        WindowOptions(
+          size: size,
+          minimumSize: const Size(880, 600),
+          title: 'Drag',
+        ),
         () async {
           await windowManager.setMinimumSize(const Size(880, 600));
           if (s?.windowX != null && s?.windowY != null) {
@@ -133,28 +140,32 @@ Future<void> main() async {
       await notifier.setup();
       gDesktopNotifications = notifier;
       gFocusWindow = () {
-        windowManager.show();
-        windowManager.focus();
+        unawaited(windowManager.show());
+        unawaited(windowManager.focus());
       };
-    } catch (_) {/* notifications unavailable */}
+    } catch (_) {
+      /* notifications unavailable */
+    }
   }
 
-  runApp(ProviderScope(
-    overrides: [
-      historyRepositoryProvider.overrideWithValue(history),
-      connectionStoreProvider.overrideWithValue(connectionStore),
-      settingsStoreProvider.overrideWithValue(settingsStore),
-      sessionStoreProvider.overrideWithValue(sessionStore),
-      secretStoreProvider.overrideWithValue(KeychainSecretStore()),
-      bookmarkStoreProvider.overrideWithValue(bookmarkStore),
-      knownHostsStoreProvider.overrideWithValue(knownHostsStore),
-      initialBookmarksProvider.overrideWithValue(bookmarks),
-      initialSettingsProvider.overrideWithValue(settings),
-      initialConnectionsProvider.overrideWithValue(connections),
-      initialSessionLayoutProvider.overrideWithValue(sessionLayout),
-    ],
-    child: const DragApp(),
-  ));
+  runApp(
+    ProviderScope(
+      overrides: [
+        historyRepositoryProvider.overrideWithValue(history),
+        connectionStoreProvider.overrideWithValue(connectionStore),
+        settingsStoreProvider.overrideWithValue(settingsStore),
+        sessionStoreProvider.overrideWithValue(sessionStore),
+        secretStoreProvider.overrideWithValue(KeychainSecretStore()),
+        bookmarkStoreProvider.overrideWithValue(bookmarkStore),
+        knownHostsStoreProvider.overrideWithValue(knownHostsStore),
+        initialBookmarksProvider.overrideWithValue(bookmarks),
+        initialSettingsProvider.overrideWithValue(settings),
+        initialConnectionsProvider.overrideWithValue(connections),
+        initialSessionLayoutProvider.overrideWithValue(sessionLayout),
+      ],
+      child: const DragApp(),
+    ),
+  );
 }
 
 class DragApp extends ConsumerStatefulWidget {
@@ -164,7 +175,8 @@ class DragApp extends ConsumerStatefulWidget {
   ConsumerState<DragApp> createState() => _DragAppState();
 }
 
-class _DragAppState extends ConsumerState<DragApp> with WindowListener, WidgetsBindingObserver {
+class _DragAppState extends ConsumerState<DragApp>
+    with WindowListener, WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -203,13 +215,17 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener, WidgetsB
     try {
       final size = await windowManager.getSize();
       final pos = await windowManager.getPosition();
-      await ref.read(settingsProvider.notifier).saveWindowState(
+      await ref
+          .read(settingsProvider.notifier)
+          .saveWindowState(
             width: size.width,
             height: size.height,
             x: pos.dx,
             y: pos.dy,
           );
-    } catch (_) {/* best-effort */}
+    } catch (_) {
+      /* best-effort */
+    }
   }
 
   @override
@@ -232,11 +248,15 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener, WidgetsB
     final fontSize = ref.watch(settingsProvider.select((s) => s.uiFontSize));
     // Watch the accent + theme so the ThemeData (and the whole UI) is rebuilt
     // when either changes.
-    final accentValue = ref.watch(settingsProvider.select((s) => s.accentValue));
+    final accentValue = ref.watch(
+      settingsProvider.select((s) => s.accentValue),
+    );
     final themeName = ref.watch(settingsProvider.select((s) => s.themeName));
     final uiFont = ref.watch(settingsProvider.select((s) => s.uiFont));
     final monoFont = ref.watch(settingsProvider.select((s) => s.monospaceFont));
-    final brightnessMode = ref.watch(settingsProvider.select((s) => s.brightnessMode));
+    final brightnessMode = ref.watch(
+      settingsProvider.select((s) => s.brightnessMode),
+    );
     final brightness = resolveBrightness(brightnessMode);
 
     return MaterialApp(
@@ -255,7 +275,11 @@ class _DragAppState extends ConsumerState<DragApp> with WindowListener, WidgetsB
       // whole tree, forcing every widget to re-read the global FsColors ramp.
       // Session/tab state lives in Riverpod providers, so it survives the
       // remount — only ephemeral widget state (scroll offsets) resets.
-      home: AppShell(key: ValueKey('$themeName:$accentValue:$uiFont:$monoFont:${brightness.name}')),
+      home: AppShell(
+        key: ValueKey(
+          '$themeName:$accentValue:$uiFont:$monoFont:${brightness.name}',
+        ),
+      ),
     );
   }
 }

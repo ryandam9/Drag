@@ -2,10 +2,9 @@ import 'dart:convert';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../models/connection.dart';
 import 'app_db.dart';
 import 'db_migrations.dart';
-
-import '../models/connection.dart';
 
 /// Persists saved connections in a local SQLite database (one JSON row per
 /// connection, plus an ordering index). Secrets are intentionally NOT stored
@@ -35,21 +34,25 @@ class ConnectionStore {
   Future<List<Connection>> load() async {
     final rows = await _db.query(_table, orderBy: 'sort ASC');
     return rows
-        .map((r) => Connection.fromJson(
-            jsonDecode(r['data'] as String) as Map<String, Object?>))
+        .map(
+          (r) => Connection.fromJson(
+            jsonDecode(r['data'] as String) as Map<String, Object?>,
+          ),
+        )
         .toList();
   }
 
   Future<void> upsert(Connection c, int sort) async {
     if (c.id.isEmpty) c.id = Connection.newId();
-    await _db.insert(
-      _table,
-      {'id': c.id, 'sort': sort, 'data': jsonEncode(c.toJson())},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await _db.insert(_table, {
+      'id': c.id,
+      'sort': sort,
+      'data': jsonEncode(c.toJson()),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<void> delete(String id) => _db.delete(_table, where: 'id = ?', whereArgs: [id]);
+  Future<void> delete(String id) =>
+      _db.delete(_table, where: 'id = ?', whereArgs: [id]);
 
   /// Rewrites the whole table to match [connections] (order = list order).
   Future<void> replaceAll(List<Connection> connections) async {
@@ -58,8 +61,11 @@ class ConnectionStore {
       for (var i = 0; i < connections.length; i++) {
         final c = connections[i];
         if (c.id.isEmpty) c.id = Connection.newId();
-        await txn.insert(_table,
-            {'id': c.id, 'sort': i, 'data': jsonEncode(c.toJson())});
+        await txn.insert(_table, {
+          'id': c.id,
+          'sort': i,
+          'data': jsonEncode(c.toJson()),
+        });
       }
     });
   }

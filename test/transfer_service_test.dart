@@ -26,9 +26,12 @@ class _FailingSource extends StorageBackend {
   @override
   Future<ReadHandle> openRead(String path) => throw Exception(message);
   @override
-  Future<void> write(String path, Stream<Uint8List> data, int length,
-          {void Function(int sent)? onProgress}) =>
-      throw UnsupportedError('no');
+  Future<void> write(
+    String path,
+    Stream<Uint8List> data,
+    int length, {
+    void Function(int sent)? onProgress,
+  }) => throw UnsupportedError('no');
   @override
   String childPath(String path, String name, bool isDir) => '$path/$name';
   @override
@@ -63,9 +66,12 @@ class _SlowSource extends StorageBackend {
   }
 
   @override
-  Future<void> write(String path, Stream<Uint8List> data, int length,
-          {void Function(int sent)? onProgress}) =>
-      throw UnsupportedError('no');
+  Future<void> write(
+    String path,
+    Stream<Uint8List> data,
+    int length, {
+    void Function(int sent)? onProgress,
+  }) => throw UnsupportedError('no');
   @override
   String childPath(String path, String name, bool isDir) => '$path/$name';
   @override
@@ -91,10 +97,14 @@ class _MemSource extends StorageBackend {
     final b = files[path] ?? Uint8List(0);
     return ReadHandle(Stream<Uint8List>.value(b), b.length);
   }
+
   @override
-  Future<void> write(String path, Stream<Uint8List> data, int length,
-          {void Function(int sent)? onProgress}) =>
-      throw UnsupportedError('source only');
+  Future<void> write(
+    String path,
+    Stream<Uint8List> data,
+    int length, {
+    void Function(int sent)? onProgress,
+  }) => throw UnsupportedError('source only');
   @override
   String childPath(String path, String name, bool isDir) => '$path/$name';
   @override
@@ -106,7 +116,11 @@ class _MemSource extends StorageBackend {
 /// [deleteAlwaysFails] model an unrelated, non-"target exists" failure so the
 /// finalize logic can be checked for both cases.
 class _StagingDest extends StorageBackend {
-  _StagingDest(this.files, {this.renameAlwaysFails = false, this.deleteAlwaysFails = false});
+  _StagingDest(
+    this.files, {
+    this.renameAlwaysFails = false,
+    this.deleteAlwaysFails = false,
+  });
   final Map<String, Uint8List> files;
   final bool renameAlwaysFails;
   final bool deleteAlwaysFails;
@@ -127,9 +141,14 @@ class _StagingDest extends StorageBackend {
     final b = files[path] ?? Uint8List(0);
     return ReadHandle(Stream<Uint8List>.value(b), b.length);
   }
+
   @override
-  Future<void> write(String path, Stream<Uint8List> data, int length,
-      {void Function(int sent)? onProgress}) async {
+  Future<void> write(
+    String path,
+    Stream<Uint8List> data,
+    int length, {
+    void Function(int sent)? onProgress,
+  }) async {
     final out = <int>[];
     await for (final c in data) {
       out.addAll(c);
@@ -137,19 +156,24 @@ class _StagingDest extends StorageBackend {
     }
     files[path] = Uint8List.fromList(out);
   }
+
   @override
   Future<int?> sizeOf(String path) async => files[path]?.length;
   @override
   Future<void> rename(String fromPath, String toPath) async {
     if (renameAlwaysFails) throw Exception('permission denied');
-    if (files.containsKey(toPath)) throw Exception('target exists'); // won't clobber
+    if (files.containsKey(toPath)) {
+      throw Exception('target exists'); // won't clobber
+    }
     files[toPath] = files.remove(fromPath)!;
   }
+
   @override
   Future<void> delete(String path, {required bool isDir}) async {
     if (deleteAlwaysFails) throw Exception('permission denied');
     files.remove(path);
   }
+
   @override
   String childPath(String path, String name, bool isDir) => '$path/$name';
   @override
@@ -157,7 +181,13 @@ class _StagingDest extends StorageBackend {
 }
 
 Transfer _t(int size) => Transfer(
-    name: 'f', route: 'r', direction: TransferDirection.upload, sizeBytes: size, session: 's', live: true);
+  name: 'f',
+  route: 'r',
+  direction: TransferDirection.upload,
+  sizeBytes: size,
+  session: 's',
+  live: true,
+);
 
 void main() {
   test('records an error when the source cannot be read', () async {
@@ -192,34 +222,62 @@ void main() {
     expect(t.errorMessage, endsWith('…'));
   });
 
-  test('finalize replaces an existing destination when rename clashes', () async {
-    final src = _MemSource({'/f': Uint8List.fromList(List.filled(1000, 7))});
-    final dst = _StagingDest({'/f': Uint8List.fromList([1, 2, 3])}); // pre-existing file
-    final t = _t(1000);
-    await TransferService().run(
-      t: t, src: src, srcPath: '/f', dst: dst, dstPath: '/f', onStatus: () {});
-    expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
-    // The new bytes replaced the old file and the temp file is gone.
-    expect(dst.files['/f']!.length, 1000);
-    expect(dst.files.keys.any((k) => k.startsWith('/f.drag-partial')), isFalse);
-  });
+  test(
+    'finalize replaces an existing destination when rename clashes',
+    () async {
+      final src = _MemSource({'/f': Uint8List.fromList(List.filled(1000, 7))});
+      final dst = _StagingDest({
+        '/f': Uint8List.fromList([1, 2, 3]),
+      }); // pre-existing file
+      final t = _t(1000);
+      await TransferService().run(
+        t: t,
+        src: src,
+        srcPath: '/f',
+        dst: dst,
+        dstPath: '/f',
+        onStatus: () {},
+      );
+      expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
+      // The new bytes replaced the old file and the temp file is gone.
+      expect(dst.files['/f']!.length, 1000);
+      expect(
+        dst.files.keys.any((k) => k.startsWith('/f.drag-partial')),
+        isFalse,
+      );
+    },
+  );
 
-  test('finalize does NOT delete the destination on an unrelated rename failure', () async {
-    final original = Uint8List.fromList([1, 2, 3]);
-    final src = _MemSource({'/f': Uint8List.fromList(List.filled(1000, 7))});
-    // Rename fails for a non-"target exists" reason and delete is also refused
-    // (e.g. permissions) — the existing destination must be left intact.
-    final dst = _StagingDest({'/f': original},
-        renameAlwaysFails: true, deleteAlwaysFails: true);
-    final t = _t(1000);
-    await TransferService().run(
-      t: t, src: src, srcPath: '/f', dst: dst, dstPath: '/f', onStatus: () {});
-    expect(t.status, TransferStatus.error);
-    // The valid destination survived; only the temp file holds the new bytes.
-    expect(dst.files['/f'], original);
-    final partial = dst.files.entries.firstWhere((e) => e.key.startsWith('/f.drag-partial'));
-    expect(partial.value.length, 1000);
-  });
+  test(
+    'finalize does NOT delete the destination on an unrelated rename failure',
+    () async {
+      final original = Uint8List.fromList([1, 2, 3]);
+      final src = _MemSource({'/f': Uint8List.fromList(List.filled(1000, 7))});
+      // Rename fails for a non-"target exists" reason and delete is also refused
+      // (e.g. permissions) — the existing destination must be left intact.
+      final dst = _StagingDest(
+        {'/f': original},
+        renameAlwaysFails: true,
+        deleteAlwaysFails: true,
+      );
+      final t = _t(1000);
+      await TransferService().run(
+        t: t,
+        src: src,
+        srcPath: '/f',
+        dst: dst,
+        dstPath: '/f',
+        onStatus: () {},
+      );
+      expect(t.status, TransferStatus.error);
+      // The valid destination survived; only the temp file holds the new bytes.
+      expect(dst.files['/f'], original);
+      final partial = dst.files.entries.firstWhere(
+        (e) => e.key.startsWith('/f.drag-partial'),
+      );
+      expect(partial.value.length, 1000);
+    },
+  );
 
   test('updates live speed/ETA once the 400ms window elapses', () async {
     final dir = await Directory.systemTemp.createTemp('svc');

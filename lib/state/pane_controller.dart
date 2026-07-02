@@ -40,19 +40,43 @@ List<FileItem> sortItems(List<FileItem> items, SortKey key, bool ascending) {
 /// Holds the live state of one browser pane: which endpoint/backend it points
 /// at, the current directory, the listing, and selection — plus async
 /// loading/error state for real backends (Local / S3).
-class PaneController {
-  PaneController(
-      {required this.backend,
-      required this.onChanged,
-      this.connection,
-      this.showHidden = true});
+///
+/// A pane is a [ChangeNotifier]: widgets rendering it listen to the pane
+/// itself, so a selection click or a streamed listing page repaints only that
+/// pane's subtree instead of re-emitting the app-wide sessions state.
+class PaneController extends ChangeNotifier {
+  PaneController({
+    required this.backend,
+    required this.onChanged,
+    this.connection,
+    this.showHidden = true,
+  });
 
   StorageBackend backend;
 
   /// `null` means the Local endpoint; otherwise the saved connection in use.
   Connection? connection;
 
+  /// Side-channel back to the sessions notifier (persistence scheduling); UI
+  /// updates ride on [notifyListeners] instead.
   final VoidCallback onChanged;
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  /// Publish an in-place change: repaint listening widgets and let the owner
+  /// schedule a session save. Safe to call after [dispose] (a slow listing can
+  /// finish after its tab was closed) — it just goes nowhere.
+  void _changed() {
+    if (_disposed) return;
+    notifyListeners();
+    onChanged();
+  }
 
   /// When false, dot-files (names starting with `.`) are filtered out of the
   /// listing. Driven by the "Show hidden files" setting.
@@ -85,7 +109,7 @@ class PaneController {
   /// Stop the in-progress listing, keeping whatever has loaded so far.
   void cancelListing() {
     _listCancelled = true;
-    onChanged();
+    _changed();
   }
 
   /// In-pane name filter (substring, case-insensitive). Empty shows everything.
@@ -98,6 +122,12 @@ class PaneController {
   /// Per-entry comparison marks from the last Compare (by name). Empty when no
   /// comparison is active; cleared automatically when the listing reloads.
   Map<String, CompareMark> compareMarks = const {};
+
+  /// Apply fresh comparison marks (from Compare) and repaint the pane.
+  void setCompareMarks(Map<String, CompareMark> marks) {
+    compareMarks = marks;
+    _changed();
+  }
 
   /// Anchor / primary selection (used for shift-range and single-item actions).
   int? selectedIndex;
@@ -114,10 +144,15 @@ class PaneController {
 
   /// List of path segments for the breadcrumb.
   List<String> get breadcrumb {
-    final raw = path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).toList();
+    final raw = path
+        .split(RegExp(r'[\\/]'))
+        .where((s) => s.isNotEmpty)
+        .toList();
     final head = connection == null
         ? '~'
-        : (connection!.isS3 ? (connection!.bucket.isEmpty ? 's3' : connection!.bucket) : '/');
+        : (connection!.isS3
+              ? (connection!.bucket.isEmpty ? 's3' : connection!.bucket)
+              : '/');
     return [head, ...raw];
   }
 
@@ -126,7 +161,10 @@ class PaneController {
   bool get canGoBack => _back.isNotEmpty;
   bool get canGoForward => _forward.isNotEmpty;
 
-  Future<void> switchTo(StorageBackend newBackend, Connection? newConnection) async {
+  Future<void> switchTo(
+    StorageBackend newBackend,
+    Connection? newConnection,
+  ) async {
     backend = newBackend;
     connection = newConnection;
     path = newBackend.initialPath;
@@ -148,7 +186,7 @@ class PaneController {
       items = const [];
       error = null;
       loading = false;
-      onChanged();
+      _changed();
       return;
     }
     final token = ++_loadToken;
@@ -157,7 +195,7 @@ class PaneController {
     listingTruncated = false;
     _listCancelled = false;
     compareMarks = const {}; // a fresh listing invalidates any comparison
-    onChanged();
+    _changed();
     try {
       // Consume the listing incrementally so backends that page (S3) fill the
       // pane as objects arrive instead of blocking on the whole prefix. Each
@@ -173,12 +211,12 @@ class PaneController {
           _all = page.sublist(0, listingMax);
           listingTruncated = true;
           _applyView();
-          onChanged();
+          _changed();
           break;
         }
         _all = page;
         _applyView();
-        onChanged();
+        _changed();
       }
     } catch (e) {
       if (token != _loadToken) return;
@@ -190,7 +228,7 @@ class PaneController {
         loading = false;
         selectedIndex = null;
         selection.clear();
-        onChanged();
+        _changed();
       }
     }
   }
@@ -201,7 +239,9 @@ class PaneController {
     Iterable<FileItem> v = _all;
     if (!showHidden) v = v.where((f) => f.isParent || !f.name.startsWith('.'));
     final q = filterQuery.trim().toLowerCase();
-    if (q.isNotEmpty) v = v.where((f) => f.isParent || f.name.toLowerCase().contains(q));
+    if (q.isNotEmpty) {
+      v = v.where((f) => f.isParent || f.name.toLowerCase().contains(q));
+    }
     items = sortItems(v.toList(), sortKey, sortAscending);
   }
 
@@ -236,7 +276,7 @@ class PaneController {
     selectedIndex = null;
     selection.clear();
     _applyView();
-    onChanged();
+    _changed();
   }
 
   Future<void> open(FileItem item) async {
@@ -303,14 +343,14 @@ class PaneController {
       ..clear()
       ..add(index);
     selectedIndex = index;
-    onChanged();
+    _changed();
   }
 
   /// Toggle [index] in the selection (Ctrl/Cmd-click).
   void toggleSelect(int index) {
     if (!selection.remove(index)) selection.add(index);
     selectedIndex = index;
-    onChanged();
+    _changed();
   }
 
   /// Select the contiguous range from the anchor to [index] (Shift-click).
@@ -321,7 +361,7 @@ class PaneController {
     selection
       ..clear()
       ..addAll([for (var k = lo; k <= hi; k++) k]);
-    onChanged();
+    _changed();
   }
 
   bool isSelected(int index) => selection.contains(index);
@@ -366,8 +406,12 @@ class PaneController {
 
   /// The selected, non-parent entries (in listing order).
   List<FileItem> selectedItems() {
-    final idx = selection.where((i) => i >= 0 && i < items.length).toList()..sort();
-    return [for (final i in idx) if (!items[i].isParent) items[i]];
+    final idx = selection.where((i) => i >= 0 && i < items.length).toList()
+      ..sort();
+    return [
+      for (final i in idx)
+        if (!items[i].isParent) items[i],
+    ];
   }
 }
 

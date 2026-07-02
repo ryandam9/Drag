@@ -133,7 +133,9 @@ abstract class StorageBackend {
   /// The trailing name component of [path] (basename), backend-aware so S3's
   /// trailing-slash folders and key prefixes resolve correctly.
   String childName(String path) {
-    final trimmed = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+    final trimmed = path.endsWith('/')
+        ? path.substring(0, path.length - 1)
+        : path;
     final idx = trimmed.lastIndexOf('/');
     return idx < 0 ? trimmed : trimmed.substring(idx + 1);
   }
@@ -179,13 +181,15 @@ class LocalBackend extends StorageBackend {
       try {
         final stat = await entity.stat();
         final isDir = stat.type == FileSystemEntityType.directory;
-        items.add(FileItem(
-          name: p.basename(entity.path),
-          isDir: isDir,
-          sizeBytes: isDir ? null : stat.size,
-          modified: formatModified(stat.modified),
-          perms: stat.modeString(),
-        ));
+        items.add(
+          FileItem(
+            name: p.basename(entity.path),
+            isDir: isDir,
+            sizeBytes: isDir ? null : stat.size,
+            modified: formatModified(stat.modified),
+            perms: stat.modeString(),
+          ),
+        );
       } catch (_) {
         // Skip entries we can't stat (permissions, broken links).
       }
@@ -208,7 +212,9 @@ class LocalBackend extends StorageBackend {
   Future<ReadHandle> openReadRange(String path, int start) async {
     final file = File(path);
     final length = await file.length();
-    if (start <= 0) return ReadHandle(file.openRead().map(Uint8List.fromList), length);
+    if (start <= 0) {
+      return ReadHandle(file.openRead().map(Uint8List.fromList), length);
+    }
     final remaining = (length - start).clamp(0, length);
     return ReadHandle(file.openRead(start).map(Uint8List.fromList), remaining);
   }
@@ -365,9 +371,15 @@ class S3Backend extends StorageBackend {
 
   static String _defaultRegion(Connection c) => c.region.isNotEmpty
       ? c.region
-      : (c.useAwsProfile ? (loadAwsRegion(resolveAwsProfile(c)) ?? 'us-east-1') : 'us-east-1');
+      : (c.useAwsProfile
+            ? (loadAwsRegion(resolveAwsProfile(c)) ?? 'us-east-1')
+            : 'us-east-1');
 
-  S3Client _build(Connection c, {required String bucket, required String region}) {
+  S3Client _build(
+    Connection c, {
+    required String bucket,
+    required String region,
+  }) {
     return S3Client(
       bucket: bucket,
       region: region,
@@ -396,8 +408,12 @@ class S3Backend extends StorageBackend {
     _roleProvider ??= AssumeRoleCredentialsProvider(
       sts: StsClient(region: _defaultRegion(connection)),
       roleArn: connection.assumeRoleArn,
-      sessionName: connection.roleSessionName.isEmpty ? 'drag' : connection.roleSessionName,
-      externalId: connection.roleExternalId.isEmpty ? null : connection.roleExternalId,
+      sessionName: connection.roleSessionName.isEmpty
+          ? 'drag'
+          : connection.roleSessionName,
+      externalId: connection.roleExternalId.isEmpty
+          ? null
+          : connection.roleExternalId,
       baseCredentials: () => _resolveCredentials(connection),
     );
     _assumed = await _roleProvider!.resolve();
@@ -416,8 +432,10 @@ class S3Backend extends StorageBackend {
       final name = resolveAwsProfile(c);
       final creds = await loadAwsCredentials(name);
       if (creds == null) {
-        throw S3Exception(0,
-            'No AWS credentials in the environment or profile "$name" (${awsCredentialsPath()})');
+        throw S3Exception(
+          0,
+          'No AWS credentials in the environment or profile "$name" (${awsCredentialsPath()})',
+        );
       }
       return creds;
     }
@@ -428,8 +446,11 @@ class S3Backend extends StorageBackend {
     );
   }
 
-  S3Client _serviceClient() =>
-      _service ??= _build(connection, bucket: '', region: _defaultRegion(connection));
+  S3Client _serviceClient() => _service ??= _build(
+    connection,
+    bucket: '',
+    region: _defaultRegion(connection),
+  );
 
   /// A client scoped to [bucket], built with that bucket's own region (resolved
   /// via GetBucketLocation and cached). With a custom endpoint (MinIO etc.)
@@ -444,14 +465,20 @@ class S3Backend extends StorageBackend {
     } else {
       region = _bucketRegions[bucket] ??= await _resolveRegion(bucket);
     }
-    return _bucketClients[bucket] = _build(connection, bucket: bucket, region: region);
+    return _bucketClients[bucket] = _build(
+      connection,
+      bucket: bucket,
+      region: region,
+    );
   }
 
   Future<String> _resolveRegion(String bucket) async {
     try {
       return await _serviceClient().getBucketLocation(bucket);
     } catch (_) {
-      return _defaultRegion(connection); // fall back; object ops will surface errors
+      return _defaultRegion(
+        connection,
+      ); // fall back; object ops will surface errors
     }
   }
 
@@ -478,28 +505,32 @@ class S3Backend extends StorageBackend {
     if (_discovery && bucket.isEmpty) {
       final buckets = await _serviceClient().listBuckets();
       List<FileItem> snapshot() => [
-            for (final b in buckets)
-              FileItem(
-                name: b.name,
-                isDir: true,
-                modified: b.created == null ? '' : formatModified(b.created!),
-                perms: _bucketRegions[b.name] ?? '', // blank until resolved
-              ),
-          ]..sort(StorageBackend.dirsFirst);
+        for (final b in buckets)
+          FileItem(
+            name: b.name,
+            isDir: true,
+            modified: b.created == null ? '' : formatModified(b.created!),
+            perms: _bucketRegions[b.name] ?? '', // blank until resolved
+          ),
+      ]..sort(StorageBackend.dirsFirst);
       yield snapshot();
 
       // Region routing doesn't apply to custom endpoints (MinIO etc.), so the
       // REGION column stays blank there.
-      if (connection.endpoint.isNotEmpty && !debugResolveRegionsWithEndpoint) return;
+      if (connection.endpoint.isNotEmpty && !debugResolveRegionsWithEndpoint) {
+        return;
+      }
       const batchSize = 8; // GetBucketLocation calls in flight at once
       final pending = [
         for (final b in buckets)
-          if (!_bucketRegions.containsKey(b.name)) b.name
+          if (!_bucketRegions.containsKey(b.name)) b.name,
       ];
       for (var i = 0; i < pending.length; i += batchSize) {
-        await Future.wait(pending.skip(i).take(batchSize).map((name) async {
-          _bucketRegions[name] = await _resolveRegion(name);
-        }));
+        await Future.wait(
+          pending.skip(i).take(batchSize).map((name) async {
+            _bucketRegions[name] = await _resolveRegion(name);
+          }),
+        );
         yield snapshot(); // progressively fill the REGION column
       }
       return;
@@ -521,14 +552,16 @@ class S3Backend extends StorageBackend {
         if (obj.key == key) continue; // the prefix placeholder object itself
         final name = obj.key.substring(key.length);
         if (name.isEmpty || name.endsWith('/')) continue;
-        items.add(FileItem(
-          name: name,
-          sizeBytes: obj.size,
-          modified: formatModified(obj.lastModified),
-          // Objects have no region/permissions; the REGION column is only
-          // populated for buckets in the discovery list.
-          perms: '',
-        ));
+        items.add(
+          FileItem(
+            name: name,
+            sizeBytes: obj.size,
+            modified: formatModified(obj.lastModified),
+            // Objects have no region/permissions; the REGION column is only
+            // populated for buckets in the discovery list.
+            perms: '',
+          ),
+        );
       }
       yield List<FileItem>.from(items)..sort(StorageBackend.dirsFirst);
     }
@@ -616,7 +649,9 @@ class S3Backend extends StorageBackend {
     }
     final (fromBucket, fromKey) = _split(fromPath);
     final (toBucket, toKey) = _split(toPath);
-    if (fromBucket != toBucket) throw UnsupportedError('Cross-bucket rename is not supported');
+    if (fromBucket != toBucket) {
+      throw UnsupportedError('Cross-bucket rename is not supported');
+    }
     final client = await _clientFor(fromBucket);
     await client.copyObject(fromKey, toKey);
     await client.deleteObject(fromKey);
@@ -653,7 +688,10 @@ class S3Backend extends StorageBackend {
     }
     await flush();
     if (failed.isNotEmpty) {
-      throw S3Exception(0, 'Failed to delete ${failed.length} object(s): ${failed.take(3).join(', ')}');
+      throw S3Exception(
+        0,
+        'Failed to delete ${failed.length} object(s): ${failed.take(3).join(', ')}',
+      );
     }
   }
 
@@ -667,11 +705,14 @@ class S3Backend extends StorageBackend {
   }
 
   @override
-  String childPath(String path, String name, bool isDir) => '$path$name${isDir ? '/' : ''}';
+  String childPath(String path, String name, bool isDir) =>
+      '$path$name${isDir ? '/' : ''}';
 
   @override
   String parentPath(String path) {
-    final trimmed = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+    final trimmed = path.endsWith('/')
+        ? path.substring(0, path.length - 1)
+        : path;
     final idx = trimmed.lastIndexOf('/');
     return idx < 0 ? '' : trimmed.substring(0, idx + 1);
   }

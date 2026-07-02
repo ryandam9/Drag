@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -52,36 +53,68 @@ class _AppShellState extends ConsumerState<AppShell> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: FsColors.bgPanel,
-        title: Text('Unknown SFTP host key',
-            style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text("You're connecting to a host Drag hasn't seen before. Verify its "
+        title: Text(
+          'Unknown SFTP host key',
+          style: FsType.sans(
+            size: 14,
+            weight: FontWeight.w600,
+            color: FsColors.text1,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "You're connecting to a host Drag hasn't seen before. Verify its "
               'fingerprint out-of-band before trusting it — an unexpected key can '
               'mean a man-in-the-middle.',
-              style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: FsColors.bgScaffold,
-              borderRadius: BorderRadius.circular(FsColors.rField),
-              border: Border.all(color: FsColors.border),
+              style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${info.host}:${info.port}  ·  ${info.type}',
-                  style: FsType.sans(size: 12, weight: FontWeight.w600, color: FsColors.text1)),
-              const SizedBox(height: 4),
-              SelectableText(info.fingerprint, style: FsType.mono(size: 11, color: FsColors.text2)),
-            ]),
-          ),
-        ]),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: FsColors.bgScaffold,
+                borderRadius: BorderRadius.circular(FsColors.rField),
+                border: Border.all(color: FsColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${info.host}:${info.port}  ·  ${info.type}',
+                    style: FsType.sans(
+                      size: 12,
+                      weight: FontWeight.w600,
+                      color: FsColors.text1,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    info.fingerprint,
+                    style: FsType.mono(size: 11, color: FsColors.text2),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         actions: [
-          FsButton('Cancel', onTap: () => Navigator.pop(ctx, HostKeyDecision.cancel)),
-          FsButton('Trust once', onTap: () => Navigator.pop(ctx, HostKeyDecision.trustOnce)),
-          FsButton('Trust & remember',
-              kind: FsButtonKind.primary,
-              onTap: () => Navigator.pop(ctx, HostKeyDecision.trustAndRemember)),
+          FsButton(
+            'Cancel',
+            onTap: () => Navigator.pop(ctx, HostKeyDecision.cancel),
+          ),
+          FsButton(
+            'Trust once',
+            onTap: () => Navigator.pop(ctx, HostKeyDecision.trustOnce),
+          ),
+          FsButton(
+            'Trust & remember',
+            kind: FsButtonKind.primary,
+            onTap: () => Navigator.pop(ctx, HostKeyDecision.trustAndRemember),
+          ),
         ],
       ),
     );
@@ -107,26 +140,30 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return Scaffold(
       backgroundColor: FsColors.bgScaffold,
-      body: Stack(children: [
-        Row(children: [
-          const NavRail(),
-          Expanded(
-            child: Container(
-              color: FsColors.bgScaffold,
-              child: _MinSize(
-                minWidth: 820,
-                minHeight: 520,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 160),
-                  child: KeyedSubtree(key: ValueKey(screen), child: body),
+      body: Stack(
+        children: [
+          Row(
+            children: [
+              const NavRail(),
+              Expanded(
+                child: Container(
+                  color: FsColors.bgScaffold,
+                  child: _MinSize(
+                    minWidth: 820,
+                    minHeight: 520,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 160),
+                      child: KeyedSubtree(key: ValueKey(screen), child: body),
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-        ]),
-        const ActiveTransferOverlay(),
-        const ToastOverlay(),
-      ]),
+          const ActiveTransferOverlay(),
+          const ToastOverlay(),
+        ],
+      ),
     );
   }
 
@@ -146,10 +183,11 @@ class _AppShellState extends ConsumerState<AppShell> {
     };
     if (title == _lastWindowTitle) return;
     _lastWindowTitle = title;
-    windowManager.setTitle(title).catchError((_) {});
+    unawaited(windowManager.setTitle(title).catchError((_) {}));
   }
 
-  static bool get _isDesktop => Platform.isLinux || Platform.isMacOS || Platform.isWindows;
+  static bool get _isDesktop =>
+      Platform.isLinux || Platform.isMacOS || Platform.isWindows;
 
   String _browserTitle() {
     final state = ref.watch(sessionsProvider);
@@ -167,22 +205,28 @@ class _MinSize extends StatelessWidget {
   final double minWidth;
   final double minHeight;
   final Widget child;
-  const _MinSize({required this.minWidth, required this.minHeight, required this.child});
+  const _MinSize({
+    required this.minWidth,
+    required this.minHeight,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      final tooNarrow = c.maxWidth < minWidth;
-      final tooShort = c.maxHeight < minHeight;
-      if (!tooNarrow && !tooShort) return child;
-      final w = tooNarrow ? minWidth : c.maxWidth;
-      final h = tooShort ? minHeight : c.maxHeight;
-      return SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SingleChildScrollView(
-          child: SizedBox(width: w, height: h, child: child),
-        ),
-      );
-    });
+    return LayoutBuilder(
+      builder: (context, c) {
+        final tooNarrow = c.maxWidth < minWidth;
+        final tooShort = c.maxHeight < minHeight;
+        if (!tooNarrow && !tooShort) return child;
+        final w = tooNarrow ? minWidth : c.maxWidth;
+        final h = tooShort ? minHeight : c.maxHeight;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
+            child: SizedBox(width: w, height: h, child: child),
+          ),
+        );
+      },
+    );
   }
 }

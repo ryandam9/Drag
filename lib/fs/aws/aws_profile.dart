@@ -31,7 +31,8 @@ Map<String, String>? debugAwsEnv;
 
 /// Runs a `credential_process` command and returns its result. Injectable so
 /// tests can fake the helper without spawning a real process.
-typedef CredentialProcessRunner = Future<ProcessResult> Function(String command);
+typedef CredentialProcessRunner =
+    Future<ProcessResult> Function(String command);
 
 /// Test seam — when set, replaces the shell invocation used to run a
 /// profile's `credential_process` helper.
@@ -88,7 +89,11 @@ Map<String, Map<String, String>> _parseIni(String text) {
 
 /// The settings for [profile], looked up first in the shared credentials file
 /// and then in `~/.aws/config` (where it's `[profile NAME]`, except default).
-Map<String, String>? _profileSection(String profile, {String? credPath, String? cfgPath}) {
+Map<String, String>? _profileSection(
+  String profile, {
+  String? credPath,
+  String? cfgPath,
+}) {
   final cred = File(credPath ?? awsCredentialsPath());
   if (cred.existsSync()) {
     final s = _parseIni(cred.readAsStringSync())[profile];
@@ -112,14 +117,22 @@ Map<String, String>? _profileSection(String profile, {String? credPath, String? 
 /// `credential_process` result is cached (see [_credentialsFromProcess]),
 /// because spawning the helper once per signed request would be both slow and
 /// surprising (SSO helpers can prompt, hit the network, etc.).
-Future<AwsCredentials?> loadAwsCredentials(String profile, {String? path}) async {
+Future<AwsCredentials?> loadAwsCredentials(
+  String profile, {
+  String? path,
+}) async {
   final section = _profileSection(profile, credPath: path);
   if (section == null) return null;
   final key = section['aws_access_key_id'] ?? '';
   final secret = section['aws_secret_access_key'] ?? '';
   if (key.isNotEmpty && secret.isNotEmpty) {
-    final token = section['aws_session_token'] ?? section['aws_security_token'] ?? '';
-    return AwsCredentials(key, secret, sessionToken: token.isEmpty ? null : token);
+    final token =
+        section['aws_session_token'] ?? section['aws_security_token'] ?? '';
+    return AwsCredentials(
+      key,
+      secret,
+      sessionToken: token.isEmpty ? null : token,
+    );
   }
   final process = section['credential_process'];
   if (process != null && process.isNotEmpty) {
@@ -157,17 +170,25 @@ void debugClearCredentialProcessCache() => _processCache.clear();
 /// [_processExpirySkew]) when it reports one, else for [_processDefaultTtl].
 /// Failures are never cached, so a transient helper error is retried on the
 /// next request.
-Future<AwsCredentials?> _credentialsFromProcess(String profile, String command) async {
+Future<AwsCredentials?> _credentialsFromProcess(
+  String profile,
+  String command,
+) async {
   final cacheKey = '$profile\n$command';
   final cached = _processCache[cacheKey];
-  if (cached != null && _now().isBefore(cached.expiresAt)) return cached.credentials;
+  if (cached != null && _now().isBefore(cached.expiresAt)) {
+    return cached.credentials;
+  }
 
   final result = await _runCredentialProcess(command);
   if (result == null) return null;
   final expiresAt = result.expiration != null
       ? result.expiration!.subtract(_processExpirySkew)
       : _now().add(_processDefaultTtl);
-  _processCache[cacheKey] = _CachedProcessCredentials(result.credentials, expiresAt);
+  _processCache[cacheKey] = _CachedProcessCredentials(
+    result.credentials,
+    expiresAt,
+  );
   return result.credentials;
 }
 
@@ -175,22 +196,29 @@ Future<AwsCredentials?> _credentialsFromProcess(String profile, String command) 
 /// (`AccessKeyId` / `SecretAccessKey` / `SessionToken` / `Expiration`), as the
 /// AWS SDKs do. Returns null on any failure so callers fall through to other
 /// providers.
-Future<({AwsCredentials credentials, DateTime? expiration})?> _runCredentialProcess(
-    String command) async {
+Future<({AwsCredentials credentials, DateTime? expiration})?>
+_runCredentialProcess(String command) async {
   try {
     final run = debugCredentialProcessRunner ?? _defaultProcessRunner;
     final result = await run(command);
     if (result.exitCode != 0) return null;
-    final out = result.stdout is String ? result.stdout as String : utf8.decode(result.stdout as List<int>);
+    final out = result.stdout is String
+        ? result.stdout as String
+        : utf8.decode(result.stdout as List<int>);
     final json = jsonDecode(out) as Map<String, dynamic>;
     final key = (json['AccessKeyId'] as String?) ?? '';
     final secret = (json['SecretAccessKey'] as String?) ?? '';
     if (key.isEmpty || secret.isEmpty) return null;
     final token = json['SessionToken'] as String?;
-    final expiration = DateTime.tryParse((json['Expiration'] as String?) ?? '')?.toUtc();
+    final expiration = DateTime.tryParse(
+      (json['Expiration'] as String?) ?? '',
+    )?.toUtc();
     return (
-      credentials: AwsCredentials(key, secret,
-          sessionToken: (token != null && token.isNotEmpty) ? token : null),
+      credentials: AwsCredentials(
+        key,
+        secret,
+        sessionToken: (token != null && token.isNotEmpty) ? token : null,
+      ),
       expiration: expiration,
     );
   } catch (_) {
@@ -199,7 +227,8 @@ Future<({AwsCredentials credentials, DateTime? expiration})?> _runCredentialProc
 }
 
 /// Default runner: the platform shell, like the AWS CLI/SDKs.
-Future<ProcessResult> _defaultProcessRunner(String command) => Platform.isWindows
+Future<ProcessResult> _defaultProcessRunner(String command) =>
+    Platform.isWindows
     ? Process.run('cmd', ['/c', command])
     : Process.run('/bin/sh', ['-c', command]);
 
@@ -212,7 +241,11 @@ AwsCredentials? loadAwsEnvCredentials() {
   final secret = env['AWS_SECRET_ACCESS_KEY'] ?? '';
   if (key.isEmpty || secret.isEmpty) return null;
   final token = env['AWS_SESSION_TOKEN'] ?? env['AWS_SECURITY_TOKEN'] ?? '';
-  return AwsCredentials(key, secret, sessionToken: token.isEmpty ? null : token);
+  return AwsCredentials(
+    key,
+    secret,
+    sessionToken: token.isEmpty ? null : token,
+  );
 }
 
 /// Region for [profile] from `~/.aws/config` (sections are `[profile NAME]`,

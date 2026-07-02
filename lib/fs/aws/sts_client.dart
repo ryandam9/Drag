@@ -20,11 +20,15 @@ class AssumedRole {
 /// a mock/STS-compatible endpoint.
 class StsClient {
   StsClient({required String region, String endpoint = '', this.useSsl = true})
-      : region = region.isEmpty ? 'us-east-1' : region,
-        _scheme = useSsl ? 'https' : 'http' {
-    final parsed = parseAwsEndpoint(endpoint.isNotEmpty
-        ? endpoint
-        : (region.isEmpty ? 'sts.amazonaws.com' : 'sts.$region.amazonaws.com'));
+    : region = region.isEmpty ? 'us-east-1' : region,
+      _scheme = useSsl ? 'https' : 'http' {
+    final parsed = parseAwsEndpoint(
+      endpoint.isNotEmpty
+          ? endpoint
+          : (region.isEmpty
+                ? 'sts.amazonaws.com'
+                : 'sts.$region.amazonaws.com'),
+    );
     _host = parsed.host;
     _port = parsed.port;
   }
@@ -42,7 +46,8 @@ class StsClient {
     ..idleTimeout = const Duration(seconds: 30);
 
   String get _hostHeader {
-    final isDefault = _port == null || (useSsl && _port == 443) || (!useSsl && _port == 80);
+    final isDefault =
+        _port == null || (useSsl && _port == 443) || (!useSsl && _port == 80);
     return isDefault ? _host : '$_host:$_port';
   }
 
@@ -63,12 +68,19 @@ class StsClient {
       if (externalId != null && externalId.isNotEmpty) 'ExternalId': externalId,
     };
     final body = (params.keys.toList()..sort())
-        .map((k) => '${awsUriEncode(k, encodeSlash: true)}=${awsUriEncode(params[k]!, encodeSlash: true)}')
+        .map(
+          (k) =>
+              '${awsUriEncode(k, encodeSlash: true)}=${awsUriEncode(params[k]!, encodeSlash: true)}',
+        )
         .join('&');
     final bytes = utf8.encode(body);
 
     const contentType = 'application/x-www-form-urlencoded; charset=utf-8';
-    final signer = SigV4Signer(credentials: baseCredentials, region: region, service: 'sts');
+    final signer = SigV4Signer(
+      credentials: baseCredentials,
+      region: region,
+      service: 'sts',
+    );
     final headers = signer.sign(
       method: 'POST',
       host: _hostHeader,
@@ -88,13 +100,18 @@ class StsClient {
 
     final result = XmlDocument.parse(respBody).rootElement;
     final creds = result.findAllElements('Credentials').firstOrNull;
-    if (creds == null) throw S3Exception(resp.statusCode, 'AssumeRole returned no credentials');
+    if (creds == null) {
+      throw S3Exception(resp.statusCode, 'AssumeRole returned no credentials');
+    }
     final ak = creds.getElement('AccessKeyId')?.innerText ?? '';
     final sk = creds.getElement('SecretAccessKey')?.innerText ?? '';
     final tok = creds.getElement('SessionToken')?.innerText ?? '';
     final expText = creds.getElement('Expiration')?.innerText;
-    if (ak.isEmpty || sk.isEmpty) throw S3Exception(resp.statusCode, 'AssumeRole credentials incomplete');
-    final exp = DateTime.tryParse(expText ?? '')?.toUtc() ??
+    if (ak.isEmpty || sk.isEmpty) {
+      throw S3Exception(resp.statusCode, 'AssumeRole credentials incomplete');
+    }
+    final exp =
+        DateTime.tryParse(expText ?? '')?.toUtc() ??
         DateTime.now().toUtc().add(Duration(seconds: durationSeconds));
     return AssumedRole(AwsCredentials(ak, sk, sessionToken: tok), exp);
   }
@@ -102,8 +119,14 @@ class StsClient {
   S3Exception _error(int status, String body) {
     String message = body;
     try {
-      message = XmlDocument.parse(body).rootElement.getElement('Error')?.getElement('Message')?.innerText ?? body;
-    } catch (_) {/* not XML */}
+      message =
+          XmlDocument.parse(
+            body,
+          ).rootElement.getElement('Error')?.getElement('Message')?.innerText ??
+          body;
+    } catch (_) {
+      /* not XML */
+    }
     return S3Exception(status, message.isEmpty ? 'AssumeRole failed' : message);
   }
 
