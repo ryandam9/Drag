@@ -10,10 +10,17 @@ on:
 env:
   FLUTTER_VERSION: "3.44.2"
 
+# Only the newest run per branch/PR matters — cancel superseded ones so pushes
+# in quick succession don't queue up redundant full CI runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   analyze-and-test:
     name: Analyze & test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +35,10 @@ jobs:
           cache: true
 
       - run: flutter pub get
+      # Formatting gate: fail (without rewriting anything) if any file isn't
+      # `dart format` clean, so style drift can't land.
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
       - name: Analyze
         run: flutter analyze
       - name: Test (with coverage)
@@ -39,10 +50,42 @@ jobs:
           echo "Line coverage: ${pct}% (floor ${min}%)"
           awk -v p="$pct" -v m="$min" 'BEGIN{ if (p+0 < m+0) { printf "::error::Line coverage %.1f%% is below the %.1f%% floor\n", p, m; exit 1 } }'
 
+  # The full analyze/coverage gate runs once on Linux (above); this matrix
+  # re-runs the plain test suite on the other two desktop targets to catch
+  # OS-specific breakage (path separators, native SQLite loading, …).
+  test:
+    name: Test (${{ matrix.os }})
+    needs: analyze-and-test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # No native SQLite provisioning step needed here: the `sqlite3` Dart
+      # package (v3.x, behind sqflite_common_ffi) ships a native-assets build
+      # hook that fetches a prebuilt sqlite3 for the host OS during
+      # `flutter test`, and macOS runners additionally have the system
+      # libsqlite3.dylib as a fallback. If Windows ever fails to load sqlite3,
+      # provision it with `choco install sqlite` and add its dir to $GITHUB_PATH.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - name: Test
+        run: flutter test
+
   sftp-integration:
     name: SFTP integration (containerized)
     needs: analyze-and-test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -80,6 +123,61 @@ jobs:
         if: always()
         run: docker rm -f sftp
 
+  s3-integration:
+    name: S3 integration (containerized)
+    needs: analyze-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-0 libsqlite3-dev
+
+      # A throwaway MinIO server so the gated integration test exercises the
+      # real hand-written S3Backend (SigV4 signing, upload/list/download,
+      # cross-bucket copy, rename/delete) end-to-end over plain HTTP.
+      - name: Start MinIO server
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9000/minio/health/live > /dev/null; then echo "minio up"; break; fi
+            sleep 1
+          done
+
+      # The test expects two pre-existing buckets: S3_BUCKET for the round-trip
+      # and file-op tests, S3_BUCKET2 for the cross-account copy test. Create
+      # them with the mc client (run via docker so nothing is installed on the
+      # runner; --network host so 127.0.0.1:9000 resolves to the MinIO above).
+      - name: Create test buckets
+        run: |
+          docker run --rm --network host --entrypoint sh minio/mc -c \
+            "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin && \
+             mc mb local/test-bucket local/test-bucket-b"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - name: Run S3 integration test
+        run: |
+          flutter test test/s3_integration_test.dart \
+            --dart-define=S3_ENDPOINT=127.0.0.1:9000 \
+            --dart-define=S3_BUCKET=test-bucket \
+            --dart-define=S3_BUCKET2=test-bucket-b \
+            --dart-define=S3_KEY=minioadmin \
+            --dart-define=S3_SECRET=minioadmin
+
+      - name: Stop MinIO server
+        if: always()
+        run: docker rm -f minio
+
   build:
     name: Build ${{ matrix.platform }}
     needs: analyze-and-test
@@ -100,6 +198,7 @@ jobs:
             artifact: build/windows/x64/runner/Release
             package: drag-windows-x64.zip
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

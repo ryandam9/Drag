@@ -328,6 +328,10 @@ all three targets are verified to compile on each change.
 
 ## Tests & analysis
 
+> Contributing? [CONTRIBUTING.md](CONTRIBUTING.md) has the required toolchain,
+> formatting/coverage gates, and docker one-liners for the gated integration
+> tests.
+
 ```bash
 flutter analyze
 flutter test                 # full hermetic unit/widget suite
