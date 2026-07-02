@@ -10,7 +10,10 @@ PaneController _pane(List<String> names) {
   pc.items = [
     const FileItem(name: '..', isDir: true),
     for (final n in names)
-      FileItem(name: n.endsWith('/') ? n.substring(0, n.length - 1) : n, isDir: n.endsWith('/')),
+      FileItem(
+        name: n.endsWith('/') ? n.substring(0, n.length - 1) : n,
+        isDir: n.endsWith('/'),
+      ),
   ];
   return pc;
 }
@@ -40,13 +43,16 @@ void main() {
       expect(p.selectedIndex, p.items.length - 1);
     });
 
-    test('moveSelection keeps a single selection (no leftover multi-select)', () {
-      final p = _pane(['a', 'b', 'c']);
-      p.select(1);
-      p.toggleSelect(2); // now {1,2}
-      p.moveSelection(1);
-      expect(p.selection, {p.selectedIndex});
-    });
+    test(
+      'moveSelection keeps a single selection (no leftover multi-select)',
+      () {
+        final p = _pane(['a', 'b', 'c']);
+        p.select(1);
+        p.toggleSelect(2); // now {1,2}
+        p.moveSelection(1);
+        expect(p.selection, {p.selectedIndex});
+      },
+    );
 
     test('selectEdge jumps to first / last', () {
       final p = _pane(['a', 'b', 'c']);
@@ -81,15 +87,18 @@ void main() {
         expect(p.items[p.selectedIndex!].name, 'apple');
       });
 
-      test('a longer prefix stays on the current row when it still matches', () {
-        final p = _pane(['report.txt', 'readme.md', 'recipe.doc']);
-        p.typeAhead('r'); // report.txt (first match)
-        final at = p.selectedIndex;
-        expect(p.typeAhead('re'), isTrue);
-        expect(p.selectedIndex, at, reason: 'report still matches "re"');
-        expect(p.typeAhead('rec'), isTrue);
-        expect(p.items[p.selectedIndex!].name, 'recipe.doc');
-      });
+      test(
+        'a longer prefix stays on the current row when it still matches',
+        () {
+          final p = _pane(['report.txt', 'readme.md', 'recipe.doc']);
+          p.typeAhead('r'); // report.txt (first match)
+          final at = p.selectedIndex;
+          expect(p.typeAhead('re'), isTrue);
+          expect(p.selectedIndex, at, reason: 'report still matches "re"');
+          expect(p.typeAhead('rec'), isTrue);
+          expect(p.items[p.selectedIndex!].name, 'recipe.doc');
+        },
+      );
 
       test('is case-insensitive and returns false with no match', () {
         final p = _pane(['Report.txt', 'notes.md']);

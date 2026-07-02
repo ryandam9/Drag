@@ -12,7 +12,10 @@ void main() {
       expect(validateS3Endpoint('s3.amazonaws.com'), isNull);
       expect(validateS3Endpoint('minio.example.com:9000'), isNull);
       expect(validateS3Endpoint('localhost:4566'), isNull);
-      expect(validateS3Endpoint('https://minio.local:9000'), isNull); // scheme tolerated
+      expect(
+        validateS3Endpoint('https://minio.local:9000'),
+        isNull,
+      ); // scheme tolerated
     });
 
     test('rejects a path or trailing slash', () {

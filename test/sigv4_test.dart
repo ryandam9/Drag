@@ -14,7 +14,10 @@ void main() {
         'iam',
       );
       final hex = key.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      expect(hex, 'c4afb1cc5771d871763a393e44b703571b55cc28424d1a5e86da6ed3c154a4b9');
+      expect(
+        hex,
+        'c4afb1cc5771d871763a393e44b703571b55cc28424d1a5e86da6ed3c154a4b9',
+      );
     });
 
     test('Authorization header is well-formed and deterministic', () {
@@ -33,15 +36,27 @@ void main() {
       );
 
       final auth = headers['Authorization']!;
-      expect(auth, startsWith('AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20250619/us-east-1/s3/aws4_request'));
-      expect(auth, contains('SignedHeaders=host;x-amz-content-sha256;x-amz-date'));
+      expect(
+        auth,
+        startsWith(
+          'AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20250619/us-east-1/s3/aws4_request',
+        ),
+      );
+      expect(
+        auth,
+        contains('SignedHeaders=host;x-amz-content-sha256;x-amz-date'),
+      );
       expect(headers['x-amz-date'], '20250619T081402Z');
       expect(headers['x-amz-content-sha256'], emptyBodySha256);
     });
 
     test('session token is signed when present', () {
       final signer = SigV4Signer(
-        credentials: const AwsCredentials('AKID', 'secret', sessionToken: 'TOKEN123'),
+        credentials: const AwsCredentials(
+          'AKID',
+          'secret',
+          sessionToken: 'TOKEN123',
+        ),
         region: 'eu-west-1',
       );
       final headers = signer.sign(

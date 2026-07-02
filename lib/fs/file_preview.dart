@@ -24,24 +24,76 @@ class FilePreview {
   /// True when the file is larger than what we read, so [text] is only a head.
   final bool truncated;
 
-  const FilePreview._(this.kind, {this.text, this.bytes, this.message, this.truncated = false});
+  const FilePreview._(
+    this.kind, {
+    this.text,
+    this.bytes,
+    this.message,
+    this.truncated = false,
+  });
 
   const FilePreview.text(String text, {bool truncated = false})
-      : this._(PreviewKind.text, text: text, truncated: truncated);
-  const FilePreview.image(Uint8List bytes) : this._(PreviewKind.image, bytes: bytes);
-  const FilePreview.tooLarge(String message) : this._(PreviewKind.tooLarge, message: message);
-  const FilePreview.binary(String message) : this._(PreviewKind.binary, message: message);
+    : this._(PreviewKind.text, text: text, truncated: truncated);
+  const FilePreview.image(Uint8List bytes)
+    : this._(PreviewKind.image, bytes: bytes);
+  const FilePreview.tooLarge(String message)
+    : this._(PreviewKind.tooLarge, message: message);
+  const FilePreview.binary(String message)
+    : this._(PreviewKind.binary, message: message);
   const FilePreview.empty() : this._(PreviewKind.empty);
-  const FilePreview.error(String message) : this._(PreviewKind.error, message: message);
+  const FilePreview.error(String message)
+    : this._(PreviewKind.error, message: message);
 }
 
 /// File extensions we render as text (source, config, logs, data).
 const _textExts = {
-  'txt', 'md', 'markdown', 'log', 'json', 'yaml', 'yml', 'toml', 'ini', 'conf',
-  'cfg', 'csv', 'tsv', 'xml', 'html', 'htm', 'css', 'js', 'ts', 'jsx', 'tsx',
-  'dart', 'py', 'rb', 'go', 'rs', 'java', 'kt', 'c', 'h', 'cpp', 'hpp', 'cc',
-  'sh', 'bash', 'zsh', 'sql', 'env', 'properties', 'gradle', 'gitignore',
-  'dockerfile', 'makefile', 'rst', 'tex', 'srt', 'vtt',
+  'txt',
+  'md',
+  'markdown',
+  'log',
+  'json',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'conf',
+  'cfg',
+  'csv',
+  'tsv',
+  'xml',
+  'html',
+  'htm',
+  'css',
+  'js',
+  'ts',
+  'jsx',
+  'tsx',
+  'dart',
+  'py',
+  'rb',
+  'go',
+  'rs',
+  'java',
+  'kt',
+  'c',
+  'h',
+  'cpp',
+  'hpp',
+  'cc',
+  'sh',
+  'bash',
+  'zsh',
+  'sql',
+  'env',
+  'properties',
+  'gradle',
+  'gitignore',
+  'dockerfile',
+  'makefile',
+  'rst',
+  'tex',
+  'srt',
+  'vtt',
 };
 
 /// File extensions we render as an inline image.
@@ -58,7 +110,8 @@ bool isTextPreviewable(String name) => _textExts.contains(_ext(name));
 bool isImagePreviewable(String name) => _imageExts.contains(_ext(name));
 
 /// True when [name] is something [loadPreview] can show inline (text or image).
-bool isPreviewable(String name) => isTextPreviewable(name) || isImagePreviewable(name);
+bool isPreviewable(String name) =>
+    isTextPreviewable(name) || isImagePreviewable(name);
 
 /// A cancellation flag for an in-flight [loadPreview]. Set [cancelled] (e.g.
 /// when the preview popup is dismissed) and the read stops at the next chunk,
@@ -72,8 +125,12 @@ class PreviewCancel {
 /// the stream) as soon as the cap is reached or [cancel] fires — so a huge
 /// remote file never streams in full just to be previewed, and dismissing the
 /// preview promptly releases the backend handle.
-Future<Uint8List> _readBounded(StorageBackend backend, String path, int max,
-    {PreviewCancel? cancel}) async {
+Future<Uint8List> _readBounded(
+  StorageBackend backend,
+  String path,
+  int max, {
+  PreviewCancel? cancel,
+}) async {
   final handle = await backend.openRead(path);
   final out = BytesBuilder(copy: false);
   await for (final chunk in handle.stream) {
@@ -104,28 +161,44 @@ Future<FilePreview> loadPreview(
   try {
     if (isImagePreviewable(name)) {
       if (size != null && size > maxImageBytes) {
-        return FilePreview.tooLarge('Image is ${formatBytes(size)} — too large to preview.');
+        return FilePreview.tooLarge(
+          'Image is ${formatBytes(size)} — too large to preview.',
+        );
       }
       // Read one byte past the cap so we can tell "exactly at cap" from "over".
-      final bytes = await _readBounded(backend, path, maxImageBytes + 1, cancel: cancel);
+      final bytes = await _readBounded(
+        backend,
+        path,
+        maxImageBytes + 1,
+        cancel: cancel,
+      );
       if (bytes.isEmpty) return const FilePreview.empty();
       if (bytes.length > maxImageBytes) {
-        return FilePreview.tooLarge('Image exceeds ${formatBytes(maxImageBytes)} — too large to preview.');
+        return FilePreview.tooLarge(
+          'Image exceeds ${formatBytes(maxImageBytes)} — too large to preview.',
+        );
       }
       return FilePreview.image(bytes);
     }
 
     if (isTextPreviewable(name)) {
       if (size == 0) return const FilePreview.empty();
-      final bytes = await _readBounded(backend, path, maxTextBytes, cancel: cancel);
+      final bytes = await _readBounded(
+        backend,
+        path,
+        maxTextBytes,
+        cancel: cancel,
+      );
       if (bytes.isEmpty) return const FilePreview.empty();
       final text = utf8.decode(bytes, allowMalformed: true);
-      final truncated = (size != null && size > maxTextBytes) || bytes.length >= maxTextBytes;
+      final truncated =
+          (size != null && size > maxTextBytes) || bytes.length >= maxTextBytes;
       return FilePreview.text(text, truncated: truncated);
     }
 
     return FilePreview.binary(
-        'No inline preview for ${_ext(name).isEmpty ? 'this file' : '.${_ext(name)} files'}.');
+      'No inline preview for ${_ext(name).isEmpty ? 'this file' : '.${_ext(name)} files'}.',
+    );
   } catch (e) {
     return FilePreview.error(e.toString().replaceFirst('Exception: ', ''));
   }

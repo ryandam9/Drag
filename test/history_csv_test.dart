@@ -13,19 +13,18 @@ TransferRecord _rec({
   bool success = true,
   String? error,
   DateTime? finishedAt,
-}) =>
-    TransferRecord(
-      name: name,
-      sourcePath: source,
-      destPath: dest,
-      session: session,
-      sizeBytes: sizeBytes,
-      direction: direction,
-      durationMs: durationMs,
-      success: success,
-      error: error,
-      finishedAt: finishedAt ?? DateTime.utc(2026, 6, 25, 14, 30, 12),
-    );
+}) => TransferRecord(
+  name: name,
+  sourcePath: source,
+  destPath: dest,
+  session: session,
+  sizeBytes: sizeBytes,
+  direction: direction,
+  durationMs: durationMs,
+  success: success,
+  error: error,
+  finishedAt: finishedAt ?? DateTime.utc(2026, 6, 25, 14, 30, 12),
+);
 
 void main() {
   group('historyToCsv', () {
@@ -33,8 +32,10 @@ void main() {
       final csv = historyToCsv(const []);
       final lines = csv.trim().split('\n');
       expect(lines, hasLength(1));
-      expect(lines.first,
-          'name,source,destination,size_bytes,direction,duration_ms,speed_bytes_per_sec,success,error,session,finished_at');
+      expect(
+        lines.first,
+        'name,source,destination,size_bytes,direction,duration_ms,speed_bytes_per_sec,success,error,session,finished_at',
+      );
     });
 
     test('serialises a record with derived speed, direction and status', () {
@@ -52,7 +53,9 @@ void main() {
     });
 
     test('download direction and failed status are labelled', () {
-      final csv = historyToCsv([_rec(direction: 1, success: false, error: 'timeout')]);
+      final csv = historyToCsv([
+        _rec(direction: 1, success: false, error: 'timeout'),
+      ]);
       final cols = csv.trim().split('\n')[1].split(',');
       expect(cols[4], 'download');
       expect(cols[7], 'false');
@@ -63,7 +66,11 @@ void main() {
       final csv = historyToCsv([
         _rec(name: 'a,b.txt', source: 'has "quote"', dest: 'line1\nline2'),
       ]);
-      final row = csv.trim().split('\n').sublist(1).join('\n'); // re-join the embedded newline
+      final row = csv
+          .trim()
+          .split('\n')
+          .sublist(1)
+          .join('\n'); // re-join the embedded newline
       expect(row, contains('"a,b.txt"'));
       expect(row, contains('"has ""quote"""'));
       expect(row, contains('"line1\nline2"'));

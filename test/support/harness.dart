@@ -22,45 +22,47 @@ ProviderContainer makeContainer({
   bool autoRefresh = false,
   List<Override> overrides = const [],
 }) {
-  final container = ProviderContainer(overrides: [
-    autoRefreshPanesProvider.overrideWithValue(autoRefresh),
-    ...overrides,
-    initialConnectionsProvider.overrideWithValue(connections),
-    initialSettingsProvider.overrideWithValue(settings),
-    initialSessionLayoutProvider.overrideWithValue(layout),
-    historyRepositoryProvider.overrideWithValue(history),
-    connectionStoreProvider.overrideWithValue(connectionStore),
-    settingsStoreProvider.overrideWithValue(settingsStore),
-    sessionStoreProvider.overrideWithValue(sessionStore),
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      autoRefreshPanesProvider.overrideWithValue(autoRefresh),
+      ...overrides,
+      initialConnectionsProvider.overrideWithValue(connections),
+      initialSettingsProvider.overrideWithValue(settings),
+      initialSessionLayoutProvider.overrideWithValue(layout),
+      historyRepositoryProvider.overrideWithValue(history),
+      connectionStoreProvider.overrideWithValue(connectionStore),
+      settingsStoreProvider.overrideWithValue(settingsStore),
+      sessionStoreProvider.overrideWithValue(sessionStore),
+    ],
+  );
   addTearDown(container.dispose);
   return container;
 }
 
 /// A pair of test connections: one S3 (no creds) and one SFTP.
 List<Connection> sampleConnections() => [
-      Connection(
-        id: 's3a',
-        name: 's3-prod (Account A)',
-        protocol: Protocol.s3,
-        region: 'us-east-1',
-        bucket: 'acme-prod-assets',
-        group: ConnGroup.recent,
-      ),
-      Connection(
-        id: 's3b',
-        name: 's3-archive (Account B)',
-        protocol: Protocol.s3,
-        region: 'eu-west-1',
-        bucket: 'acme-archive',
-        group: ConnGroup.saved,
-      ),
-      Connection(
-        id: 'sftp1',
-        name: 'prod-server-01',
-        host: 'prod-server-01.example.com',
-        username: 'deploy',
-        protocol: Protocol.sftp,
-        group: ConnGroup.recent,
-      ),
-    ];
+  Connection(
+    id: 's3a',
+    name: 's3-prod (Account A)',
+    protocol: Protocol.s3,
+    region: 'us-east-1',
+    bucket: 'acme-prod-assets',
+    group: ConnGroup.recent,
+  ),
+  Connection(
+    id: 's3b',
+    name: 's3-archive (Account B)',
+    protocol: Protocol.s3,
+    region: 'eu-west-1',
+    bucket: 'acme-archive',
+    group: ConnGroup.saved,
+  ),
+  Connection(
+    id: 'sftp1',
+    name: 'prod-server-01',
+    host: 'prod-server-01.example.com',
+    username: 'deploy',
+    protocol: Protocol.sftp,
+    group: ConnGroup.recent,
+  ),
+];

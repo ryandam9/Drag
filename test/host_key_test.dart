@@ -18,33 +18,51 @@ void main() {
   group('HostKeyVerifier (trust-on-first-use)', () {
     test('a new host is remembered and accepted, then matches', () async {
       final v = HostKeyVerifier(store);
-      expect(await v.check('h', 22, 'ssh-ed25519', 'SHA256:aaa'), HostKeyOutcome.trustedFirstUse);
+      expect(
+        await v.check('h', 22, 'ssh-ed25519', 'SHA256:aaa'),
+        HostKeyOutcome.trustedFirstUse,
+      );
       expect((await store.find('h', 22))!.fingerprint, 'SHA256:aaa');
-      expect(await v.check('h', 22, 'ssh-ed25519', 'SHA256:aaa'), HostKeyOutcome.matched);
+      expect(
+        await v.check('h', 22, 'ssh-ed25519', 'SHA256:aaa'),
+        HostKeyOutcome.matched,
+      );
       expect(await v.verify('h', 22, 'ssh-ed25519', 'SHA256:aaa'), isTrue);
     });
 
-    test('a changed key is a mismatch, rejected, and not overwritten', () async {
-      final v = HostKeyVerifier(store);
-      await v.check('h', 22, 't', 'SHA256:aaa');
-      expect(await v.check('h', 22, 't', 'SHA256:bbb'), HostKeyOutcome.mismatch);
-      expect(await v.verify('h', 22, 't', 'SHA256:bbb'), isFalse);
-      // The originally-trusted key is still the one on file.
-      expect((await store.find('h', 22))!.fingerprint, 'SHA256:aaa');
-    });
+    test(
+      'a changed key is a mismatch, rejected, and not overwritten',
+      () async {
+        final v = HostKeyVerifier(store);
+        await v.check('h', 22, 't', 'SHA256:aaa');
+        expect(
+          await v.check('h', 22, 't', 'SHA256:bbb'),
+          HostKeyOutcome.mismatch,
+        );
+        expect(await v.verify('h', 22, 't', 'SHA256:bbb'), isFalse);
+        // The originally-trusted key is still the one on file.
+        expect((await store.find('h', 22))!.fingerprint, 'SHA256:aaa');
+      },
+    );
 
     test('forgetting a host re-prompts on the next connect', () async {
       final v = HostKeyVerifier(store);
       await v.check('h', 22, 't', 'SHA256:aaa');
       await store.forget('h', 22);
       expect(await store.find('h', 22), isNull);
-      expect(await v.check('h', 22, 't', 'SHA256:ccc'), HostKeyOutcome.trustedFirstUse);
+      expect(
+        await v.check('h', 22, 't', 'SHA256:ccc'),
+        HostKeyOutcome.trustedFirstUse,
+      );
     });
 
     test('host:port pairs are tracked independently', () async {
       final v = HostKeyVerifier(store);
       await v.check('h', 22, 't', 'SHA256:aaa');
-      expect(await v.check('h', 2222, 't', 'SHA256:zzz'), HostKeyOutcome.trustedFirstUse);
+      expect(
+        await v.check('h', 2222, 't', 'SHA256:zzz'),
+        HostKeyOutcome.trustedFirstUse,
+      );
       expect((await store.load()).length, 2);
     });
 
@@ -64,20 +82,29 @@ void main() {
 
   group('HostKeyVerifier first-use prompt', () {
     test('"trust & remember" accepts and persists the key', () async {
-      final v = HostKeyVerifier(store)..prompt = (_) async => HostKeyDecision.trustAndRemember;
-      expect(await v.check('h', 22, 't', 'SHA256:aaa'), HostKeyOutcome.trustedFirstUse);
+      final v = HostKeyVerifier(store)
+        ..prompt = (_) async => HostKeyDecision.trustAndRemember;
+      expect(
+        await v.check('h', 22, 't', 'SHA256:aaa'),
+        HostKeyOutcome.trustedFirstUse,
+      );
       expect((await store.find('h', 22))!.fingerprint, 'SHA256:aaa');
     });
 
     test('"trust once" accepts but does not persist', () async {
-      final v = HostKeyVerifier(store)..prompt = (_) async => HostKeyDecision.trustOnce;
+      final v = HostKeyVerifier(store)
+        ..prompt = (_) async => HostKeyDecision.trustOnce;
       expect(await v.verify('h', 22, 't', 'SHA256:aaa'), isTrue);
       expect(await store.find('h', 22), isNull); // not remembered
     });
 
     test('"cancel" rejects the connection', () async {
-      final v = HostKeyVerifier(store)..prompt = (_) async => HostKeyDecision.cancel;
-      expect(await v.check('h', 22, 't', 'SHA256:aaa'), HostKeyOutcome.rejectedByUser);
+      final v = HostKeyVerifier(store)
+        ..prompt = (_) async => HostKeyDecision.cancel;
+      expect(
+        await v.check('h', 22, 't', 'SHA256:aaa'),
+        HostKeyOutcome.rejectedByUser,
+      );
       expect(await v.verify('h', 22, 't', 'SHA256:aaa'), isFalse);
       expect(await store.find('h', 22), isNull);
     });
@@ -110,8 +137,12 @@ void main() {
 
   group('KnownHostsStore', () {
     test('load is sorted; remove and clear work', () async {
-      await store.trust(const KnownHost(host: 'b', port: 22, type: 't', fingerprint: 'f2'));
-      await store.trust(const KnownHost(host: 'a', port: 22, type: 't', fingerprint: 'f1'));
+      await store.trust(
+        const KnownHost(host: 'b', port: 22, type: 't', fingerprint: 'f2'),
+      );
+      await store.trust(
+        const KnownHost(host: 'a', port: 22, type: 't', fingerprint: 'f1'),
+      );
       final all = await store.load();
       expect(all.map((h) => h.host), ['a', 'b']); // host ASC
       await store.remove(all.first.id!);
@@ -121,8 +152,24 @@ void main() {
     });
 
     test('endpoint label omits the default SSH port', () {
-      expect(const KnownHost(host: 'h', port: 22, type: 't', fingerprint: 'f').endpoint, 'h');
-      expect(const KnownHost(host: 'h', port: 2222, type: 't', fingerprint: 'f').endpoint, 'h:2222');
+      expect(
+        const KnownHost(
+          host: 'h',
+          port: 22,
+          type: 't',
+          fingerprint: 'f',
+        ).endpoint,
+        'h',
+      );
+      expect(
+        const KnownHost(
+          host: 'h',
+          port: 2222,
+          type: 't',
+          fingerprint: 'f',
+        ).endpoint,
+        'h:2222',
+      );
     });
 
     test('an in-memory store reports memoryOnly status', () {
@@ -138,49 +185,84 @@ void main() {
       expect(disk.status, KnownHostsStoreStatus.persistent);
     });
 
-    test('trust upserts on (host,port) instead of inserting a duplicate', () async {
-      await store.trust(const KnownHost(host: 'h', port: 22, type: 't', fingerprint: 'SHA256:aaa'));
-      await store.trust(const KnownHost(host: 'h', port: 22, type: 't', fingerprint: 'SHA256:bbb'));
-      final all = await store.load();
-      expect(all.where((h) => h.host == 'h' && h.port == 22).length, 1);
-      expect((await store.find('h', 22))!.fingerprint, 'SHA256:bbb'); // latest wins
-    });
+    test(
+      'trust upserts on (host,port) instead of inserting a duplicate',
+      () async {
+        await store.trust(
+          const KnownHost(
+            host: 'h',
+            port: 22,
+            type: 't',
+            fingerprint: 'SHA256:aaa',
+          ),
+        );
+        await store.trust(
+          const KnownHost(
+            host: 'h',
+            port: 22,
+            type: 't',
+            fingerprint: 'SHA256:bbb',
+          ),
+        );
+        final all = await store.load();
+        expect(all.where((h) => h.host == 'h' && h.port == 22).length, 1);
+        expect(
+          (await store.find('h', 22))!.fingerprint,
+          'SHA256:bbb',
+        ); // latest wins
+      },
+    );
 
-    test('migrates a v1 database: dedups (host,port) and enforces uniqueness', () async {
-      final dir = await Directory.systemTemp.createTemp('kh_mig');
-      addTearDown(() => dir.delete(recursive: true));
-      final path = '${dir.path}/kh.db';
+    test(
+      'migrates a v1 database: dedups (host,port) and enforces uniqueness',
+      () async {
+        final dir = await Directory.systemTemp.createTemp('kh_mig');
+        addTearDown(() => dir.delete(recursive: true));
+        final path = '${dir.path}/kh.db';
 
-      // Build a v1-shaped database (no unique index) with duplicate rows.
-      final raw = await databaseFactoryFfi.openDatabase(
-        path,
-        options: OpenDatabaseOptions(
-          version: 1,
-          onCreate: (db, _) => db.execute('''
+        // Build a v1-shaped database (no unique index) with duplicate rows.
+        final raw = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 1,
+            onCreate: (db, _) => db.execute('''
             CREATE TABLE known_hosts (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               host TEXT NOT NULL, port INTEGER NOT NULL,
               type TEXT NOT NULL, fingerprint TEXT NOT NULL, created_at TEXT NOT NULL)
           '''),
-        ),
-      );
-      await raw.insert('known_hosts',
-          {'host': 'h', 'port': 22, 'type': 't', 'fingerprint': 'old', 'created_at': 'a'});
-      await raw.insert('known_hosts',
-          {'host': 'h', 'port': 22, 'type': 't', 'fingerprint': 'new', 'created_at': 'b'});
-      await raw.close();
+          ),
+        );
+        await raw.insert('known_hosts', {
+          'host': 'h',
+          'port': 22,
+          'type': 't',
+          'fingerprint': 'old',
+          'created_at': 'a',
+        });
+        await raw.insert('known_hosts', {
+          'host': 'h',
+          'port': 22,
+          'type': 't',
+          'fingerprint': 'new',
+          'created_at': 'b',
+        });
+        await raw.close();
 
-      // Reopen through the store → runs the v2 migration.
-      final migrated = await KnownHostsStore.open(path);
-      addTearDown(migrated.close);
-      final all = await migrated.load();
-      expect(all.length, 1, reason: 'duplicate rows collapsed');
-      expect(all.single.fingerprint, 'new', reason: 'kept the most recent');
+        // Reopen through the store → runs the v2 migration.
+        final migrated = await KnownHostsStore.open(path);
+        addTearDown(migrated.close);
+        final all = await migrated.load();
+        expect(all.length, 1, reason: 'duplicate rows collapsed');
+        expect(all.single.fingerprint, 'new', reason: 'kept the most recent');
 
-      // The unique index now holds: re-trusting upserts rather than duplicating.
-      await migrated.trust(const KnownHost(host: 'h', port: 22, type: 't', fingerprint: 'newer'));
-      expect((await migrated.load()).length, 1);
-      expect((await migrated.find('h', 22))!.fingerprint, 'newer');
-    });
+        // The unique index now holds: re-trusting upserts rather than duplicating.
+        await migrated.trust(
+          const KnownHost(host: 'h', port: 22, type: 't', fingerprint: 'newer'),
+        );
+        expect((await migrated.load()).length, 1);
+        expect((await migrated.find('h', 22))!.fingerprint, 'newer');
+      },
+    );
   });
 }

@@ -6,16 +6,14 @@ import 'package:drag/models/transfer.dart';
 import 'package:drag/state/app.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/memory_backend.dart';
 import 'support/harness.dart';
+import 'support/memory_backend.dart';
 
 /// A source backend whose reads block until [release]d, so transfers stay
 /// `active` and we can observe how many the scheduler runs concurrently.
 class _GatedSource extends MemoryBackend {
   _GatedSource()
-      : super(files: {
-          for (var i = 0; i < 5; i++) '/f$i.bin': Uint8List(128),
-        });
+    : super(files: {for (var i = 0; i < 5; i++) '/f$i.bin': Uint8List(128)});
   final _gate = Completer<void>();
   void release() {
     if (!_gate.isCompleted) _gate.complete();
@@ -31,13 +29,28 @@ class _GatedSource extends MemoryBackend {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  Future<void> tick([int ms = 60]) => Future<void>.delayed(Duration(milliseconds: ms));
+  Future<void> tick([int ms = 60]) =>
+      Future<void>.delayed(Duration(milliseconds: ms));
 
-  PaneController pane(StorageBackend b) => PaneController(backend: b, onChanged: () {});
+  PaneController pane(StorageBackend b) =>
+      PaneController(backend: b, onChanged: () {});
 
-  void enqueueN(TransfersNotifier q, PaneController src, PaneController dst, int n) {
+  void enqueueN(
+    TransfersNotifier q,
+    PaneController src,
+    PaneController dst,
+    int n,
+  ) {
     for (var i = 0; i < n; i++) {
-      q.enqueueFile(src, dst, '/f$i.bin', '/f$i.bin', 'f$i.bin', 128, announce: false);
+      q.enqueueFile(
+        src,
+        dst,
+        '/f$i.bin',
+        '/f$i.bin',
+        'f$i.bin',
+        128,
+        announce: false,
+      );
     }
   }
 
@@ -88,35 +101,43 @@ void main() {
     expect(c.read(transfersProvider).doneCount, 3);
   });
 
-  test('cancelling an active transfer defers disposal until the run settles', () async {
-    final c = makeContainer();
-    final q = c.read(transfersProvider.notifier)..setMaxThreads(1);
-    final gated = _GatedSource();
-    final src = pane(gated);
-    final dst = pane(MemoryBackend());
+  test(
+    'cancelling an active transfer defers disposal until the run settles',
+    () async {
+      final c = makeContainer();
+      final q = c.read(transfersProvider.notifier)..setMaxThreads(1);
+      final gated = _GatedSource();
+      final src = pane(gated);
+      final dst = pane(MemoryBackend());
 
-    enqueueN(q, src, dst, 2);
-    await tick();
-    var state = c.read(transfersProvider);
-    expect(state.activeCount, 1);
-    final active = state.transfers.firstWhere((t) => t.status == TransferStatus.active);
+      enqueueN(q, src, dst, 2);
+      await tick();
+      var state = c.read(transfersProvider);
+      expect(state.activeCount, 1);
+      final active = state.transfers.firstWhere(
+        (t) => t.status == TransferStatus.active,
+      );
 
-    // Cancel while the read is still gated (the run is mid-flight).
-    q.cancel(active);
-    state = c.read(transfersProvider);
-    expect(state.transfers.any((t) => identical(t, active)), isFalse); // removed
-    // The live notifier must NOT be disposed yet — the unwinding run could
-    // still touch it. (Immediate disposal would make this throw.)
-    expect(active.touchLive, returnsNormally);
+      // Cancel while the read is still gated (the run is mid-flight).
+      q.cancel(active);
+      state = c.read(transfersProvider);
+      expect(
+        state.transfers.any((t) => identical(t, active)),
+        isFalse,
+      ); // removed
+      // The live notifier must NOT be disposed yet — the unwinding run could
+      // still touch it. (Immediate disposal would make this throw.)
+      expect(active.touchLive, returnsNormally);
 
-    // Releasing lets the in-flight run unwind and the freed slot start the
-    // queued transfer, which then completes — without any use-after-dispose.
-    gated.release();
-    for (var i = 0; i < 200 && c.read(transfersProvider).doneCount < 1; i++) {
-      await tick(10);
-    }
-    expect(c.read(transfersProvider).doneCount, 1);
-  });
+      // Releasing lets the in-flight run unwind and the freed slot start the
+      // queued transfer, which then completes — without any use-after-dispose.
+      gated.release();
+      for (var i = 0; i < 200 && c.read(transfersProvider).doneCount < 1; i++) {
+        await tick(10);
+      }
+      expect(c.read(transfersProvider).doneCount, 1);
+    },
+  );
 
   test('a paused active transfer frees a slot for a queued one', () async {
     final c = makeContainer();
@@ -132,7 +153,9 @@ void main() {
     expect(state.queuedCount, 1);
 
     // Pause the active one → the queued one should take the freed slot.
-    final active = state.transfers.firstWhere((t) => t.status == TransferStatus.active);
+    final active = state.transfers.firstWhere(
+      (t) => t.status == TransferStatus.active,
+    );
     q.pause(active);
     await tick();
     expect(c.read(transfersProvider).activeCount, 1);
@@ -173,8 +196,13 @@ void main() {
     final c = makeContainer();
     final q = c.read(transfersProvider.notifier);
     final done = Transfer(
-        name: 'd', route: 'r', direction: TransferDirection.upload, sizeBytes: 1, session: 's',
-        status: TransferStatus.done);
+      name: 'd',
+      route: 'r',
+      direction: TransferDirection.upload,
+      sizeBytes: 1,
+      session: 's',
+      status: TransferStatus.done,
+    );
     q.debugSetTransfers([done]);
     q.clearDone();
     expect(c.read(transfersProvider).transfers, isEmpty);

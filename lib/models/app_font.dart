@@ -41,21 +41,21 @@ enum AppFont {
   String get label => family;
 
   /// Proportional fonts, alphabetical by label.
-  static List<AppFont> get sansFonts =>
-      values.where((f) => !f.mono).toList()
-        ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+  static List<AppFont> get sansFonts => values.where((f) => !f.mono).toList()
+    ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
 
   /// Monospace fonts, alphabetical by label.
-  static List<AppFont> get monoFonts =>
-      values.where((f) => f.mono).toList()
-        ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+  static List<AppFont> get monoFonts => values.where((f) => f.mono).toList()
+    ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
 
   /// Resolves a persisted family string back to a known font, falling back to
   /// the slot default (Inter for UI, JetBrains Mono for code) so a stale or
   /// unknown name never reaches `GoogleFonts.getFont` (which would throw).
   static AppFont byFamily(String family, {required bool mono}) =>
-      values.firstWhere((f) => f.family == family && f.mono == mono,
-          orElse: () => mono ? jetBrainsMono : inter);
+      values.firstWhere(
+        (f) => f.family == family && f.mono == mono,
+        orElse: () => mono ? jetBrainsMono : inter,
+      );
 
   /// The validated family string for [family], honouring the [mono] slot.
   static String resolve(String family, {required bool mono}) =>

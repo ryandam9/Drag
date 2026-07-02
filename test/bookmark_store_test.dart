@@ -12,8 +12,12 @@ void main() {
     test('add / load (newest first) / remove', () async {
       final store = await BookmarkStore.open(inMemoryDatabasePath);
       addTearDown(store.close);
-      await store.add(const Bookmark(connId: null, path: '/home/a', label: 'a'));
-      final id2 = await store.add(const Bookmark(connId: 's3a', path: 's3://b/x', label: 'x'));
+      await store.add(
+        const Bookmark(connId: null, path: '/home/a', label: 'a'),
+      );
+      final id2 = await store.add(
+        const Bookmark(connId: 's3a', path: 's3://b/x', label: 'x'),
+      );
 
       var all = await store.load();
       expect(all.length, 2);
@@ -29,7 +33,9 @@ void main() {
     test('toggle adds then removes, persisting to the store', () async {
       final store = await BookmarkStore.open(inMemoryDatabasePath);
       addTearDown(store.close);
-      final c = makeContainer(overrides: [bookmarkStoreProvider.overrideWithValue(store)]);
+      final c = makeContainer(
+        overrides: [bookmarkStoreProvider.overrideWithValue(store)],
+      );
       final n = c.read(bookmarksProvider.notifier);
 
       await n.toggle(null, '/home/a', 'a');
@@ -55,10 +61,13 @@ void main() {
     });
 
     test('restores bookmarks loaded at startup', () {
-      final c = makeContainer(overrides: [
-        initialBookmarksProvider.overrideWithValue(
-            const [Bookmark(connId: null, path: '/p', label: 'p')]),
-      ]);
+      final c = makeContainer(
+        overrides: [
+          initialBookmarksProvider.overrideWithValue(const [
+            Bookmark(connId: null, path: '/p', label: 'p'),
+          ]),
+        ],
+      );
       expect(c.read(bookmarksProvider).single.path, '/p');
     });
   });

@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'db_migrations.dart';
-
 import '../models/transfer.dart';
+import 'app_db.dart';
+import 'db_migrations.dart';
 
 /// A persisted record of a finished transfer.
 class TransferRecord {
@@ -37,7 +37,8 @@ class TransferRecord {
   bool get isUpload => direction == 0;
 
   /// Average throughput in bytes/sec (0 if unknown).
-  double get bytesPerSecond => durationMs <= 0 ? 0 : sizeBytes * 1000 / durationMs;
+  double get bytesPerSecond =>
+      durationMs <= 0 ? 0 : sizeBytes * 1000 / durationMs;
 
   factory TransferRecord.fromTransfer(Transfer t) {
     // Fall back to the human route ("src → dst") when explicit paths are absent
@@ -50,45 +51,47 @@ class TransferRecord {
       dst = parts.length > 1 ? parts[1].trim() : '';
     }
     return TransferRecord(
-        name: t.name,
-        sourcePath: src,
-        destPath: dst,
-        session: t.session,
-        sizeBytes: t.sizeBytes,
-        direction: t.direction == TransferDirection.upload ? 0 : 1,
-        durationMs: t.elapsed?.inMilliseconds ?? 0,
-        success: t.status == TransferStatus.done,
-        error: t.errorMessage,
-        finishedAt: t.finishedAt ?? DateTime.now(),
-      );
+      name: t.name,
+      sourcePath: src,
+      destPath: dst,
+      session: t.session,
+      sizeBytes: t.sizeBytes,
+      direction: t.direction == TransferDirection.upload ? 0 : 1,
+      durationMs: t.elapsed?.inMilliseconds ?? 0,
+      success: t.status == TransferStatus.done,
+      error: t.errorMessage,
+      finishedAt: t.finishedAt ?? DateTime.now(),
+    );
   }
 
   Map<String, Object?> toMap() => {
-        'name': name,
-        'source_path': sourcePath,
-        'dest_path': destPath,
-        'session': session,
-        'size_bytes': sizeBytes,
-        'direction': direction,
-        'duration_ms': durationMs,
-        'success': success ? 1 : 0,
-        'error': error,
-        'finished_at': finishedAt.toUtc().toIso8601String(),
-      };
+    'name': name,
+    'source_path': sourcePath,
+    'dest_path': destPath,
+    'session': session,
+    'size_bytes': sizeBytes,
+    'direction': direction,
+    'duration_ms': durationMs,
+    'success': success ? 1 : 0,
+    'error': error,
+    'finished_at': finishedAt.toUtc().toIso8601String(),
+  };
 
   factory TransferRecord.fromMap(Map<String, Object?> m) => TransferRecord(
-        id: m['id'] as int?,
-        name: m['name'] as String? ?? '',
-        sourcePath: m['source_path'] as String? ?? '',
-        destPath: m['dest_path'] as String? ?? '',
-        session: m['session'] as String? ?? '',
-        sizeBytes: (m['size_bytes'] as int?) ?? 0,
-        direction: (m['direction'] as int?) ?? 0,
-        durationMs: (m['duration_ms'] as int?) ?? 0,
-        success: (m['success'] as int?) == 1,
-        error: m['error'] as String?,
-        finishedAt: DateTime.tryParse(m['finished_at'] as String? ?? '')?.toLocal() ?? DateTime.now(),
-      );
+    id: m['id'] as int?,
+    name: m['name'] as String? ?? '',
+    sourcePath: m['source_path'] as String? ?? '',
+    destPath: m['dest_path'] as String? ?? '',
+    session: m['session'] as String? ?? '',
+    sizeBytes: (m['size_bytes'] as int?) ?? 0,
+    direction: (m['direction'] as int?) ?? 0,
+    durationMs: (m['duration_ms'] as int?) ?? 0,
+    success: (m['success'] as int?) == 1,
+    error: m['error'] as String?,
+    finishedAt:
+        DateTime.tryParse(m['finished_at'] as String? ?? '')?.toLocal() ??
+        DateTime.now(),
+  );
 }
 
 /// Aggregate numbers for the dashboard.
@@ -119,33 +122,30 @@ class HistoryRepository {
 
   /// Opens (and migrates) the database. Pass `inMemoryDatabasePath` for tests.
   static Future<HistoryRepository> open([String? path]) async {
-    sqfliteFfiInit();
-    final factory = databaseFactoryFfi;
-    final dbPath = path ?? await _defaultPath(factory);
-    final db = await factory.openDatabase(
-      dbPath,
-      options: OpenDatabaseOptions(
-        version: 1,
-        onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
-        onCreate: (db, _) async {
-          await db.execute('''
-            CREATE TABLE $_table (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              name TEXT NOT NULL,
-              source_path TEXT NOT NULL,
-              dest_path TEXT NOT NULL,
-              session TEXT NOT NULL,
-              size_bytes INTEGER NOT NULL,
-              direction INTEGER NOT NULL,
-              duration_ms INTEGER NOT NULL,
-              success INTEGER NOT NULL,
-              error TEXT,
-              finished_at TEXT NOT NULL
-            )
-          ''');
-          await db.execute('CREATE INDEX idx_finished ON $_table(finished_at DESC)');
-        },
-      ),
+    final db = await openAppDb(
+      'drag_history.db',
+      path: path,
+      migrations: _migrations,
+      onCreate: (db) async {
+        await db.execute('''
+          CREATE TABLE $_table (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            source_path TEXT NOT NULL,
+            dest_path TEXT NOT NULL,
+            session TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            direction INTEGER NOT NULL,
+            duration_ms INTEGER NOT NULL,
+            success INTEGER NOT NULL,
+            error TEXT,
+            finished_at TEXT NOT NULL
+          )
+        ''');
+        await db.execute(
+          'CREATE INDEX idx_finished ON $_table(finished_at DESC)',
+        );
+      },
     );
     final repo = HistoryRepository._(db);
     await repo._purgeLegacySeed();
@@ -161,7 +161,8 @@ class HistoryRepository {
     try {
       await _db.delete(
         _table,
-        where: "dest_path LIKE '%prod-server-01%' "
+        where:
+            "dest_path LIKE '%prod-server-01%' "
             "AND name IN ('backup_2025-06-19.tar.gz', 'deploy.sh', 'config.yaml')",
       );
     } catch (_) {
@@ -169,16 +170,14 @@ class HistoryRepository {
     }
   }
 
-  static Future<String> _defaultPath(DatabaseFactory factory) async {
-    final base = await factory.getDatabasesPath();
-    return base.endsWith('/') ? '${base}drag_history.db' : '$base/drag_history.db';
-  }
-
-  Future<int> add(TransferRecord record) =>
-      _db.insert(_table, record.toMap());
+  Future<int> add(TransferRecord record) => _db.insert(_table, record.toMap());
 
   Future<List<TransferRecord>> recent({int limit = 200}) async {
-    final rows = await _db.query(_table, orderBy: 'finished_at DESC', limit: limit);
+    final rows = await _db.query(
+      _table,
+      orderBy: 'finished_at DESC',
+      limit: limit,
+    );
     return rows.map(TransferRecord.fromMap).toList();
   }
 

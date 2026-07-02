@@ -19,7 +19,10 @@ const _csvHeader = [
 /// quote, or newline, doubling any embedded quotes.
 String _cell(Object? value) {
   final s = value?.toString() ?? '';
-  if (s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r')) {
+  if (s.contains(',') ||
+      s.contains('"') ||
+      s.contains('\n') ||
+      s.contains('\r')) {
     return '"${s.replaceAll('"', '""')}"';
   }
   return s;
@@ -31,19 +34,21 @@ String _cell(Object? value) {
 String historyToCsv(List<TransferRecord> records) {
   final buf = StringBuffer()..writeln(_csvHeader.join(','));
   for (final r in records) {
-    buf.writeln([
-      _cell(r.name),
-      _cell(r.sourcePath),
-      _cell(r.destPath),
-      _cell(r.sizeBytes),
-      _cell(r.isUpload ? 'upload' : 'download'),
-      _cell(r.durationMs),
-      _cell(r.bytesPerSecond.round()),
-      _cell(r.success ? 'true' : 'false'),
-      _cell(r.error ?? ''),
-      _cell(r.session),
-      _cell(r.finishedAt.toUtc().toIso8601String()),
-    ].join(','));
+    buf.writeln(
+      [
+        _cell(r.name),
+        _cell(r.sourcePath),
+        _cell(r.destPath),
+        _cell(r.sizeBytes),
+        _cell(r.isUpload ? 'upload' : 'download'),
+        _cell(r.durationMs),
+        _cell(r.bytesPerSecond.round()),
+        _cell(r.success ? 'true' : 'false'),
+        _cell(r.error ?? ''),
+        _cell(r.session),
+        _cell(r.finishedAt.toUtc().toIso8601String()),
+      ].join(','),
+    );
   }
   return buf.toString();
 }

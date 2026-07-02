@@ -11,18 +11,17 @@ TransferRecord rec({
   int direction = 0, // 0 = upload
   bool success = true,
   DateTime? finishedAt,
-}) =>
-    TransferRecord(
-      name: name,
-      sourcePath: sourcePath,
-      destPath: destPath,
-      session: session,
-      sizeBytes: sizeBytes,
-      direction: direction,
-      durationMs: 1000,
-      success: success,
-      finishedAt: finishedAt ?? DateTime(2024, 1, 1),
-    );
+}) => TransferRecord(
+  name: name,
+  sourcePath: sourcePath,
+  destPath: destPath,
+  session: session,
+  sizeBytes: sizeBytes,
+  direction: direction,
+  durationMs: 1000,
+  success: success,
+  finishedAt: finishedAt ?? DateTime(2024, 1, 1),
+);
 
 void main() {
   group('historyMatches', () {
@@ -35,7 +34,10 @@ void main() {
       final ok = rec(success: true);
       final bad = rec(success: false);
       expect(historyMatches(ok, status: HistoryStatusFilter.succeeded), isTrue);
-      expect(historyMatches(bad, status: HistoryStatusFilter.succeeded), isFalse);
+      expect(
+        historyMatches(bad, status: HistoryStatusFilter.succeeded),
+        isFalse,
+      );
       expect(historyMatches(bad, status: HistoryStatusFilter.failed), isTrue);
       expect(historyMatches(ok, status: HistoryStatusFilter.failed), isFalse);
     });
@@ -43,49 +45,74 @@ void main() {
     test('direction filter', () {
       final up = rec(direction: 0);
       final down = rec(direction: 1);
-      expect(historyMatches(up, direction: HistoryDirectionFilter.upload), isTrue);
-      expect(historyMatches(down, direction: HistoryDirectionFilter.upload), isFalse);
-      expect(historyMatches(down, direction: HistoryDirectionFilter.download), isTrue);
-      expect(historyMatches(up, direction: HistoryDirectionFilter.download), isFalse);
+      expect(
+        historyMatches(up, direction: HistoryDirectionFilter.upload),
+        isTrue,
+      );
+      expect(
+        historyMatches(down, direction: HistoryDirectionFilter.upload),
+        isFalse,
+      );
+      expect(
+        historyMatches(down, direction: HistoryDirectionFilter.download),
+        isTrue,
+      );
+      expect(
+        historyMatches(up, direction: HistoryDirectionFilter.download),
+        isFalse,
+      );
     });
 
-    test('text query is case-insensitive and spans name, paths and session', () {
-      final r = rec(
-        name: 'Report.pdf',
-        sourcePath: '/home/docs/report.pdf',
-        destPath: '/backup/report.pdf',
-        session: 'EU-West-Bucket',
-      );
-      expect(historyMatches(r, query: 'report'), isTrue);
-      expect(historyMatches(r, query: 'REPORT'), isTrue);
-      expect(historyMatches(r, query: '/backup'), isTrue);
-      expect(historyMatches(r, query: 'eu-west'), isTrue);
-      expect(historyMatches(r, query: '  report  '), isTrue);
-      expect(historyMatches(r, query: 'nomatch'), isFalse);
-    });
+    test(
+      'text query is case-insensitive and spans name, paths and session',
+      () {
+        final r = rec(
+          name: 'Report.pdf',
+          sourcePath: '/home/docs/report.pdf',
+          destPath: '/backup/report.pdf',
+          session: 'EU-West-Bucket',
+        );
+        expect(historyMatches(r, query: 'report'), isTrue);
+        expect(historyMatches(r, query: 'REPORT'), isTrue);
+        expect(historyMatches(r, query: '/backup'), isTrue);
+        expect(historyMatches(r, query: 'eu-west'), isTrue);
+        expect(historyMatches(r, query: '  report  '), isTrue);
+        expect(historyMatches(r, query: 'nomatch'), isFalse);
+      },
+    );
 
     test('combines status, direction and query (all must hold)', () {
       final r = rec(name: 'a.txt', success: false, direction: 1);
       expect(
-        historyMatches(r,
-            query: 'a.txt',
-            status: HistoryStatusFilter.failed,
-            direction: HistoryDirectionFilter.download),
+        historyMatches(
+          r,
+          query: 'a.txt',
+          status: HistoryStatusFilter.failed,
+          direction: HistoryDirectionFilter.download,
+        ),
         isTrue,
       );
       // wrong status fails the whole match
       expect(
-        historyMatches(r,
-            query: 'a.txt',
-            status: HistoryStatusFilter.succeeded,
-            direction: HistoryDirectionFilter.download),
+        historyMatches(
+          r,
+          query: 'a.txt',
+          status: HistoryStatusFilter.succeeded,
+          direction: HistoryDirectionFilter.download,
+        ),
         isFalse,
       );
     });
   });
 
-    TransferRecord named(String name, {bool success = true, int direction = 0}) =>
-        rec(name: name, sourcePath: '/src/$name', destPath: '/dst/$name', success: success, direction: direction);
+  TransferRecord named(String name, {bool success = true, int direction = 0}) =>
+      rec(
+        name: name,
+        sourcePath: '/src/$name',
+        destPath: '/dst/$name',
+        success: success,
+        direction: direction,
+      );
 
   group('filterHistory', () {
     final all = [
@@ -110,7 +137,10 @@ void main() {
     });
 
     test('preserves input order', () {
-      final out = filterHistory(all, direction: HistoryDirectionFilter.download);
+      final out = filterHistory(
+        all,
+        direction: HistoryDirectionFilter.download,
+      );
       expect(out.map((r) => r.name), ['two.bin', 'three.log']);
     });
   });
@@ -158,14 +188,29 @@ void main() {
     final now = DateTime(2024, 6, 15, 12);
     test('historySince computes the right cut-offs', () {
       expect(historySince(HistoryDateFilter.all, now), isNull);
-      expect(historySince(HistoryDateFilter.last24h, now), now.subtract(const Duration(hours: 24)));
-      expect(historySince(HistoryDateFilter.last7d, now), now.subtract(const Duration(days: 7)));
-      expect(historySince(HistoryDateFilter.last30d, now), now.subtract(const Duration(days: 30)));
+      expect(
+        historySince(HistoryDateFilter.last24h, now),
+        now.subtract(const Duration(hours: 24)),
+      );
+      expect(
+        historySince(HistoryDateFilter.last7d, now),
+        now.subtract(const Duration(days: 7)),
+      );
+      expect(
+        historySince(HistoryDateFilter.last30d, now),
+        now.subtract(const Duration(days: 30)),
+      );
     });
 
     test('since excludes records finished before the cut-off', () {
-      final recent = rec(name: 'recent', finishedAt: now.subtract(const Duration(hours: 2)));
-      final old = rec(name: 'old', finishedAt: now.subtract(const Duration(days: 3)));
+      final recent = rec(
+        name: 'recent',
+        finishedAt: now.subtract(const Duration(hours: 2)),
+      );
+      final old = rec(
+        name: 'old',
+        finishedAt: now.subtract(const Duration(days: 3)),
+      );
       final since = historySince(HistoryDateFilter.last24h, now);
       expect(historyMatches(recent, since: since), isTrue);
       expect(historyMatches(old, since: since), isFalse);
@@ -181,9 +226,18 @@ void main() {
     test('buckets bytes by finish time, oldest first', () {
       final records = [
         rec(sizeBytes: 100, finishedAt: start), // bucket 0
-        rec(sizeBytes: 50, finishedAt: start.add(const Duration(hours: 1))), // bucket 1
-        rec(sizeBytes: 25, finishedAt: start.add(const Duration(hours: 1, minutes: 30))), // bucket 1
-        rec(sizeBytes: 10, finishedAt: start.add(const Duration(hours: 3))), // bucket 3
+        rec(
+          sizeBytes: 50,
+          finishedAt: start.add(const Duration(hours: 1)),
+        ), // bucket 1
+        rec(
+          sizeBytes: 25,
+          finishedAt: start.add(const Duration(hours: 1, minutes: 30)),
+        ), // bucket 1
+        rec(
+          sizeBytes: 10,
+          finishedAt: start.add(const Duration(hours: 3)),
+        ), // bucket 3
       ];
       final series = bytesOverTime(records, start: start, end: end, buckets: 4);
       expect(series, [100, 75, 0, 10]);
@@ -191,7 +245,10 @@ void main() {
 
     test('ignores records outside the range', () {
       final records = [
-        rec(sizeBytes: 999, finishedAt: start.subtract(const Duration(hours: 1))),
+        rec(
+          sizeBytes: 999,
+          finishedAt: start.subtract(const Duration(hours: 1)),
+        ),
         rec(sizeBytes: 999, finishedAt: end.add(const Duration(hours: 1))),
         rec(sizeBytes: 7, finishedAt: start.add(const Duration(hours: 2))),
       ];
@@ -207,9 +264,18 @@ void main() {
     });
 
     test('degenerate inputs yield an empty series', () {
-      expect(bytesOverTime(const [], start: start, end: start, buckets: 4), isEmpty);
-      expect(bytesOverTime(const [], start: end, end: start, buckets: 4), isEmpty);
-      expect(bytesOverTime(const [], start: start, end: end, buckets: 0), isEmpty);
+      expect(
+        bytesOverTime(const [], start: start, end: start, buckets: 4),
+        isEmpty,
+      );
+      expect(
+        bytesOverTime(const [], start: end, end: start, buckets: 4),
+        isEmpty,
+      );
+      expect(
+        bytesOverTime(const [], start: start, end: end, buckets: 0),
+        isEmpty,
+      );
     });
   });
 }

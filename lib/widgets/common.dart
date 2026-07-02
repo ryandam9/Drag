@@ -22,7 +22,14 @@ class TbButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: FsColors.border),
             ),
-            child: Text(label, style: FsType.sans(size: 10, weight: FontWeight.w600, color: FsColors.text2)),
+            child: Text(
+              label,
+              style: FsType.sans(
+                size: 10,
+                weight: FontWeight.w600,
+                color: FsColors.text2,
+              ),
+            ),
           ),
         ),
       ),
@@ -50,42 +57,50 @@ class FsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Hoverable(builder: (hover) {
-      late Color bg, fg;
-      Border? border;
-      List<BoxShadow>? shadow;
-      switch (kind) {
-        case FsButtonKind.primary:
-          bg = hover ? FsColors.darken(FsColors.accent) : FsColors.accent;
-          fg = FsColors.scheme.onPrimary;
-          shadow = FsColors.cardShadow;
-        case FsButtonKind.ghost:
-          bg = hover ? FsColors.bgHover : FsColors.bgSurface;
-          fg = hover ? FsColors.text1 : FsColors.text2;
-          border = Border.all(color: FsColors.border);
-        case FsButtonKind.danger:
-          bg = hover ? const Color(0xFFF7DAD7) : FsColors.bgSurface;
-          fg = FsColors.red;
-          border = Border.all(color: const Color(0xFFE6B4B0));
-      }
-      return GestureDetector(
-        onTap: onTap,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            padding: padding,
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(FsColors.rPill),
-              border: border,
-              boxShadow: shadow,
+    return _Hoverable(
+      builder: (hover) {
+        late Color bg, fg;
+        Border? border;
+        List<BoxShadow>? shadow;
+        switch (kind) {
+          case FsButtonKind.primary:
+            bg = hover ? FsColors.darken(FsColors.accent) : FsColors.accent;
+            fg = FsColors.scheme.onPrimary;
+            shadow = FsColors.cardShadow;
+          case FsButtonKind.ghost:
+            bg = hover ? FsColors.bgHover : FsColors.bgSurface;
+            fg = hover ? FsColors.text1 : FsColors.text2;
+            border = Border.all(color: FsColors.border);
+          case FsButtonKind.danger:
+            bg = hover ? const Color(0xFFF7DAD7) : FsColors.bgSurface;
+            fg = FsColors.red;
+            border = Border.all(color: const Color(0xFFE6B4B0));
+        }
+        return GestureDetector(
+          onTap: onTap,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: Container(
+              padding: padding,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(FsColors.rPill),
+                border: border,
+                boxShadow: shadow,
+              ),
+              child: Text(
+                label,
+                style: FsType.sans(
+                  size: fontSize,
+                  weight: FontWeight.w600,
+                  color: fg,
+                ),
+              ),
             ),
-            child: Text(label,
-                style: FsType.sans(size: fontSize, weight: FontWeight.w600, color: fg)),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 }
 
@@ -95,14 +110,26 @@ class StatusBadge extends StatelessWidget {
   final Color bg;
   final Color fg;
   final VoidCallback? onTap;
-  const StatusBadge(this.text, {super.key, required this.bg, required this.fg, this.onTap});
+  const StatusBadge(
+    this.text, {
+    super.key,
+    required this.bg,
+    required this.fg,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Text(text, style: FsType.sans(size: 10, weight: FontWeight.w600, color: fg)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: FsType.sans(size: 10, weight: FontWeight.w600, color: fg),
+      ),
     );
     if (onTap == null) return pill;
     return GestureDetector(
@@ -126,7 +153,9 @@ class StatusDot extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         shape: BoxShape.circle,
-        boxShadow: glow ? [BoxShadow(color: color, blurRadius: 6, spreadRadius: 0.5)] : null,
+        boxShadow: glow
+            ? [BoxShadow(color: color, blurRadius: 6, spreadRadius: 0.5)]
+            : null,
       ),
     );
   }
@@ -145,55 +174,65 @@ class ToolButton extends StatelessWidget {
   /// When false the button is dimmed and doesn't respond — used for actions
   /// that don't apply in the current context (e.g. mutating an S3 bucket list).
   final bool enabled;
-  const ToolButton(this.label,
-      {super.key,
-      this.active = false,
-      this.color,
-      this.onTap,
-      this.tooltip,
-      this.enabled = true});
+  const ToolButton(
+    this.label, {
+    super.key,
+    this.active = false,
+    this.color,
+    this.onTap,
+    this.tooltip,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return _Hoverable(builder: (hover) {
-      if (!enabled) {
-        return Opacity(
-          opacity: 0.4,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            child: Text(label, style: FsType.sans(size: 12, color: color ?? FsColors.text2)),
+    return _Hoverable(
+      builder: (hover) {
+        if (!enabled) {
+          return Opacity(
+            opacity: 0.4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              child: Text(
+                label,
+                style: FsType.sans(size: 12, color: color ?? FsColors.text2),
+              ),
+            ),
+          );
+        }
+        Color bg = Colors.transparent;
+        Color fg = color ?? FsColors.text2;
+        if (active) {
+          bg = FsColors.bgActive;
+          fg = FsColors.accentHi;
+        } else if (hover) {
+          bg = FsColors.bgHover;
+          fg = color ?? FsColors.text1;
+        }
+        Widget btn = GestureDetector(
+          onTap: onTap,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(label, style: FsType.sans(size: 12, color: fg)),
+            ),
           ),
         );
-      }
-      Color bg = Colors.transparent;
-      Color fg = color ?? FsColors.text2;
-      if (active) {
-        bg = FsColors.bgActive;
-        fg = FsColors.accentHi;
-      } else if (hover) {
-        bg = FsColors.bgHover;
-        fg = color ?? FsColors.text1;
-      }
-      Widget btn = GestureDetector(
-        onTap: onTap,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-            child: Text(label, style: FsType.sans(size: 12, color: fg)),
-          ),
-        ),
-      );
-      if (tooltip != null) {
-        btn = Tooltip(
-          message: tooltip!,
-          waitDuration: const Duration(milliseconds: 400),
-          child: btn,
-        );
-      }
-      return btn;
-    });
+        if (tooltip != null) {
+          btn = Tooltip(
+            message: tooltip!,
+            waitDuration: const Duration(milliseconds: 400),
+            child: btn,
+          );
+        }
+        return btn;
+      },
+    );
   }
 }
 
@@ -201,15 +240,21 @@ class ToolSep extends StatelessWidget {
   const ToolSep({super.key});
   @override
   Widget build(BuildContext context) => Container(
-        width: 1,
-        height: 20,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        color: FsColors.border,
-      );
+    width: 1,
+    height: 20,
+    margin: const EdgeInsets.symmetric(horizontal: 4),
+    color: FsColors.border,
+  );
 }
 
 /// Outlined / focusable text field matching `.form-input`.
-class FsTextField extends StatelessWidget {
+///
+/// Stateful so a [value]-driven field keeps one controller for its lifetime:
+/// creating a fresh controller per build would leak it and reset the text and
+/// caret mid-edit whenever the surrounding screen rebuilds (e.g. on a live
+/// transfer tick). [value] is synced into the owned controller only while the
+/// field is unfocused, so external updates show up without clobbering typing.
+class FsTextField extends StatefulWidget {
   final String? value;
   final String? hint;
   final bool mono;
@@ -236,27 +281,68 @@ class FsTextField extends StatelessWidget {
   });
 
   @override
+  State<FsTextField> createState() => _FsTextFieldState();
+}
+
+class _FsTextFieldState extends State<FsTextField> {
+  /// Owned only when the caller didn't pass its own [FsTextField.controller].
+  TextEditingController? _owned;
+  final FocusNode _focus = FocusNode();
+
+  TextEditingController? get _effective {
+    if (widget.controller != null) return widget.controller;
+    if (widget.value == null) return null;
+    return _owned ??= TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(FsTextField old) {
+    super.didUpdateWidget(old);
+    // Reflect an externally-changed [value], but never while the user is
+    // editing — that would reset the text and jump the caret.
+    final v = widget.value;
+    if (widget.controller == null &&
+        v != null &&
+        !_focus.hasFocus &&
+        _owned != null &&
+        _owned!.text != v) {
+      _owned!.text = v;
+    }
+  }
+
+  @override
+  void dispose() {
+    _owned?.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final style = mono
+    final style = widget.mono
         ? FsType.mono(size: 12, color: FsColors.text1)
         : FsType.sans(size: 12, color: FsColors.text1);
     return SizedBox(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       child: TextField(
-        controller: controller ?? (value != null ? TextEditingController(text: value) : null),
-        readOnly: readOnly,
-        obscureText: obscure,
-        textAlign: align,
-        onChanged: onChanged,
+        controller: _effective,
+        focusNode: _focus,
+        readOnly: widget.readOnly,
+        obscureText: widget.obscure,
+        textAlign: widget.align,
+        onChanged: widget.onChanged,
         style: style,
         cursorColor: FsColors.accent,
         cursorWidth: 1.5,
         decoration: InputDecoration(
           isDense: true,
-          hintText: hint,
+          hintText: widget.hint,
           hintStyle: style.copyWith(color: FsColors.text3),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 8,
+          ),
           filled: true,
           fillColor: FsColors.bgSurface,
           enabledBorder: OutlineInputBorder(
@@ -284,8 +370,15 @@ class FormField2 extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.text2, letterSpacing: 0.3)),
+        Text(
+          label,
+          style: FsType.sans(
+            size: 11,
+            weight: FontWeight.w600,
+            color: FsColors.text2,
+            letterSpacing: 0.3,
+          ),
+        ),
         const SizedBox(height: 4),
         child,
       ],
@@ -334,7 +427,13 @@ class WindowFrame extends StatelessWidget {
         color: FsColors.bgSurface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: FsColors.border),
-        boxShadow: const [BoxShadow(color: Color(0x1F000000), blurRadius: 48, offset: Offset(0, 18))],
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1F000000),
+            blurRadius: 48,
+            offset: Offset(0, 18),
+          ),
+        ],
       ),
       child: ClipRRect(borderRadius: BorderRadius.circular(12), child: child),
     );

@@ -30,4 +30,6 @@ class ConnectionLogNotifier extends Notifier<List<ConnLogLine>> {
 }
 
 final connectionLogProvider =
-    NotifierProvider<ConnectionLogNotifier, List<ConnLogLine>>(ConnectionLogNotifier.new);
+    NotifierProvider<ConnectionLogNotifier, List<ConnLogLine>>(
+      ConnectionLogNotifier.new,
+    );

@@ -1,0 +1,18 @@
+# Automated dependency updates. Weekly cadence keeps PR noise low while still
+# catching security releases promptly; the limits cap how many open update PRs
+# can pile up at once.
+version: 2
+updates:
+  # Dart/Flutter packages (pubspec.yaml).
+  - package-ecosystem: "pub"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # Actions referenced by .github/workflows/*.yml.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

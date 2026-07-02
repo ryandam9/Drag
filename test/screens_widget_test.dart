@@ -34,22 +34,36 @@ void main() {
     binding.platformDispatcher.views.first.resetPhysicalSize();
   });
 
-  Future<void> pumpScreen(WidgetTester tester, ProviderContainer container, Widget screen) async {
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(body: screen),
+  Future<void> pumpScreen(
+    WidgetTester tester,
+    ProviderContainer container,
+    Widget screen,
+  ) async {
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: Scaffold(body: screen),
+        ),
       ),
-    ));
+    );
     await tester.pump();
   }
 
   group('Connection Manager', () {
-    testWidgets('shows SSH fields for an SFTP connection (Connection tab)', (tester) async {
+    testWidgets('shows SSH fields for an SFTP connection (Connection tab)', (
+      tester,
+    ) async {
       final c = makeContainer(connections: sampleConnections());
-      c.read(connectionsProvider.notifier)
-          .select(c.read(connectionsProvider).connections.firstWhere((x) => x.kind == EndpointKind.sftp));
+      c
+          .read(connectionsProvider.notifier)
+          .select(
+            c
+                .read(connectionsProvider)
+                .connections
+                .firstWhere((x) => x.kind == EndpointKind.sftp),
+          );
       await pumpScreen(tester, c, const ConnectionManagerScreen());
       // The SFTP form is tabbed; an Authentication tab exists, host lives under
       // the Connection tab, and there are no S3 credential fields.
@@ -60,10 +74,15 @@ void main() {
       expect(find.text('Access Key ID'), findsNothing);
     });
 
-    testWidgets('shows S3 fields under the Connection and Credentials tabs', (tester) async {
+    testWidgets('shows S3 fields under the Connection and Credentials tabs', (
+      tester,
+    ) async {
       final c = makeContainer(connections: sampleConnections());
-      c.read(connectionsProvider.notifier)
-          .select(c.read(connectionsProvider).connections.firstWhere((x) => x.isS3));
+      c
+          .read(connectionsProvider.notifier)
+          .select(
+            c.read(connectionsProvider).connections.firstWhere((x) => x.isS3),
+          );
       await pumpScreen(tester, c, const ConnectionManagerScreen());
 
       await tester.tap(find.text('Connection'));
@@ -77,10 +96,15 @@ void main() {
       expect(find.text('Secret Access Key'), findsOneWidget);
     });
 
-    testWidgets('secret fields can be revealed with the eye toggle', (tester) async {
+    testWidgets('secret fields can be revealed with the eye toggle', (
+      tester,
+    ) async {
       final c = makeContainer(connections: sampleConnections());
-      c.read(connectionsProvider.notifier)
-          .select(c.read(connectionsProvider).connections.firstWhere((x) => x.isS3));
+      c
+          .read(connectionsProvider.notifier)
+          .select(
+            c.read(connectionsProvider).connections.firstWhere((x) => x.isS3),
+          );
       await pumpScreen(tester, c, const ConnectionManagerScreen());
       await tester.tap(find.text('Credentials')); // secrets live on this tab
       await tester.pump();
@@ -99,9 +123,14 @@ void main() {
       expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
     });
 
-    testWidgets('typing into the bucket field updates the connection', (tester) async {
+    testWidgets('typing into the bucket field updates the connection', (
+      tester,
+    ) async {
       final c = makeContainer(connections: sampleConnections());
-      final s3 = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
+      final s3 = c
+          .read(connectionsProvider)
+          .connections
+          .firstWhere((x) => x.isS3);
       c.read(connectionsProvider.notifier).select(s3);
       await pumpScreen(tester, c, const ConnectionManagerScreen());
       await tester.tap(find.text('Connection')); // bucket lives on this tab
@@ -113,7 +142,9 @@ void main() {
       expect(s3.bucket, 'new-bucket-name');
     });
 
-    testWidgets('editing the name field renames the connection', (tester) async {
+    testWidgets('editing the name field renames the connection', (
+      tester,
+    ) async {
       final c = makeContainer(connections: sampleConnections());
       final conn = c.read(connectionsProvider).connections.first;
       c.read(connectionsProvider.notifier).select(conn);
@@ -129,10 +160,16 @@ void main() {
       expect(find.text('My Prod Box'), findsWidgets);
     });
 
-    testWidgets('the connection log shows lines and Clear empties it', (tester) async {
+    testWidgets('the connection log shows lines and Clear empties it', (
+      tester,
+    ) async {
       final c = makeContainer(connections: sampleConnections());
-      c.read(connectionsProvider.notifier).select(c.read(connectionsProvider).connections.first);
-      c.read(connectionLogProvider.notifier).info('Testing "box" — sftp://u@h:22 · key');
+      c
+          .read(connectionsProvider.notifier)
+          .select(c.read(connectionsProvider).connections.first);
+      c
+          .read(connectionLogProvider.notifier)
+          .info('Testing "box" — sftp://u@h:22 · key');
       await pumpScreen(tester, c, const ConnectionManagerScreen());
 
       expect(find.text('Connection log'), findsOneWidget);
@@ -140,7 +177,10 @@ void main() {
       await tester.tap(find.text('Clear'));
       await tester.pump();
       expect(find.textContaining('Testing "box"'), findsNothing);
-      expect(find.text('Test or connect to see diagnostics here.'), findsOneWidget);
+      expect(
+        find.text('Test or connect to see diagnostics here.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows the empty state with no connections', (tester) async {
@@ -149,11 +189,60 @@ void main() {
       expect(find.text('No connections yet'), findsOneWidget);
     });
 
-    testWidgets('groups by tag and filters the list live via search', (tester) async {
+    testWidgets('deleting a connection asks for confirmation first', (
+      tester,
+    ) async {
+      final c = makeContainer(connections: sampleConnections());
+      c
+          .read(connectionsProvider.notifier)
+          .select(c.read(connectionsProvider).connections.first);
+      await pumpScreen(tester, c, const ConnectionManagerScreen());
+      final count = c.read(connectionsProvider).connections.length;
+
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('permanently removes the connection'),
+        findsOneWidget,
+      );
+
+      // Cancel keeps the connection…
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(c.read(connectionsProvider).connections.length, count);
+
+      // …confirming removes it.
+      await tester.tap(find.text('Delete')); // header button again
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete').last); // the dialog's confirm button
+      await tester.pumpAndSettle();
+      expect(c.read(connectionsProvider).connections.length, count - 1);
+      await tester.pump(const Duration(seconds: 11)); // drain the toast timer
+    });
+
+    testWidgets('groups by tag and filters the list live via search', (
+      tester,
+    ) async {
       final conns = [
-        Connection(id: '1', name: 'Prod SFTP', host: 'prod.example.com', tag: 'Production'),
-        Connection(id: '2', name: 'Staging box', host: 'stg.example.com', tag: 'Staging'),
-        Connection(id: '3', name: 'Data bucket', protocol: Protocol.s3, bucket: 'acme', tag: 'Production'),
+        Connection(
+          id: '1',
+          name: 'Prod SFTP',
+          host: 'prod.example.com',
+          tag: 'Production',
+        ),
+        Connection(
+          id: '2',
+          name: 'Staging box',
+          host: 'stg.example.com',
+          tag: 'Staging',
+        ),
+        Connection(
+          id: '3',
+          name: 'Data bucket',
+          protocol: Protocol.s3,
+          bucket: 'acme',
+          tag: 'Production',
+        ),
       ];
       final c = makeContainer(connections: conns);
       await pumpScreen(tester, c, const ConnectionManagerScreen());
@@ -178,12 +267,20 @@ void main() {
 
     testWidgets('lays out without overflow on a narrow window', (tester) async {
       final binding = TestWidgetsFlutterBinding.ensureInitialized();
-      binding.platformDispatcher.views.first.physicalSize = const Size(520, 820);
+      binding.platformDispatcher.views.first.physicalSize = const Size(
+        520,
+        820,
+      );
       binding.platformDispatcher.views.first.devicePixelRatio = 1.0;
-      addTearDown(() => binding.platformDispatcher.views.first.resetPhysicalSize());
+      addTearDown(
+        () => binding.platformDispatcher.views.first.resetPhysicalSize(),
+      );
       final c = makeContainer(connections: sampleConnections());
-      c.read(connectionsProvider.notifier)
-          .select(c.read(connectionsProvider).connections.firstWhere((x) => x.isS3));
+      c
+          .read(connectionsProvider.notifier)
+          .select(
+            c.read(connectionsProvider).connections.firstWhere((x) => x.isS3),
+          );
       await pumpScreen(tester, c, const ConnectionManagerScreen());
       // A RenderFlex overflow would throw and fail the test.
       expect(tester.takeException(), isNull);
@@ -191,13 +288,24 @@ void main() {
   });
 
   group('Transfer Queue', () {
-    Transfer t(String name, TransferStatus status, {int size = 1000}) => Transfer(
-        name: name, route: 'Local → s3', direction: TransferDirection.upload, sizeBytes: size, session: 's', status: status);
+    Transfer t(String name, TransferStatus status, {int size = 1000}) =>
+        Transfer(
+          name: name,
+          route: 'Local → s3',
+          direction: TransferDirection.upload,
+          sizeBytes: size,
+          session: 's',
+          status: status,
+        );
 
     testWidgets('renders seeded transfers and the stats bar', (tester) async {
       final c = makeContainer();
       c.read(transfersProvider.notifier).debugSetTransfers([
-        t('backup_2025-06-19.tar.gz', TransferStatus.active, size: 248 * 1024 * 1024),
+        t(
+          'backup_2025-06-19.tar.gz',
+          TransferStatus.active,
+          size: 248 * 1024 * 1024,
+        ),
         t('.env', TransferStatus.error),
         t('server.js', TransferStatus.done),
       ]);
@@ -210,7 +318,9 @@ void main() {
 
     testWidgets('Clear done removes the completed row', (tester) async {
       final c = makeContainer();
-      c.read(transfersProvider.notifier).debugSetTransfers([t('server.js', TransferStatus.done)]);
+      c.read(transfersProvider.notifier).debugSetTransfers([
+        t('server.js', TransferStatus.done),
+      ]);
       await pumpScreen(tester, c, const TransferQueueScreen());
       expect(find.text('server.js'), findsOneWidget);
       c.read(transfersProvider.notifier).clearDone();
@@ -218,13 +328,73 @@ void main() {
       expect(find.text('server.js'), findsNothing);
     });
 
-    testWidgets('shows empty state when there are no transfers', (tester) async {
+    testWidgets('shows empty state when there are no transfers', (
+      tester,
+    ) async {
       final c = makeContainer();
       await pumpScreen(tester, c, const TransferQueueScreen());
       expect(find.text('No transfers yet'), findsOneWidget);
     });
 
-    testWidgets('tapping a transfer row opens its details panel', (tester) async {
+    testWidgets('the filter field narrows the visible transfers live', (
+      tester,
+    ) async {
+      final c = makeContainer();
+      c.read(transfersProvider.notifier).debugSetTransfers([
+        t('report.pdf', TransferStatus.queued),
+        t('backup.tar', TransferStatus.queued),
+      ]);
+      await pumpScreen(tester, c, const TransferQueueScreen());
+      expect(find.text('report.pdf'), findsOneWidget);
+      expect(find.text('backup.tar'), findsOneWidget);
+
+      // Case-insensitive substring match against name/paths/session.
+      final filter = find.byType(TextField).first; // header filter box
+      await tester.enterText(filter, 'REPORT');
+      await tester.pump();
+      expect(find.text('report.pdf'), findsOneWidget);
+      expect(find.text('backup.tar'), findsNothing);
+
+      // No hits → a note instead of an empty table.
+      await tester.enterText(filter, 'zzzz');
+      await tester.pump();
+      expect(find.textContaining('No transfers match'), findsOneWidget);
+
+      // The ✕ affordance clears the filter.
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+      expect(find.text('report.pdf'), findsOneWidget);
+      expect(find.text('backup.tar'), findsOneWidget);
+    });
+
+    testWidgets('Threads field keeps an in-progress edit across live ticks', (
+      tester,
+    ) async {
+      final c = makeContainer();
+      c.read(transfersProvider.notifier).debugSetTransfers([
+        t('moving.bin', TransferStatus.active),
+      ]);
+      await pumpScreen(tester, c, const TransferQueueScreen());
+
+      // The threads box shows the current max (default 5).
+      final threads = find.widgetWithText(TextField, '5');
+      expect(threads, findsOneWidget);
+      final ctl = tester.widget<TextField>(threads).controller!;
+
+      // Clear it (an in-progress edit — not a valid number yet), then fire a
+      // live progress tick, which rebuilds the stats bar.
+      await tester.enterText(threads, '');
+      c.read(transfersProvider).transfers.first.touchLive();
+      await tester.pump();
+
+      // The focused field keeps the edit instead of resetting to '5'.
+      expect(ctl.text, '');
+      expect(find.widgetWithText(TextField, '5'), findsNothing);
+    });
+
+    testWidgets('tapping a transfer row opens its details panel', (
+      tester,
+    ) async {
       final c = makeContainer();
       c.read(transfersProvider.notifier).debugSetTransfers([
         Transfer(
@@ -285,7 +455,9 @@ void main() {
       expect(c.read(settingsProvider).themeName, 'Galah');
       // The accent is the seed-derived Material 3 primary for the bird's colour.
       final cs = ColorScheme.fromSeed(
-          seedColor: birdThemeByName('Galah').primary, brightness: Brightness.light);
+        seedColor: birdThemeByName('Galah').primary,
+        brightness: Brightness.light,
+      );
       expect(c.read(settingsProvider).accentValue, cs.primary.toARGB32());
       await tester.pump(const Duration(seconds: 11)); // drain the toast timer
     });
@@ -299,6 +471,9 @@ void main() {
       expect(find.text('Transfers'), findsOneWidget);
       expect(find.text('Show hidden files'), findsOneWidget);
       expect(find.text('Show transfer log on startup'), findsOneWidget);
+      // No Save button — settings persist as they change, and the page says so.
+      expect(find.text('Changes are saved automatically'), findsOneWidget);
+      expect(find.text('Save'), findsNothing);
     });
 
     testWidgets('toggling a checkbox updates settings', (tester) async {
@@ -332,9 +507,16 @@ void main() {
           ),
         ],
         stats: const HistoryStats(
-            total: 1, succeeded: 1, failed: 0, totalBytes: 5000, avgBytesPerSecond: 5000),
+          total: 1,
+          succeeded: 1,
+          failed: 0,
+          totalBytes: 5000,
+          avgBytesPerSecond: 5000,
+        ),
       );
-      final c = makeContainer(overrides: [historyProvider.overrideWith(() => _FakeHistory(state))]);
+      final c = makeContainer(
+        overrides: [historyProvider.overrideWith(() => _FakeHistory(state))],
+      );
       await pumpScreen(tester, c, const DashboardScreen());
 
       expect(find.text('Total transfers'), findsOneWidget);
@@ -343,9 +525,13 @@ void main() {
     });
 
     testWidgets('shows empty state with no history', (tester) async {
-      final c = makeContainer(overrides: [
-        historyProvider.overrideWith(() => _FakeHistory(const HistoryState())),
-      ]);
+      final c = makeContainer(
+        overrides: [
+          historyProvider.overrideWith(
+            () => _FakeHistory(const HistoryState()),
+          ),
+        ],
+      );
       await pumpScreen(tester, c, const DashboardScreen());
       expect(find.text('No transfers yet'), findsOneWidget);
     });
@@ -354,7 +540,9 @@ void main() {
   group('Toasts', () {
     testWidgets('ToastOverlay renders queued toasts', (tester) async {
       final c = makeContainer();
-      c.read(toastsProvider.notifier).push('Upload complete', 'file.txt → s3', ToastKind.success);
+      c
+          .read(toastsProvider.notifier)
+          .push('Upload complete', 'file.txt → s3', ToastKind.success);
       await pumpScreen(tester, c, const Stack(children: [ToastOverlay()]));
       expect(find.text('Upload complete'), findsOneWidget);
       expect(find.text('file.txt → s3'), findsOneWidget);

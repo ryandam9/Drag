@@ -39,19 +39,43 @@ void main() {
     test('reports memory-only health', () {
       expect(MemorySecretStore().status, SecretStoreStatus.memoryFallback);
     });
+
+    test(
+      'save with all-empty secrets is a no-op unless clear is explicit',
+      () async {
+        final store = MemorySecretStore();
+        await store.save(Connection(id: 'm3', name: 'srv')..password = 'pw');
+
+        // All-empty save (e.g. a connection whose keychain load hasn't landed
+        // yet) must NOT delete the stored secrets.
+        await store.save(Connection(id: 'm3', name: 'srv'));
+        final probe = Connection(id: 'm3', name: 'srv');
+        await store.load(probe);
+        expect(probe.password, 'pw');
+
+        // An explicit clear (the user really emptied the fields) does delete.
+        await store.save(Connection(id: 'm3', name: 'srv'), clear: true);
+        final probe2 = Connection(id: 'm3', name: 'srv');
+        await store.load(probe2);
+        expect(probe2.password, '');
+      },
+    );
   });
 
   group('KeychainSecretStore', () {
-    test('degrades to memory when the platform keychain is unavailable', () async {
-      // In a unit test there's no platform channel, so the secure backend
-      // throws and the store must fall back to its in-memory map.
-      final store = KeychainSecretStore();
-      final c = Connection(id: 'k1', name: 'srv')..password = 'pw';
-      await store.save(c);
-      final blank = Connection(id: 'k1', name: 'srv');
-      await store.load(blank);
-      expect(blank.password, 'pw');
-    });
+    test(
+      'degrades to memory when the platform keychain is unavailable',
+      () async {
+        // In a unit test there's no platform channel, so the secure backend
+        // throws and the store must fall back to its in-memory map.
+        final store = KeychainSecretStore();
+        final c = Connection(id: 'k1', name: 'srv')..password = 'pw';
+        await store.save(c);
+        final blank = Connection(id: 'k1', name: 'srv');
+        await store.load(blank);
+        expect(blank.password, 'pw');
+      },
+    );
 
     test('status flips to memoryFallback once the keychain fails', () async {
       final store = KeychainSecretStore();
@@ -66,7 +90,9 @@ void main() {
   group('ConnectionsNotifier ↔ keychain', () {
     test('save writes secrets to the keychain (not the plain store)', () async {
       final secrets = MemorySecretStore();
-      final c = makeContainer(overrides: [secretStoreProvider.overrideWithValue(secrets)]);
+      final c = makeContainer(
+        overrides: [secretStoreProvider.overrideWithValue(secrets)],
+      );
       final n = c.read(connectionsProvider.notifier);
       final conn = await n.create();
       conn
@@ -84,7 +110,9 @@ void main() {
 
     test('deleting a connection removes its secrets', () async {
       final secrets = MemorySecretStore();
-      final c = makeContainer(overrides: [secretStoreProvider.overrideWithValue(secrets)]);
+      final c = makeContainer(
+        overrides: [secretStoreProvider.overrideWithValue(secrets)],
+      );
       final n = c.read(connectionsProvider.notifier);
       final conn = await n.create();
       conn.password = 'pw';
@@ -98,12 +126,16 @@ void main() {
 
     test('secrets are restored into connections on startup', () async {
       final secrets = MemorySecretStore();
-      await secrets.save(Connection(id: 'r1', name: 'srv')
-        ..password = 'pw'
-        ..passphrase = 'pp');
+      await secrets.save(
+        Connection(id: 'r1', name: 'srv')
+          ..password = 'pw'
+          ..passphrase = 'pp',
+      );
 
       final c = makeContainer(
-        connections: [Connection(id: 'r1', name: 'srv', protocol: Protocol.sftp)],
+        connections: [
+          Connection(id: 'r1', name: 'srv', protocol: Protocol.sftp),
+        ],
         overrides: [secretStoreProvider.overrideWithValue(secrets)],
       );
       // build() schedules a microtask to pull secrets from the keychain.
@@ -113,6 +145,50 @@ void main() {
       final restored = c.read(connectionsProvider).connections.first;
       expect(restored.password, 'pw');
       expect(restored.passphrase, 'pp');
+    });
+
+    test(
+      'a save racing the startup keychain load cannot wipe stored secrets',
+      () async {
+        final secrets = MemorySecretStore();
+        await secrets.save(Connection(id: 'r2', name: 'srv')..password = 'pw');
+
+        final c = makeContainer(
+          connections: [
+            Connection(id: 'r2', name: 'srv', protocol: Protocol.sftp),
+          ],
+          overrides: [secretStoreProvider.overrideWithValue(secrets)],
+        );
+        final n = c.read(connectionsProvider.notifier);
+        // Save immediately — before the keychain-load microtask has run. save()
+        // awaits secretsReady, so the restored password is persisted, not an
+        // empty one (which used to delete the keychain entry).
+        await n.save(c.read(connectionsProvider).connections.first);
+
+        final probe = Connection(id: 'r2', name: 'srv');
+        await secrets.load(probe);
+        expect(probe.password, 'pw');
+      },
+    );
+
+    test('explicitly cleared secrets are removed by save', () async {
+      final secrets = MemorySecretStore();
+      final c = makeContainer(
+        overrides: [secretStoreProvider.overrideWithValue(secrets)],
+      );
+      final n = c.read(connectionsProvider.notifier);
+      final conn = await n.create();
+      conn.password = 'pw';
+      await n.save(conn);
+
+      // The user empties the password field and saves again — a deliberate
+      // clear, which must delete the keychain entry.
+      conn.password = '';
+      await n.save(conn);
+
+      final probe = Connection(id: conn.id, name: 'x');
+      await secrets.load(probe);
+      expect(probe.password, '');
     });
   });
 }

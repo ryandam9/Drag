@@ -41,27 +41,78 @@ String _extOf(String name) {
 /// back to a generic document glyph. (Directories are handled by [FileItem.icon].)
 String glyphForName(String name) {
   switch (_extOf(name)) {
-    case 'png': case 'jpg': case 'jpeg': case 'gif': case 'bmp': case 'webp':
-    case 'svg': case 'ico': case 'tiff':
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif':
+    case 'bmp':
+    case 'webp':
+    case 'svg':
+    case 'ico':
+    case 'tiff':
       return '🖼';
-    case 'mp4': case 'mov': case 'mkv': case 'avi': case 'webm': case 'm4v':
+    case 'mp4':
+    case 'mov':
+    case 'mkv':
+    case 'avi':
+    case 'webm':
+    case 'm4v':
       return '🎬';
-    case 'mp3': case 'wav': case 'flac': case 'ogg': case 'm4a': case 'aac':
+    case 'mp3':
+    case 'wav':
+    case 'flac':
+    case 'ogg':
+    case 'm4a':
+    case 'aac':
       return '🎵';
-    case 'zip': case 'tar': case 'gz': case 'tgz': case 'rar': case '7z':
-    case 'bz2': case 'xz': case 'zst':
+    case 'zip':
+    case 'tar':
+    case 'gz':
+    case 'tgz':
+    case 'rar':
+    case '7z':
+    case 'bz2':
+    case 'xz':
+    case 'zst':
       return '🗜';
     case 'pdf':
       return '📕';
-    case 'xls': case 'xlsx': case 'csv': case 'tsv':
+    case 'xls':
+    case 'xlsx':
+    case 'csv':
+    case 'tsv':
       return '📊';
-    case 'dart': case 'js': case 'ts': case 'jsx': case 'tsx': case 'py':
-    case 'go': case 'rs': case 'java': case 'kt': case 'c': case 'h':
-    case 'cpp': case 'hpp': case 'cc': case 'rb': case 'swift': case 'php':
-    case 'sh': case 'bash': case 'sql':
+    case 'dart':
+    case 'js':
+    case 'ts':
+    case 'jsx':
+    case 'tsx':
+    case 'py':
+    case 'go':
+    case 'rs':
+    case 'java':
+    case 'kt':
+    case 'c':
+    case 'h':
+    case 'cpp':
+    case 'hpp':
+    case 'cc':
+    case 'rb':
+    case 'swift':
+    case 'php':
+    case 'sh':
+    case 'bash':
+    case 'sql':
       return '📜';
-    case 'json': case 'yaml': case 'yml': case 'xml': case 'toml': case 'ini':
-    case 'conf': case 'cfg': case 'env':
+    case 'json':
+    case 'yaml':
+    case 'yml':
+    case 'xml':
+    case 'toml':
+    case 'ini':
+    case 'conf':
+    case 'cfg':
+    case 'env':
       return '🧾';
     default:
       return '📄';
@@ -85,6 +136,8 @@ String formatBytes(num bytes, {int decimals = 1}) {
     value /= 1024;
     i++;
   }
-  final fixed = i == 0 ? value.toStringAsFixed(0) : value.toStringAsFixed(decimals);
+  final fixed = i == 0
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(decimals);
   return '$fixed ${units[i]}';
 }

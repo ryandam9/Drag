@@ -59,7 +59,8 @@ void main() {
       int? maxDepth,
       int? maxFiles,
     }) {
-      String join(String path, String name, bool isDir) => path == '/' ? '/$name' : '$path/$name';
+      String join(String path, String name, bool isDir) =>
+          path == '/' ? '/$name' : '$path/$name';
       return planMirrorRecursive(
         srcRoot: '/',
         dstRoot: '/',
@@ -105,27 +106,52 @@ void main() {
         },
         {'/': const []},
       );
-      expect(p.mkdirs.map((m) => m.dstPath), ['/sub', '/sub/deep']); // parents first
+      expect(p.mkdirs.map((m) => m.dstPath), [
+        '/sub',
+        '/sub/deep',
+      ]); // parents first
       expect(p.copies.map((c) => c.dstPath).toSet(), {'/sub/a', '/sub/deep/b'});
       expect(p.totalBytes, 3);
     });
 
-    test('size+modified mode flags same-size files with a different mtime', () async {
-      const sA = FileItem(name: 'a', sizeBytes: 10, modified: '2025-01-01');
-      const dA = FileItem(name: 'a', sizeBytes: 10, modified: '2025-02-02');
-      // Size-only sees them as identical; size+time catches the change.
-      final sizeOnly = await plan({'/': [sA]}, {'/': [dA]});
-      expect(sizeOnly.copies, isEmpty);
-      final withTime = await plan({'/': [sA]}, {'/': [dA]}, mode: CompareMode.sizeAndTime);
-      expect(withTime.copies.map((c) => c.dstPath), ['/a']);
-    });
+    test(
+      'size+modified mode flags same-size files with a different mtime',
+      () async {
+        const sA = FileItem(name: 'a', sizeBytes: 10, modified: '2025-01-01');
+        const dA = FileItem(name: 'a', sizeBytes: 10, modified: '2025-02-02');
+        // Size-only sees them as identical; size+time catches the change.
+        final sizeOnly = await plan(
+          {
+            '/': [sA],
+          },
+          {
+            '/': [dA],
+          },
+        );
+        expect(sizeOnly.copies, isEmpty);
+        final withTime = await plan(
+          {
+            '/': [sA],
+          },
+          {
+            '/': [dA],
+          },
+          mode: CompareMode.sizeAndTime,
+        );
+        expect(withTime.copies.map((c) => c.dstPath), ['/a']);
+      },
+    );
 
     test('checksum mode compares content hashes for same-size files', () async {
       const sA = FileItem(name: 'a', sizeBytes: 10);
       const dA = FileItem(name: 'a', sizeBytes: 10);
       final p = await plan(
-        {'/': [sA]},
-        {'/': [dA]},
+        {
+          '/': [sA],
+        },
+        {
+          '/': [dA],
+        },
         mode: CompareMode.checksum,
         hashSrc: (_) async => 'HASH_A',
         hashDst: (_) async => 'HASH_B', // differs → copy
@@ -133,8 +159,12 @@ void main() {
       expect(p.copies.map((c) => c.dstPath), ['/a']);
 
       final same = await plan(
-        {'/': [sA]},
-        {'/': [dA]},
+        {
+          '/': [sA],
+        },
+        {
+          '/': [dA],
+        },
         mode: CompareMode.checksum,
         hashSrc: (_) async => 'SAME',
         hashDst: (_) async => 'SAME', // equal → skip
@@ -193,43 +223,58 @@ void main() {
       expect(p.isEmpty, isTrue);
     });
 
-    test('deleteExtras removes destination-only entries at any depth', () async {
-      final p = await plan(
-        {
-          '/': [_d('sub')],
-          '/sub': [_f('keep', 1)],
-        },
-        {
-          '/': [_d('sub'), _f('topextra', 9)],
-          '/sub': [_f('keep', 1), _f('subextra', 4)],
-        },
-        deleteExtras: true,
-      );
-      expect(p.deletes.map((d) => d.dstPath).toSet(), {'/topextra', '/sub/subextra'});
-      expect(p.copies, isEmpty);
-    });
+    test(
+      'deleteExtras removes destination-only entries at any depth',
+      () async {
+        final p = await plan(
+          {
+            '/': [_d('sub')],
+            '/sub': [_f('keep', 1)],
+          },
+          {
+            '/': [_d('sub'), _f('topextra', 9)],
+            '/sub': [_f('keep', 1), _f('subextra', 4)],
+          },
+          deleteExtras: true,
+        );
+        expect(p.deletes.map((d) => d.dstPath).toSet(), {
+          '/topextra',
+          '/sub/subextra',
+        });
+        expect(p.copies, isEmpty);
+      },
+    );
 
     test('without deleteExtras, extras are left alone', () async {
       final p = await plan(
-        {'/': [_f('a', 1)]},
-        {'/': [_f('a', 1), _f('extra', 2)]},
+        {
+          '/': [_f('a', 1)],
+        },
+        {
+          '/': [_f('a', 1), _f('extra', 2)],
+        },
       );
       expect(p.isEmpty, isTrue);
     });
 
-    test('resolves a type conflict (dst file where src has a folder)', () async {
-      final p = await plan(
-        {
-          '/': [_d('x')],
-          '/x': [_f('inside', 1)],
-        },
-        {'/': [_f('x', 5)]}, // x is a file on the destination
-      );
-      expect(p.deletes.single.dstPath, '/x');
-      expect(p.deletes.single.isDir, isFalse);
-      expect(p.mkdirs.map((m) => m.dstPath), ['/x']);
-      expect(p.copies.single.dstPath, '/x/inside');
-    });
+    test(
+      'resolves a type conflict (dst file where src has a folder)',
+      () async {
+        final p = await plan(
+          {
+            '/': [_d('x')],
+            '/x': [_f('inside', 1)],
+          },
+          {
+            '/': [_f('x', 5)],
+          }, // x is a file on the destination
+        );
+        expect(p.deletes.single.dstPath, '/x');
+        expect(p.deletes.single.isDir, isFalse);
+        expect(p.mkdirs.map((m) => m.dstPath), ['/x']);
+        expect(p.copies.single.dstPath, '/x/inside');
+      },
+    );
   });
 
   group('runMirror (Local→Local)', () {
@@ -248,7 +293,9 @@ void main() {
       await Directory(p.join(r.path, 'sub')).create();
       await File(p.join(l.path, 'sub', 'deep.txt')).writeAsString('NEW-LONGER');
       await File(p.join(r.path, 'sub', 'deep.txt')).writeAsString('OLD');
-      await File(p.join(r.path, 'b.txt')).writeAsString('B'); // extra on the right
+      await File(
+        p.join(r.path, 'b.txt'),
+      ).writeAsString('B'); // extra on the right
       await File(p.join(r.path, 'common.txt')).writeAsString('X');
 
       s.leftPane
@@ -262,18 +309,32 @@ void main() {
       await s.rightPane.refresh();
 
       final plan = await s.mirrorPlan(leftToRight: true, deleteExtras: true);
-      expect(plan.copies.map((c) => c.name).toSet(), {'a.txt', 'deep.txt'}); // common identical, deep differs
+      expect(plan.copies.map((c) => c.name).toSet(), {
+        'a.txt',
+        'deep.txt',
+      }); // common identical, deep differs
       expect(plan.deletes.map((d) => d.dstPath), [p.join(r.path, 'b.txt')]);
       await s.runMirror(plan);
 
       final copied = File(p.join(r.path, 'a.txt'));
       final deep = File(p.join(r.path, 'sub', 'deep.txt'));
-      for (var i = 0; i < 200 && !(copied.existsSync() && await deep.readAsString() == 'NEW-LONGER'); i++) {
+      for (
+        var i = 0;
+        i < 200 &&
+            !(copied.existsSync() && await deep.readAsString() == 'NEW-LONGER');
+        i++
+      ) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       expect(await copied.readAsString(), 'A');
-      expect(await deep.readAsString(), 'NEW-LONGER'); // nested difference mirrored
-      expect(File(p.join(r.path, 'b.txt')).existsSync(), isFalse); // extra deleted
+      expect(
+        await deep.readAsString(),
+        'NEW-LONGER',
+      ); // nested difference mirrored
+      expect(
+        File(p.join(r.path, 'b.txt')).existsSync(),
+        isFalse,
+      ); // extra deleted
       expect(await File(p.join(r.path, 'common.txt')).readAsString(), 'X');
     });
 
@@ -294,9 +355,10 @@ void main() {
         ..path = r.path;
 
       // A delete of a path that doesn't exist fails — runMirror must surface it.
-      final plan = MirrorPlan(leftToRight: true, deletes: [
-        MirrorDelete(p.join(r.path, 'ghost.txt'), false),
-      ]);
+      final plan = MirrorPlan(
+        leftToRight: true,
+        deletes: [MirrorDelete(p.join(r.path, 'ghost.txt'), false)],
+      );
       await s.runMirror(plan);
 
       final toast = c.read(toastsProvider).last;

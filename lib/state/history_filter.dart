@@ -66,11 +66,17 @@ List<TransferRecord> filterHistory(
   HistoryStatusFilter status = HistoryStatusFilter.all,
   HistoryDirectionFilter direction = HistoryDirectionFilter.all,
   DateTime? since,
-}) =>
-    [
-      for (final r in all)
-        if (historyMatches(r, query: query, status: status, direction: direction, since: since)) r
-    ];
+}) => [
+  for (final r in all)
+    if (historyMatches(
+      r,
+      query: query,
+      status: status,
+      direction: direction,
+      since: since,
+    ))
+      r,
+];
 
 /// Aggregate stats for one endpoint (transfer [session]).
 class EndpointStat {
@@ -78,7 +84,12 @@ class EndpointStat {
   final int count;
   final int succeeded;
   final int totalBytes;
-  const EndpointStat(this.endpoint, this.count, this.succeeded, this.totalBytes);
+  const EndpointStat(
+    this.endpoint,
+    this.count,
+    this.succeeded,
+    this.totalBytes,
+  );
 
   int get failed => count - succeeded;
 }

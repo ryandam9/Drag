@@ -11,17 +11,16 @@ Connection _conn({
   String remotePath = '/srv',
   AuthMethod auth = AuthMethod.password,
   String keyFile = '',
-}) =>
-    Connection(
-      name: 'h',
-      protocol: Protocol.sftp,
-      host: host,
-      port: port,
-      username: user,
-      remotePath: remotePath,
-      auth: auth,
-      keyFile: keyFile,
-    );
+}) => Connection(
+  name: 'h',
+  protocol: Protocol.sftp,
+  host: host,
+  port: port,
+  username: user,
+  remotePath: remotePath,
+  auth: auth,
+  keyFile: keyFile,
+);
 
 void main() {
   group('pure / sync surface', () {
@@ -44,7 +43,10 @@ void main() {
     });
 
     test('initialPath uses remotePath, or / when empty', () {
-      expect(SftpBackend(_conn(remotePath: '/var/www')).initialPath, '/var/www');
+      expect(
+        SftpBackend(_conn(remotePath: '/var/www')).initialPath,
+        '/var/www',
+      );
       expect(SftpBackend(_conn(remotePath: '')).initialPath, '/');
     });
 
@@ -79,14 +81,18 @@ void main() {
       // (which happens next) is the thing that fails.
       final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => server.close());
-      server.listen((s) {/* accept and ignore */});
+      server.listen((s) {
+        /* accept and ignore */
+      });
 
-      final b = SftpBackend(_conn(
-        host: '127.0.0.1',
-        port: server.port,
-        auth: AuthMethod.privateKey,
-        keyFile: '/no/such/key_rsa',
-      ));
+      final b = SftpBackend(
+        _conn(
+          host: '127.0.0.1',
+          port: server.port,
+          auth: AuthMethod.privateKey,
+          keyFile: '/no/such/key_rsa',
+        ),
+      );
       addTearDown(b.dispose);
 
       await expectLater(
@@ -95,13 +101,16 @@ void main() {
       );
     });
 
-    test('a refused connection surfaces as an error and can be retried', () async {
-      final b = SftpBackend(_conn(host: '127.0.0.1', port: 1));
-      addTearDown(b.dispose);
-      await expectLater(b.list('/'), throwsA(isA<Object>()));
-      // The internal connect future was reset, so a second attempt also throws
-      // (rather than hanging on a stale future).
-      await expectLater(b.list('/'), throwsA(isA<Object>()));
-    });
+    test(
+      'a refused connection surfaces as an error and can be retried',
+      () async {
+        final b = SftpBackend(_conn(host: '127.0.0.1', port: 1));
+        addTearDown(b.dispose);
+        await expectLater(b.list('/'), throwsA(isA<Object>()));
+        // The internal connect future was reset, so a second attempt also throws
+        // (rather than hanging on a stale future).
+        await expectLater(b.list('/'), throwsA(isA<Object>()));
+      },
+    );
   });
 }

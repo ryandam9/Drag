@@ -61,20 +61,32 @@ class HostKeyVerifier {
 
   /// Checks (and, on first use, possibly remembers) the host key. Does NOT
   /// update a remembered key on mismatch — that requires the user to forget it.
-  Future<HostKeyOutcome> check(String host, int port, String type, String fingerprint) async {
-    final presented = KnownHost(host: host, port: port, type: type, fingerprint: fingerprint);
+  Future<HostKeyOutcome> check(
+    String host,
+    int port,
+    String type,
+    String fingerprint,
+  ) async {
+    final presented = KnownHost(
+      host: host,
+      port: port,
+      type: type,
+      fingerprint: fingerprint,
+    );
     final existing = await store.find(host, port);
 
     if (existing != null) {
-      final outcome =
-          existing.fingerprint == fingerprint ? HostKeyOutcome.matched : HostKeyOutcome.mismatch;
+      final outcome = existing.fingerprint == fingerprint
+          ? HostKeyOutcome.matched
+          : HostKeyOutcome.mismatch;
       onOutcome?.call(outcome, presented);
       return outcome;
     }
 
     // First sighting of this host.
     final decision = prompt == null
-        ? HostKeyDecision.trustAndRemember // no UI → auto-trust as before
+        ? HostKeyDecision
+              .trustAndRemember // no UI → auto-trust as before
         : await prompt!(HostKeyInfo(host, port, type, fingerprint));
 
     final HostKeyOutcome outcome;
@@ -93,7 +105,12 @@ class HostKeyVerifier {
 
   /// Convenience for `onVerifyHostKey`: accept only a match or a trusted first
   /// use; reject a changed key or a user-declined one.
-  Future<bool> verify(String host, int port, String type, String fingerprint) async {
+  Future<bool> verify(
+    String host,
+    int port,
+    String type,
+    String fingerprint,
+  ) async {
     final o = await check(host, port, type, fingerprint);
     return o == HostKeyOutcome.matched || o == HostKeyOutcome.trustedFirstUse;
   }

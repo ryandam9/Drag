@@ -15,6 +15,7 @@ import '../models/transfer.dart';
 import '../state/app.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/log_lines.dart';
 
 class BrowserScreen extends ConsumerStatefulWidget {
   const BrowserScreen({super.key});
@@ -39,7 +40,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   PaneController get _rightPane => _sessions.rightPane;
   PaneController get _focusedPane => _sessions.focusedPane;
 
-  void _toast(String t, String s, ToastKind k) => ref.read(toastsProvider.notifier).push(t, s, k);
+  void _toast(String t, String s, ToastKind k) =>
+      ref.read(toastsProvider.notifier).push(t, s, k);
   void _go(AppScreen s) => ref.read(navProvider.notifier).go(s);
 
   TransfersNotifier? _transfersRef;
@@ -89,42 +91,83 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   /// Shows the Skip / Overwrite / Rename dialog for a name clash, with an
   /// "apply to all" option. Returns null if dismissed (treated as skip).
   Future<ConflictResolution?> _resolveConflict(ConflictPrompt p) async {
-    if (!mounted) return const ConflictResolution(ConflictAction.overwrite);
+    // No screen to ask on → skip, matching the dismissed-dialog behaviour
+    // (never overwrite without an explicit answer).
+    if (!mounted) return const ConflictResolution(ConflictAction.skip);
     var all = false;
     return showDialog<ConflictResolution>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: FsColors.bgPanel,
-          title: Text('File already exists',
-              style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('"${p.name}" already exists in ${p.destLabel}. What would you like to do?',
-                style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
-            const SizedBox(height: 12),
-            InkWell(
-              onTap: () => setLocal(() => all = !all),
-              child: Row(children: [
-                SizedBox(
-                  width: 18, height: 18,
-                  child: Checkbox(
-                    value: all,
-                    onChanged: (v) => setLocal(() => all = v ?? false),
-                    activeColor: FsColors.accent,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text('Apply to all remaining', style: FsType.sans(size: 12, color: FsColors.text2)),
-              ]),
+          title: Text(
+            'File already exists',
+            style: FsType.sans(
+              size: 14,
+              weight: FontWeight.w600,
+              color: FsColors.text1,
             ),
-          ]),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '"${p.name}" already exists in ${p.destLabel}. What would you like to do?',
+                style: FsType.sans(
+                  size: 12,
+                  color: FsColors.text2,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: () => setLocal(() => all = !all),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: Checkbox(
+                        value: all,
+                        onChanged: (v) => setLocal(() => all = v ?? false),
+                        activeColor: FsColors.accent,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Apply to all remaining',
+                      style: FsType.sans(size: 12, color: FsColors.text2),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
           actions: [
-            FsButton('Skip', onTap: () => Navigator.pop(ctx, ConflictResolution(ConflictAction.skip, applyToAll: all))),
-            FsButton('Rename', onTap: () => Navigator.pop(ctx, ConflictResolution(ConflictAction.rename, applyToAll: all))),
-            FsButton('Overwrite',
-                kind: FsButtonKind.primary,
-                onTap: () => Navigator.pop(ctx, ConflictResolution(ConflictAction.overwrite, applyToAll: all))),
+            FsButton(
+              'Skip',
+              onTap: () => Navigator.pop(
+                ctx,
+                ConflictResolution(ConflictAction.skip, applyToAll: all),
+              ),
+            ),
+            FsButton(
+              'Rename',
+              onTap: () => Navigator.pop(
+                ctx,
+                ConflictResolution(ConflictAction.rename, applyToAll: all),
+              ),
+            ),
+            FsButton(
+              'Overwrite',
+              kind: FsButtonKind.primary,
+              onTap: () => Navigator.pop(
+                ctx,
+                ConflictResolution(ConflictAction.overwrite, applyToAll: all),
+              ),
+            ),
           ],
         ),
       ),
@@ -143,7 +186,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   void _beginEditPath(PaneController pane, bool left) {
     _pathCtl
       ..text = pane.displayPath
-      ..selection = TextSelection(baseOffset: 0, extentOffset: pane.displayPath.length);
+      ..selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: pane.displayPath.length,
+      );
     setState(() => _editingPathLeft = left);
     _pathFocus.requestFocus();
   }
@@ -165,7 +211,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   String _pathLabel(PaneController pane) {
-    final segs = pane.path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).toList();
+    final segs = pane.path
+        .split(RegExp(r'[\\/]'))
+        .where((s) => s.isNotEmpty)
+        .toList();
     return segs.isEmpty ? pane.displayPath : segs.last;
   }
 
@@ -173,44 +222,80 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     final bm = ref.read(bookmarksProvider.notifier);
     final was = bm.isBookmarked(pane.connection?.id, pane.path);
     await bm.toggle(pane.connection?.id, pane.path, _pathLabel(pane));
-    _toast(was ? 'Bookmark removed' : 'Bookmarked', pane.displayPath, ToastKind.info);
+    _toast(
+      was ? 'Bookmark removed' : 'Bookmarked',
+      pane.displayPath,
+      ToastKind.info,
+    );
   }
 
   /// Quick-jump menu: this endpoint's bookmarks + recently visited paths.
   Future<void> _showQuickJump(BuildContext ctx, PaneController pane) async {
     final box = ctx.findRenderObject() as RenderBox;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final origin = box.localToGlobal(Offset(0, box.size.height), ancestor: overlay);
+    final origin = box.localToGlobal(
+      Offset(0, box.size.height),
+      ancestor: overlay,
+    );
     final connId = pane.connection?.id;
     final bookmarks = ref.read(bookmarksProvider.notifier).forEndpoint(connId);
     final recents = pane.recentPaths.take(6).toList();
 
     PopupMenuItem<String> pathItem(String label, String path) => PopupMenuItem(
-          value: path,
-          child: SizedBox(
-            width: 260,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: FsType.sans(size: 12, color: FsColors.text1)),
-              Text(pane.backend.displayPath(path), maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: FsType.sans(size: 10, color: FsColors.text3)),
-            ]),
-          ),
-        );
+      value: path,
+      child: SizedBox(
+        width: 260,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 12, color: FsColors.text1),
+            ),
+            Text(
+              pane.backend.displayPath(path),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 10, color: FsColors.text3),
+            ),
+          ],
+        ),
+      ),
+    );
 
     final items = <PopupMenuEntry<String>>[];
     if (bookmarks.isEmpty && recents.isEmpty) {
-      items.add(PopupMenuItem(enabled: false, child: _menuText('No bookmarks or recent paths')));
+      items.add(
+        PopupMenuItem(
+          enabled: false,
+          child: _menuText('No bookmarks or recent paths'),
+        ),
+      );
     } else {
       if (bookmarks.isNotEmpty) {
-        items.add(PopupMenuItem(enabled: false, height: 28, child: _menuHeader('BOOKMARKS')));
+        items.add(
+          PopupMenuItem(
+            enabled: false,
+            height: 28,
+            child: _menuHeader('BOOKMARKS'),
+          ),
+        );
         for (final b in bookmarks) {
           items.add(pathItem(b.label, b.path));
         }
       }
       if (recents.isNotEmpty) {
         if (bookmarks.isNotEmpty) items.add(const PopupMenuDivider());
-        items.add(PopupMenuItem(enabled: false, height: 28, child: _menuHeader('RECENT')));
+        items.add(
+          PopupMenuItem(
+            enabled: false,
+            height: 28,
+            child: _menuHeader('RECENT'),
+          ),
+        );
         for (final r in recents) {
           items.add(pathItem(_lastSegment(r), r));
         }
@@ -220,19 +305,35 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     final choice = await showMenu<String>(
       context: context,
       color: FsColors.bgPanel,
-      position: RelativeRect.fromLTRB(origin.dx, origin.dy, overlay.size.width - origin.dx - 240, 0),
+      position: RelativeRect.fromLTRB(
+        origin.dx,
+        origin.dy,
+        overlay.size.width - origin.dx - 240,
+        0,
+      ),
       items: items,
     );
+    if (!mounted) return;
     if (choice != null) await pane.navigateTo(choice);
   }
 
   String _lastSegment(String path) {
-    final segs = path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).toList();
+    final segs = path
+        .split(RegExp(r'[\\/]'))
+        .where((s) => s.isNotEmpty)
+        .toList();
     return segs.isEmpty ? path : segs.last;
   }
 
-  Widget _menuHeader(String t) => Text(t,
-      style: FsType.sans(size: 9, weight: FontWeight.w700, color: FsColors.text3, letterSpacing: 1));
+  Widget _menuHeader(String t) => Text(
+    t,
+    style: FsType.sans(
+      size: 9,
+      weight: FontWeight.w700,
+      color: FsColors.text3,
+      letterSpacing: 1,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -247,18 +348,48 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       child: Column(
         children: [
           _sessionTabs(sessionsState),
-          _toolbar(settings.showLogOnStartup, settings.showHiddenFiles),
+          // Panes are ChangeNotifiers: each side listens to its own pane so a
+          // selection click or a streamed listing page repaints only that pane;
+          // the toolbar tracks both (back/forward/mutability follow the focused
+          // pane). Structural changes (tabs/focus) still arrive via the
+          // sessionsProvider watch above.
+          ListenableBuilder(
+            listenable: Listenable.merge([_leftPane, _rightPane]),
+            builder: (context, _) =>
+                _toolbar(settings.showLogOnStartup, settings.showHiddenFiles),
+          ),
           Expanded(
-            child: LayoutBuilder(builder: (context, c) {
-              final leftW = (c.maxWidth - 5) * _split;
-              return Row(
-                children: [
-                  SizedBox(width: leftW, child: _pane(_leftPane, settings.showPermsColumn, left: true)),
-                  _divider(c.maxWidth),
-                  Expanded(child: _pane(_rightPane, settings.showPermsColumn, left: false)),
-                ],
-              );
-            }),
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final leftW = (c.maxWidth - 5) * _split;
+                return Row(
+                  children: [
+                    SizedBox(
+                      width: leftW,
+                      child: ListenableBuilder(
+                        listenable: _leftPane,
+                        builder: (context, _) => _pane(
+                          _leftPane,
+                          settings.showPermsColumn,
+                          left: true,
+                        ),
+                      ),
+                    ),
+                    _divider(c.maxWidth),
+                    Expanded(
+                      child: ListenableBuilder(
+                        listenable: _rightPane,
+                        builder: (context, _) => _pane(
+                          _rightPane,
+                          settings.showPermsColumn,
+                          left: false,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
           _queueStrip(),
           if (showLog) _logPanel(),
@@ -268,8 +399,17 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   KeyEventResult _onKey(KeyEvent event) {
-    // While the inline path editor is open, let the text field own every key
-    // (typing, Enter, Escape) — don't run pane navigation/type-ahead.
+    // Never hijack typing: while any text field owns focus (the toolbar filter,
+    // the inline path editor, …) every key belongs to it — Backspace must
+    // delete a character, not navigate up a folder.
+    final focusCtx = FocusManager.instance.primaryFocus?.context;
+    if (focusCtx != null &&
+        (focusCtx.widget is EditableText ||
+            focusCtx.findAncestorWidgetOfExactType<EditableText>() != null)) {
+      return KeyEventResult.ignored;
+    }
+    // The path editor also gets the frame between opening and its field taking
+    // focus (requestFocus lands next frame), so keep its explicit exemption.
     if (_editingPathLeft != null) return KeyEventResult.ignored;
 
     // Ignore key-up; let held arrows/page keys auto-repeat (KeyRepeatEvent).
@@ -322,13 +462,15 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         return KeyEventResult.handled;
       case LogicalKeyboardKey.space:
         final f = _selectedAny(pane);
-        if (f != null && !f.isDir && !f.isParent) _showPreview(pane, f);
+        if (f != null && !f.isDir && !f.isParent) {
+          unawaited(_showPreview(pane, f));
+        }
         return KeyEventResult.handled;
       case LogicalKeyboardKey.f2:
-        _renameSelected(pane);
+        unawaited(_renameSelected(pane));
         return KeyEventResult.handled;
       case LogicalKeyboardKey.delete:
-        _deleteSelected(pane);
+        unawaited(_deleteSelected(pane));
         return KeyEventResult.handled;
       case LogicalKeyboardKey.backspace:
         _navigate(pane.goUp(), sc);
@@ -348,7 +490,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         !kb.isMetaPressed) {
       _typeAheadTimer?.cancel();
       _typeAheadBuffer += ch;
-      _typeAheadTimer = Timer(const Duration(milliseconds: 700), () => _typeAheadBuffer = '');
+      _typeAheadTimer = Timer(
+        const Duration(milliseconds: 700),
+        () => _typeAheadBuffer = '',
+      );
       if (pane.typeAhead(_typeAheadBuffer)) _scrollToSelection(pane, sc);
       return KeyEventResult.handled;
     }
@@ -366,9 +511,11 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   /// Run a navigation [op] then reset the pane's scroll to the top once the new
   /// listing has loaded.
   void _navigate(Future<void> op, ScrollController sc) {
-    op.then((_) {
-      if (mounted && sc.hasClients) sc.jumpTo(0);
-    });
+    unawaited(
+      op.then((_) {
+        if (mounted && sc.hasClients) sc.jumpTo(0);
+      }),
+    );
   }
 
   /// The selected entry including "..", or null if nothing is selected.
@@ -401,7 +548,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       target = bottom - sc.position.viewportDimension;
     }
     if (target != null) {
-      sc.jumpTo(target.clamp(sc.position.minScrollExtent, sc.position.maxScrollExtent));
+      sc.jumpTo(
+        target.clamp(sc.position.minScrollExtent, sc.position.maxScrollExtent),
+      );
     }
   }
 
@@ -415,16 +564,28 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
 
   Future<void> _newFolder(PaneController pane) async {
     if (!pane.backend.mutableAt(pane.path)) {
-      _toast('Not supported', 'Open a bucket first to create folders here', ToastKind.error);
+      _toast(
+        'Not supported',
+        'Open a bucket first to create folders here',
+        ToastKind.error,
+      );
       return;
     }
-    final name = await _promptText(title: 'New folder', hint: 'Folder name', confirm: 'Create');
+    final name = await _promptText(
+      title: 'New folder',
+      hint: 'Folder name',
+      confirm: 'Create',
+    );
     if (name != null) await _sessions.createFolder(pane, name);
   }
 
   Future<void> _renameSelected(PaneController pane) async {
     if (!pane.backend.mutableAt(pane.path)) {
-      _toast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
+      _toast(
+        'Not supported',
+        '${pane.endpointLabel} is read-only here',
+        ToastKind.error,
+      );
       return;
     }
     final item = _selected(pane);
@@ -432,13 +593,21 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       _toast('Nothing selected', 'Select an item to rename', ToastKind.info);
       return;
     }
-    final name = await _promptText(title: 'Rename', initial: item.name, confirm: 'Rename');
+    final name = await _promptText(
+      title: 'Rename',
+      initial: item.name,
+      confirm: 'Rename',
+    );
     if (name != null) await _sessions.renameItem(pane, item, name);
   }
 
   Future<void> _deleteSelected(PaneController pane) async {
     if (!pane.backend.mutableAt(pane.path)) {
-      _toast('Not supported', '${pane.endpointLabel} is read-only here', ToastKind.error);
+      _toast(
+        'Not supported',
+        '${pane.endpointLabel} is read-only here',
+        ToastKind.error,
+      );
       return;
     }
     final items = pane.selectedItems();
@@ -447,14 +616,22 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       return;
     }
     final ok = await _confirm(
-      title: items.length == 1 ? 'Delete "${items.first.name}"?' : 'Delete ${items.length} items?',
-      message: 'This permanently deletes the selected '
+      title: items.length == 1
+          ? 'Delete "${items.first.name}"?'
+          : 'Delete ${items.length} items?',
+      message:
+          'This permanently deletes the selected '
           '${items.length == 1 ? (items.first.isDir ? 'folder and its contents' : 'file') : 'items'}.',
     );
     if (ok) await _sessions.deleteItems(pane, items);
   }
 
-  Future<void> _showRowMenu(PaneController pane, bool left, FileItem item, Offset pos) async {
+  Future<void> _showRowMenu(
+    PaneController pane,
+    bool left,
+    FileItem item,
+    Offset pos,
+  ) async {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     // Mutation actions are meaningless at a read-only root (e.g. the S3 bucket
     // list), so leave them out of the menu there.
@@ -462,28 +639,57 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     final choice = await showMenu<String>(
       context: context,
       color: FsColors.bgPanel,
-      position: RelativeRect.fromLTRB(pos.dx, pos.dy, overlay.size.width - pos.dx, 0),
+      position: RelativeRect.fromLTRB(
+        pos.dx,
+        pos.dy,
+        overlay.size.width - pos.dx,
+        0,
+      ),
       items: [
-        PopupMenuItem(value: 'transfer', child: _menuText(left ? '⬆ Upload to other pane' : '⬇ Download to other pane')),
-        if (!item.isDir) PopupMenuItem(value: 'preview', child: _menuText('👁 Preview')),
-        if (canMutate) PopupMenuItem(value: 'rename', child: _menuText('✎ Rename')),
-        if (canMutate) PopupMenuItem(value: 'delete', child: _menuText('⊗ Delete', color: FsColors.red)),
+        PopupMenuItem(
+          value: 'transfer',
+          child: _menuText(
+            left ? '⬆ Upload to other pane' : '⬇ Download to other pane',
+          ),
+        ),
+        if (!item.isDir)
+          PopupMenuItem(value: 'preview', child: _menuText('👁 Preview')),
+        if (canMutate)
+          PopupMenuItem(value: 'rename', child: _menuText('✎ Rename')),
+        if (canMutate)
+          PopupMenuItem(
+            value: 'delete',
+            child: _menuText('⊗ Delete', color: FsColors.red),
+          ),
         if (canMutate) const PopupMenuDivider(),
-        if (canMutate) PopupMenuItem(value: 'newFolder', child: _menuText('⊕ New folder')),
+        if (canMutate)
+          PopupMenuItem(value: 'newFolder', child: _menuText('⊕ New folder')),
         // A leftover staging file from an interrupted transfer — offer to
         // discard it (user-confirmed; the real file is never touched).
         if (canMutate && isPartialName(item.name))
-          PopupMenuItem(value: 'discardPartial', child: _menuText('🧹 Discard leftover partial', color: FsColors.amber)),
+          PopupMenuItem(
+            value: 'discardPartial',
+            child: _menuText(
+              '🧹 Discard leftover partial',
+              color: FsColors.amber,
+            ),
+          ),
         PopupMenuItem(value: 'copyPath', child: _menuText('📋 Copy path')),
       ],
     );
+    if (!mounted) return;
     switch (choice) {
       case 'transfer':
         _sessions.dropTransfer(DragPayload(item, left), !left);
       case 'preview':
         await _showPreview(pane, item);
       case 'rename':
-        final name = await _promptText(title: 'Rename', initial: item.name, confirm: 'Rename');
+        final name = await _promptText(
+          title: 'Rename',
+          initial: item.name,
+          confirm: 'Rename',
+        );
+        if (!mounted) return;
         if (name != null) await _sessions.renameItem(pane, item, name);
       case 'delete':
         await _deleteSelected(pane);
@@ -492,14 +698,18 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       case 'discardPartial':
         final ok = await _confirm(
           title: 'Discard "${item.name}"?',
-          message: 'This removes a leftover partial-transfer temp file. '
+          message:
+              'This removes a leftover partial-transfer temp file. '
               'The original/destination file (if any) is left untouched.',
         );
+        if (!mounted) return;
         if (ok) await _sessions.deleteItems(pane, [item]);
       case 'copyPath':
         // The full location (s3://bucket/key, sftp://host/path, or the local
         // absolute path) — not just the internal key.
-        final loc = pane.backend.displayPath(pane.backend.childPath(pane.path, item.name, item.isDir));
+        final loc = pane.backend.displayPath(
+          pane.backend.childPath(pane.path, item.name, item.isDir),
+        );
         await _copyLocation(loc);
     }
   }
@@ -522,7 +732,11 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       padding: const EdgeInsets.only(right: 6),
       child: Tooltip(
         message: tip,
-        child: Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        child: Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
       ),
     );
   }
@@ -552,9 +766,13 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         root: pane.path,
         rootLabel: '${pane.endpointLabel} · ${pane.displayPath}',
         onPick: (hit) async {
-          final target = hit.isDir ? hit.path : pane.backend.parentPath(hit.path);
+          final target = hit.isDir
+              ? hit.path
+              : pane.backend.parentPath(hit.path);
           await pane.navigateTo(target);
-          final idx = pane.items.indexWhere((e) => e.name == hit.name && !e.isParent);
+          final idx = pane.items.indexWhere(
+            (e) => e.name == hit.name && !e.isParent,
+          );
           if (idx >= 0) pane.select(idx);
         },
       ),
@@ -575,171 +793,281 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     MirrorPlan? resolved;
     MirrorCancel? scanCancel;
     final scanned = ValueNotifier<int>(0);
+    // Set once the dialog is gone (however it was closed) so a straggling scan
+    // callback can't touch the disposed notifier.
+    var closed = false;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
-        final key = '$leftToRight/$deleteExtras/${mode.name}';
-        if (key != planKey) {
-          planKey = key;
-          resolved = null;
-          scanCancel?.cancel(); // abandon any superseded scan
-          final cancel = scanCancel = MirrorCancel();
-          scanned.value = 0;
-          planFuture = _sessions.mirrorPlan(
-            leftToRight: leftToRight,
-            deleteExtras: deleteExtras,
-            mode: mode,
-            cancel: cancel,
-            onScanned: (n) => scanned.value = n,
-            maxDepth: 64,
-            maxFiles: 50000,
-          );
-        }
-        final srcLabel = leftToRight ? _leftPane.endpointLabel : _rightPane.endpointLabel;
-        final dstLabel = leftToRight ? _rightPane.endpointLabel : _leftPane.endpointLabel;
-        Widget dirChip(String label, bool value) => GestureDetector(
-              onTap: () => setLocal(() => leftToRight = value),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: leftToRight == value ? FsColors.bgActive : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: FsColors.border),
-                ),
-                child: Text(label,
-                    style: FsType.sans(
-                        size: 12,
-                        weight: FontWeight.w600,
-                        color: leftToRight == value ? FsColors.accentHi : FsColors.text2)),
-              ),
-            );
-        Widget modeChip(CompareMode m) => GestureDetector(
-              onTap: () => setLocal(() => mode = m),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: mode == m ? FsColors.bgActive : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: FsColors.border),
-                ),
-                child: Text(m.label,
-                    style: FsType.sans(
-                        size: 11,
-                        weight: FontWeight.w600,
-                        color: mode == m ? FsColors.accentHi : FsColors.text2)),
-              ),
-            );
-        return AlertDialog(
-          backgroundColor: FsColors.bgPanel,
-          title: Text('Mirror folders',
-              style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [dirChip('Left → Right', true), const SizedBox(width: 8), dirChip('Right → Left', false)]),
-            const SizedBox(height: 10),
-            Text('Compare by', style: FsType.sans(size: 11, color: FsColors.text3)),
-            const SizedBox(height: 4),
-            Wrap(spacing: 8, runSpacing: 6, children: [for (final m in CompareMode.values) modeChip(m)]),
-            const SizedBox(height: 14),
-            Text('Make $dstLabel match $srcLabel (recursively):',
-                style: FsType.sans(size: 12, color: FsColors.text2)),
-            const SizedBox(height: 8),
-            FutureBuilder<MirrorPlan>(
-              future: planFuture,
-              builder: (c, snap) {
-                if (snap.connectionState != ConnectionState.done || !snap.hasData) {
-                  return Row(children: [
-                    SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
-                    const SizedBox(width: 10),
-                    ValueListenableBuilder<int>(
-                      valueListenable: scanned,
-                      builder: (_, n, _) => Text(
-                          n > 0 ? 'Scanning folders… ($n examined)' : 'Scanning folders…',
-                          style: FsType.sans(size: 12, color: FsColors.text3)),
-                    ),
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: () => scanCancel?.cancel(),
-                      child: Text('Stop',
-                          style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.amber)),
-                    ),
-                  ]);
-                }
-                final plan = resolved = snap.data!;
-                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('· ${plan.fileCount} file(s) to copy · ${formatBytes(plan.totalBytes)}',
-                      style: FsType.sans(size: 12, color: FsColors.text1)),
-                  Text('· ${plan.dirCount} folder(s) to create',
-                      style: FsType.sans(size: 12, color: FsColors.text1)),
-                  Text('· ${plan.deleteCount} item(s) to delete on $dstLabel',
-                      style: FsType.sans(size: 12, color: plan.deleteCount > 0 ? FsColors.red : FsColors.text3)),
-                  if (plan.truncated)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                          '⚠ Scan was stopped early (limit reached or cancelled) — this plan is partial.',
-                          style: FsType.sans(size: 11, color: FsColors.amber)),
-                    ),
-                ]);
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final key = '$leftToRight/$deleteExtras/${mode.name}';
+          if (key != planKey) {
+            planKey = key;
+            resolved = null;
+            scanCancel?.cancel(); // abandon any superseded scan
+            final cancel = scanCancel = MirrorCancel();
+            scanned.value = 0;
+            planFuture = _sessions.mirrorPlan(
+              leftToRight: leftToRight,
+              deleteExtras: deleteExtras,
+              mode: mode,
+              cancel: cancel,
+              onScanned: (n) {
+                if (!closed) scanned.value = n;
               },
+              maxDepth: 64,
+              maxFiles: 50000,
+            );
+          }
+          final srcLabel = leftToRight
+              ? _leftPane.endpointLabel
+              : _rightPane.endpointLabel;
+          final dstLabel = leftToRight
+              ? _rightPane.endpointLabel
+              : _leftPane.endpointLabel;
+          Widget dirChip(String label, bool value) => GestureDetector(
+            onTap: () => setLocal(() => leftToRight = value),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: leftToRight == value
+                    ? FsColors.bgActive
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: FsColors.border),
+              ),
+              child: Text(
+                label,
+                style: FsType.sans(
+                  size: 12,
+                  weight: FontWeight.w600,
+                  color: leftToRight == value
+                      ? FsColors.accentHi
+                      : FsColors.text2,
+                ),
+              ),
             ),
-            const SizedBox(height: 10),
-            GestureDetector(
-              onTap: () => setLocal(() => deleteExtras = !deleteExtras),
-              child: Row(children: [
-                SizedBox(
-                  width: 18, height: 18,
-                  child: Checkbox(
-                    value: deleteExtras,
-                    onChanged: (v) => setLocal(() => deleteExtras = v ?? false),
-                    activeColor: FsColors.accent,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          );
+          Widget modeChip(CompareMode m) => GestureDetector(
+            onTap: () => setLocal(() => mode = m),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: mode == m ? FsColors.bgActive : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: FsColors.border),
+              ),
+              child: Text(
+                m.label,
+                style: FsType.sans(
+                  size: 11,
+                  weight: FontWeight.w600,
+                  color: mode == m ? FsColors.accentHi : FsColors.text2,
+                ),
+              ),
+            ),
+          );
+          return AlertDialog(
+            backgroundColor: FsColors.bgPanel,
+            title: Text(
+              'Mirror folders',
+              style: FsType.sans(
+                size: 14,
+                weight: FontWeight.w600,
+                color: FsColors.text1,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    dirChip('Left → Right', true),
+                    const SizedBox(width: 8),
+                    dirChip('Right → Left', false),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Compare by',
+                  style: FsType.sans(size: 11, color: FsColors.text3),
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [for (final m in CompareMode.values) modeChip(m)],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Make $dstLabel match $srcLabel (recursively):',
+                  style: FsType.sans(size: 12, color: FsColors.text2),
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<MirrorPlan>(
+                  future: planFuture,
+                  builder: (c, snap) {
+                    if (snap.connectionState != ConnectionState.done ||
+                        !snap.hasData) {
+                      return Row(
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: FsColors.accent,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          ValueListenableBuilder<int>(
+                            valueListenable: scanned,
+                            builder: (_, n, _) => Text(
+                              n > 0
+                                  ? 'Scanning folders… ($n examined)'
+                                  : 'Scanning folders…',
+                              style: FsType.sans(
+                                size: 12,
+                                color: FsColors.text3,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () => scanCancel?.cancel(),
+                            child: Text(
+                              'Stop',
+                              style: FsType.sans(
+                                size: 11,
+                                weight: FontWeight.w600,
+                                color: FsColors.amber,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                    final plan = resolved = snap.data!;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '· ${plan.fileCount} file(s) to copy · ${formatBytes(plan.totalBytes)}',
+                          style: FsType.sans(size: 12, color: FsColors.text1),
+                        ),
+                        Text(
+                          '· ${plan.dirCount} folder(s) to create',
+                          style: FsType.sans(size: 12, color: FsColors.text1),
+                        ),
+                        Text(
+                          '· ${plan.deleteCount} item(s) to delete on $dstLabel',
+                          style: FsType.sans(
+                            size: 12,
+                            color: plan.deleteCount > 0
+                                ? FsColors.red
+                                : FsColors.text3,
+                          ),
+                        ),
+                        if (plan.truncated)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              '⚠ Scan was stopped early (limit reached or cancelled) — this plan is partial.',
+                              style: FsType.sans(
+                                size: 11,
+                                color: FsColors.amber,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: () => setLocal(() => deleteExtras = !deleteExtras),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: Checkbox(
+                          value: deleteExtras,
+                          onChanged: (v) =>
+                              setLocal(() => deleteExtras = v ?? false),
+                          activeColor: FsColors.accent,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Delete destination-only extras',
+                        style: FsType.sans(size: 12, color: FsColors.text2),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 10),
-                Text('Delete destination-only extras', style: FsType.sans(size: 12, color: FsColors.text2)),
-              ]),
+              ],
             ),
-          ]),
-          actions: [
-            FsButton('Cancel', onTap: () {
-              scanCancel?.cancel(); // stop any in-flight scan
-              Navigator.pop(ctx);
-            }),
-            FsButton('Mirror',
+            actions: [
+              FsButton(
+                'Cancel',
+                onTap: () {
+                  scanCancel?.cancel(); // stop any in-flight scan
+                  Navigator.pop(ctx);
+                },
+              ),
+              FsButton(
+                'Mirror',
                 kind: FsButtonKind.primary,
                 onTap: () async {
                   final plan = resolved;
                   if (plan == null) return; // still scanning
                   if (plan.isEmpty) {
                     Navigator.pop(ctx);
-                    _toast('Nothing to mirror', 'The folders already match', ToastKind.info);
+                    _toast(
+                      'Nothing to mirror',
+                      'The folders already match',
+                      ToastKind.info,
+                    );
                     return;
                   }
                   // Deleting destination-only files is destructive and
                   // irreversible — require an explicit second confirmation with
                   // a preview of exactly what will be removed.
                   if (plan.deletes.isNotEmpty) {
-                    final sample = plan.deletes.take(8).map((d) => '• ${d.dstPath}').join('\n');
+                    final sample = plan.deletes
+                        .take(8)
+                        .map((d) => '• ${d.dstPath}')
+                        .join('\n');
                     final more = plan.deletes.length > 8
                         ? '\n…and ${plan.deletes.length - 8} more'
                         : '';
                     final ok = await _confirm(
                       title: 'Delete ${plan.deleteCount} item(s) on $dstLabel?',
-                      message: 'Mirror will permanently delete these destination-only '
+                      message:
+                          'Mirror will permanently delete these destination-only '
                           'items (this cannot be undone):\n\n$sample$more',
                     );
                     if (!ok) return; // leave the mirror dialog open
                   }
                   if (ctx.mounted) Navigator.pop(ctx);
-                  _sessions.runMirror(plan);
-                }),
-          ],
-        );
-      }),
-    );
+                  unawaited(_sessions.runMirror(plan));
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    ).whenComplete(() {
+      // Runs on any close — including a barrier dismiss, which would otherwise
+      // leave a (possibly remote) recursive scan running and leak the notifier.
+      scanCancel?.cancel();
+      closed = true;
+      scanned.dispose();
+    });
   }
 
   // ── Dialogs ──
@@ -749,47 +1077,44 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     String hint = '',
     String confirm = 'OK',
   }) {
-    final ctl = TextEditingController(text: initial);
-    ctl.selection = TextSelection(baseOffset: 0, extentOffset: initial.length);
     return showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: FsColors.bgPanel,
-        title: Text(title, style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-        content: SizedBox(
-          width: 360,
-          child: TextField(
-            controller: ctl,
-            autofocus: true,
-            onSubmitted: (v) => Navigator.pop(ctx, v),
-            style: FsType.sans(size: 13, color: FsColors.text1),
-            cursorColor: FsColors.accent,
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: FsType.sans(size: 13, color: FsColors.text3),
-              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: FsColors.border)),
-              focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: FsColors.accent)),
-            ),
-          ),
-        ),
-        actions: [
-          FsButton('Cancel', onTap: () => Navigator.pop(ctx)),
-          FsButton(confirm, kind: FsButtonKind.primary, onTap: () => Navigator.pop(ctx, ctl.text)),
-        ],
+      builder: (_) => _PromptDialog(
+        title: title,
+        initial: initial,
+        hint: hint,
+        confirm: confirm,
       ),
     );
   }
 
-  Future<bool> _confirm({required String title, required String message}) async {
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+  }) async {
     final r = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: FsColors.bgPanel,
-        title: Text(title, style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-        content: Text(message, style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
+        title: Text(
+          title,
+          style: FsType.sans(
+            size: 14,
+            weight: FontWeight.w600,
+            color: FsColors.text1,
+          ),
+        ),
+        content: Text(
+          message,
+          style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5),
+        ),
         actions: [
           FsButton('Cancel', onTap: () => Navigator.pop(ctx, false)),
-          FsButton('Delete', kind: FsButtonKind.danger, onTap: () => Navigator.pop(ctx, true)),
+          FsButton(
+            'Delete',
+            kind: FsButtonKind.danger,
+            onTap: () => Navigator.pop(ctx, true),
+          ),
         ],
       ),
     );
@@ -805,83 +1130,115 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       ),
       padding: const EdgeInsets.only(left: 8),
       height: 38,
-      child: Row(children: [
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [for (final s in state.sessions) _tab(state, s)]),
-          ),
-        ),
-        // New tab → pick a server to connect.
-        Hoverable(builder: (hover) {
-          return GestureDetector(
-            onTap: () => _go(AppScreen.connections),
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: Tooltip(
-                message: 'New session',
-                child: Container(
-                  width: 30,
-                  alignment: Alignment.center,
-                  child: Text('＋',
-                      style: FsType.sans(size: 15, color: hover ? FsColors.accentHi : FsColors.text3)),
-                ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [for (final s in state.sessions) _tab(state, s)],
               ),
             ),
-          );
-        }),
-      ]),
+          ),
+          // New tab → pick a server to connect.
+          Hoverable(
+            builder: (hover) {
+              return GestureDetector(
+                onTap: () => _go(AppScreen.connections),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Tooltip(
+                    message: 'New session',
+                    child: Container(
+                      width: 30,
+                      alignment: Alignment.center,
+                      child: Text(
+                        '＋',
+                        style: FsType.sans(
+                          size: 15,
+                          color: hover ? FsColors.accentHi : FsColors.text3,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
   Widget _tab(SessionsState state, Session s) {
     final active = s.id == state.activeSessionId;
     final dot = s.online ? FsColors.green : FsColors.amber;
-    return Hoverable(builder: (hover) {
-      return GestureDetector(
-        onTap: () => _sessions.switchSession(s.id),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            decoration: BoxDecoration(
-              color: active ? FsColors.bgSurface : (hover ? FsColors.bgHover : Colors.transparent),
-              border: Border(
-                bottom: BorderSide(color: active ? FsColors.accent : Colors.transparent, width: 2),
-              ),
-            ),
-            padding: const EdgeInsets.only(left: 14, right: 8),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              StatusDot(dot, glow: s.online),
-              const SizedBox(width: 7),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
-                child: Text(s.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: FsType.sans(size: 12, color: active ? FsColors.accentHi : FsColors.text2)),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => _sessions.closeSession(s.id),
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: Hoverable(builder: (h) => Container(
-                        width: 16,
-                        height: 16,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: h ? FsColors.bgPanel : Colors.transparent,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Icon(Icons.close, size: 11, color: h ? FsColors.text1 : FsColors.text3),
-                      )),
+    return Hoverable(
+      builder: (hover) {
+        return GestureDetector(
+          onTap: () => _sessions.switchSession(s.id),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: Container(
+              decoration: BoxDecoration(
+                color: active
+                    ? FsColors.bgSurface
+                    : (hover ? FsColors.bgHover : Colors.transparent),
+                border: Border(
+                  bottom: BorderSide(
+                    color: active ? FsColors.accent : Colors.transparent,
+                    width: 2,
+                  ),
                 ),
               ),
-            ]),
+              padding: const EdgeInsets.only(left: 14, right: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  StatusDot(dot, glow: s.online),
+                  const SizedBox(width: 7),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: Text(
+                      s.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: FsType.sans(
+                        size: 12,
+                        color: active ? FsColors.accentHi : FsColors.text2,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _sessions.closeSession(s.id),
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Hoverable(
+                        builder: (h) => Container(
+                          width: 16,
+                          height: 16,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: h ? FsColors.bgPanel : Colors.transparent,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            size: 11,
+                            color: h ? FsColors.text1 : FsColors.text3,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 
   // ── Toolbar ──
@@ -893,93 +1250,154 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         color: FsColors.bgPanel,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
-      child: Row(children: [
-        // The button cluster scrolls horizontally on narrow windows instead of
-        // overflowing; the filter stays pinned on the right.
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              ToolButton('← Back',
-                  tooltip: 'Back to the previous folder', onTap: pane.canGoBack ? pane.goBack : null),
-              ToolButton('→ Fwd',
-                  tooltip: 'Forward to the next folder',
-                  onTap: pane.canGoForward ? pane.goForward : null),
-              ToolButton('↑ Up', tooltip: 'Go up one folder (Backspace)', onTap: pane.goUp),
-              const ToolSep(),
-              ToolButton('🔍 Find',
-                  tooltip: 'Search files in this pane', onTap: () => _showFindDialog(_focusedPane)),
-              ToolButton('👁 Preview', tooltip: 'Quick-preview the selected file (Space)', onTap: () {
-                final f = _selected(_focusedPane);
-                if (f == null) {
-                  _toast('Nothing selected', 'Select a file to preview', ToastKind.info);
-                } else {
-                  _showPreview(_focusedPane, f);
-                }
-              }),
-              ToolButton('⇄ Compare',
-                  tooltip: 'Compare the two panes\' folders', onTap: () => _sessions.compareActivePanes()),
-              ToolButton('⇉ Mirror',
-                  tooltip: 'Mirror one pane onto the other', onTap: _showMirrorDialog),
-              ToolButton('↯ Queue', tooltip: 'Open the transfer queue', onTap: () => _go(AppScreen.queue)),
-              ToolButton('📋 Log',
-                  tooltip: 'Toggle the log console',
-                  active: _showLogOverride ?? showLogOnStartup,
-                  onTap: () => setState(
-                      () => _showLogOverride = !(_showLogOverride ?? showLogOnStartup))),
-              ToolButton('• Hidden',
-                  tooltip: showHiddenFiles
-                      ? 'Hide hidden (dot-) files'
-                      : 'Show hidden (dot-) files',
-                  active: showHiddenFiles,
-                  onTap: () =>
-                      ref.read(settingsProvider.notifier).setShowHiddenFiles(!showHiddenFiles)),
-              const ToolSep(),
-              Builder(builder: (_) {
-                // The S3 account-level bucket list (discovery root) isn't a
-                // writable directory, so hide these actions where they can't
-                // work rather than offer a button that always errors.
-                final canMutate = _focusedPane.backend.mutableAt(_focusedPane.path);
-                final mutateTip = canMutate ? null : 'Not available here';
-                return Row(mainAxisSize: MainAxisSize.min, children: [
-                  ToolButton('⊕ New Folder',
-                      enabled: canMutate,
-                      tooltip: mutateTip ?? 'Create a new folder here',
-                      onTap: () => _newFolder(_focusedPane)),
-                  ToolButton('✎ Rename',
-                      enabled: canMutate,
-                      tooltip: mutateTip ?? 'Rename the selected item (F2)',
-                      onTap: () => _renameSelected(_focusedPane)),
-                  ToolButton('⊗ Delete',
-                      enabled: canMutate,
-                      tooltip: mutateTip ?? 'Delete the selected item(s) (Del)',
-                      color: FsColors.red,
-                      onTap: () => _deleteSelected(_focusedPane)),
-                ]);
-              }),
-            ]),
+      child: Row(
+        children: [
+          // The button cluster scrolls horizontally on narrow windows instead of
+          // overflowing; the filter stays pinned on the right.
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ToolButton(
+                    '← Back',
+                    tooltip: 'Back to the previous folder',
+                    onTap: pane.canGoBack ? pane.goBack : null,
+                  ),
+                  ToolButton(
+                    '→ Fwd',
+                    tooltip: 'Forward to the next folder',
+                    onTap: pane.canGoForward ? pane.goForward : null,
+                  ),
+                  ToolButton(
+                    '↑ Up',
+                    tooltip: 'Go up one folder (Backspace)',
+                    onTap: pane.goUp,
+                  ),
+                  const ToolSep(),
+                  ToolButton(
+                    '🔍 Find',
+                    tooltip: 'Search files in this pane',
+                    onTap: () => _showFindDialog(_focusedPane),
+                  ),
+                  ToolButton(
+                    '👁 Preview',
+                    tooltip: 'Quick-preview the selected file (Space)',
+                    onTap: () {
+                      final f = _selected(_focusedPane);
+                      if (f == null) {
+                        _toast(
+                          'Nothing selected',
+                          'Select a file to preview',
+                          ToastKind.info,
+                        );
+                      } else {
+                        unawaited(_showPreview(_focusedPane, f));
+                      }
+                    },
+                  ),
+                  ToolButton(
+                    '⇄ Compare',
+                    tooltip: 'Compare the two panes\' folders',
+                    onTap: () => _sessions.compareActivePanes(),
+                  ),
+                  ToolButton(
+                    '⇉ Mirror',
+                    tooltip: 'Mirror one pane onto the other',
+                    onTap: _showMirrorDialog,
+                  ),
+                  ToolButton(
+                    '↯ Queue',
+                    tooltip: 'Open the transfer queue',
+                    onTap: () => _go(AppScreen.queue),
+                  ),
+                  ToolButton(
+                    '📋 Log',
+                    tooltip: 'Toggle the log console',
+                    active: _showLogOverride ?? showLogOnStartup,
+                    onTap: () => setState(
+                      () => _showLogOverride =
+                          !(_showLogOverride ?? showLogOnStartup),
+                    ),
+                  ),
+                  ToolButton(
+                    '• Hidden',
+                    tooltip: showHiddenFiles
+                        ? 'Hide hidden (dot-) files'
+                        : 'Show hidden (dot-) files',
+                    active: showHiddenFiles,
+                    onTap: () => ref
+                        .read(settingsProvider.notifier)
+                        .setShowHiddenFiles(!showHiddenFiles),
+                  ),
+                  const ToolSep(),
+                  Builder(
+                    builder: (_) {
+                      // The S3 account-level bucket list (discovery root) isn't a
+                      // writable directory, so hide these actions where they can't
+                      // work rather than offer a button that always errors.
+                      final canMutate = _focusedPane.backend.mutableAt(
+                        _focusedPane.path,
+                      );
+                      final mutateTip = canMutate ? null : 'Not available here';
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ToolButton(
+                            '⊕ New Folder',
+                            enabled: canMutate,
+                            tooltip: mutateTip ?? 'Create a new folder here',
+                            onTap: () => _newFolder(_focusedPane),
+                          ),
+                          ToolButton(
+                            '✎ Rename',
+                            enabled: canMutate,
+                            tooltip:
+                                mutateTip ?? 'Rename the selected item (F2)',
+                            onTap: () => _renameSelected(_focusedPane),
+                          ),
+                          ToolButton(
+                            '⊗ Delete',
+                            enabled: canMutate,
+                            tooltip:
+                                mutateTip ??
+                                'Delete the selected item(s) (Del)',
+                            color: FsColors.red,
+                            onTap: () => _deleteSelected(_focusedPane),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Text('Filter:', style: FsType.sans(size: 10, color: FsColors.text3)),
-        const SizedBox(width: 6),
-        Builder(builder: (_) {
-          // Reflect the focused pane's filter (e.g. after switching panes)
-          // without clobbering the caret while typing in the same pane.
-          final pane = _focusedPane;
-          if (_filterCtl.text != pane.filterQuery) {
-            _filterCtl.text = pane.filterQuery;
-            _filterCtl.selection = TextSelection.collapsed(offset: _filterCtl.text.length);
-          }
-          return FsTextField(
-            controller: _filterCtl,
-            hint: 'name…',
-            width: 240,
-            height: 26,
-            onChanged: (v) => _focusedPane.setFilter(v),
-          );
-        }),
-      ]),
+          const SizedBox(width: 8),
+          Text('Filter:', style: FsType.sans(size: 10, color: FsColors.text3)),
+          const SizedBox(width: 6),
+          Builder(
+            builder: (_) {
+              // Reflect the focused pane's filter (e.g. after switching panes)
+              // without clobbering the caret while typing in the same pane.
+              final pane = _focusedPane;
+              if (_filterCtl.text != pane.filterQuery) {
+                _filterCtl.text = pane.filterQuery;
+                _filterCtl.selection = TextSelection.collapsed(
+                  offset: _filterCtl.text.length,
+                );
+              }
+              return FsTextField(
+                controller: _filterCtl,
+                hint: 'name…',
+                width: 240,
+                height: 26,
+                onChanged: (v) => _focusedPane.setFilter(v),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -987,7 +1405,9 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     return MouseRegion(
       cursor: SystemMouseCursors.resizeColumn,
       child: GestureDetector(
-        onHorizontalDragUpdate: (d) => setState(() => _split = (_split + d.delta.dx / totalW).clamp(0.25, 0.75)),
+        onHorizontalDragUpdate: (d) => setState(
+          () => _split = (_split + d.delta.dx / totalW).clamp(0.25, 0.75),
+        ),
         child: Container(width: 5, color: FsColors.border),
       ),
     );
@@ -995,51 +1415,66 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
 
   // ── A pane (drag source + drop target) ──
   Widget _pane(PaneController pane, bool showPerms, {required bool left}) {
-    final hover = (left ? _dropHoverLeft : _dropHoverRight) || (left ? _osDropLeft : _osDropRight);
+    final hover =
+        (left ? _dropHoverLeft : _dropHoverRight) ||
+        (left ? _osDropLeft : _osDropRight);
     return DropTarget(
-      onDragEntered: (_) => setState(() => left ? _osDropLeft = true : _osDropRight = true),
-      onDragExited: (_) => setState(() => left ? _osDropLeft = false : _osDropRight = false),
+      onDragEntered: (_) =>
+          setState(() => left ? _osDropLeft = true : _osDropRight = true),
+      onDragExited: (_) =>
+          setState(() => left ? _osDropLeft = false : _osDropRight = false),
       onDragDone: (detail) {
         setState(() => left ? _osDropLeft = false : _osDropRight = false);
-        final paths = detail.files.map((f) => f.path).where((s) => s.isNotEmpty).toList();
+        final paths = detail.files
+            .map((f) => f.path)
+            .where((s) => s.isNotEmpty)
+            .toList();
         if (paths.isEmpty) return;
         _sessions.focusPane(left);
-        ref.read(transfersProvider.notifier).importFiles(left ? _leftPane : _rightPane, paths);
+        ref
+            .read(transfersProvider.notifier)
+            .importFiles(left ? _leftPane : _rightPane, paths);
       },
       child: DragTarget<DragPayload>(
-      onWillAcceptWithDetails: (d) {
-        if (d.data.fromLeft == left) return false;
-        setState(() => left ? _dropHoverLeft = true : _dropHoverRight = true);
-        return true;
-      },
-      onLeave: (_) => setState(() => left ? _dropHoverLeft = false : _dropHoverRight = false),
-      onAcceptWithDetails: (d) {
-        setState(() => left ? _dropHoverLeft = false : _dropHoverRight = false);
-        _sessions.dropTransfer(d.data, left);
-      },
-      builder: (context, candidate, rejected) {
-        final focused = ref.read(sessionsProvider).focusedLeft == left;
-        return Listener(
-          onPointerDown: (_) => _sessions.focusPane(left),
-          child: Container(
-            decoration: BoxDecoration(
-              color: hover ? FsColors.accent.withValues(alpha: 0.06) : null,
-              border: Border.all(
-                color: hover
-                    ? FsColors.accent
-                    : (focused ? FsColors.borderHi : Colors.transparent),
-                width: 2,
+        onWillAcceptWithDetails: (d) {
+          if (d.data.fromLeft == left) return false;
+          setState(() => left ? _dropHoverLeft = true : _dropHoverRight = true);
+          return true;
+        },
+        onLeave: (_) => setState(
+          () => left ? _dropHoverLeft = false : _dropHoverRight = false,
+        ),
+        onAcceptWithDetails: (d) {
+          setState(
+            () => left ? _dropHoverLeft = false : _dropHoverRight = false,
+          );
+          _sessions.dropTransfer(d.data, left);
+        },
+        builder: (context, candidate, rejected) {
+          final focused = ref.read(sessionsProvider).focusedLeft == left;
+          return Listener(
+            onPointerDown: (_) => _sessions.focusPane(left),
+            child: Container(
+              decoration: BoxDecoration(
+                color: hover ? FsColors.accent.withValues(alpha: 0.06) : null,
+                border: Border.all(
+                  color: hover
+                      ? FsColors.accent
+                      : (focused ? FsColors.borderHi : Colors.transparent),
+                  width: 2,
+                ),
+              ),
+              child: Column(
+                children: [
+                  _paneHeader(pane, left: left),
+                  _breadcrumb(pane),
+                  Expanded(child: _paneBody(pane, showPerms, left: left)),
+                  _paneFooter(pane),
+                ],
               ),
             ),
-            child: Column(children: [
-              _paneHeader(pane, left: left),
-              _breadcrumb(pane),
-              Expanded(child: _paneBody(pane, showPerms, left: left)),
-              _paneFooter(pane),
-            ]),
-          ),
-        );
-      },
+          );
+        },
       ),
     );
   }
@@ -1050,13 +1485,13 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     final badgeBg = isLocal
         ? FsColors.badgeLocalBg
         : isS3
-            ? FsColors.badgePausedBg
-            : FsColors.badgeRemoteBg;
+        ? FsColors.badgePausedBg
+        : FsColors.badgeRemoteBg;
     final badgeFg = isLocal
         ? FsColors.accentHi
         : isS3
-            ? FsColors.amber
-            : FsColors.badgeRemoteFg;
+        ? FsColors.amber
+        : FsColors.badgeRemoteFg;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1064,30 +1499,46 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         color: FsColors.bgPanel,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
-      child: Row(children: [
-        _endpointPicker(pane, left: left, badgeBg: badgeBg, badgeFg: badgeFg),
-        const SizedBox(width: 8),
-        Expanded(child: _pathBar(pane, left)),
-        const SizedBox(width: 6),
-        _paneIconBtn(
-          ref.read(bookmarksProvider.notifier).isBookmarked(pane.connection?.id, pane.path) ? '★' : '☆',
-          tooltip: ref.read(bookmarksProvider.notifier).isBookmarked(pane.connection?.id, pane.path)
-              ? 'Remove bookmark'
-              : 'Bookmark this location',
-          onTap: () => _toggleBookmark(pane),
-        ),
-        const SizedBox(width: 4),
-        Builder(
-            builder: (ctx) => _paneIconBtn('▾',
-                tooltip: 'Jump to a bookmark or recent path',
-                onTap: () => _showQuickJump(ctx, pane))),
-        const SizedBox(width: 4),
-        _paneIconBtn('📋', tooltip: 'Copy this location', onTap: () => _copyLocation(pane.displayPath)),
-        const SizedBox(width: 4),
-        _paneIconBtn('↑', tooltip: 'Go up one folder', onTap: pane.goUp),
-        const SizedBox(width: 4),
-        _paneIconBtn('↺', tooltip: 'Refresh listing', onTap: pane.refresh),
-      ]),
+      child: Row(
+        children: [
+          _endpointPicker(pane, left: left, badgeBg: badgeBg, badgeFg: badgeFg),
+          const SizedBox(width: 8),
+          Expanded(child: _pathBar(pane, left)),
+          const SizedBox(width: 6),
+          _paneIconBtn(
+            ref
+                    .read(bookmarksProvider.notifier)
+                    .isBookmarked(pane.connection?.id, pane.path)
+                ? '★'
+                : '☆',
+            tooltip:
+                ref
+                    .read(bookmarksProvider.notifier)
+                    .isBookmarked(pane.connection?.id, pane.path)
+                ? 'Remove bookmark'
+                : 'Bookmark this location',
+            onTap: () => _toggleBookmark(pane),
+          ),
+          const SizedBox(width: 4),
+          Builder(
+            builder: (ctx) => _paneIconBtn(
+              '▾',
+              tooltip: 'Jump to a bookmark or recent path',
+              onTap: () => _showQuickJump(ctx, pane),
+            ),
+          ),
+          const SizedBox(width: 4),
+          _paneIconBtn(
+            '📋',
+            tooltip: 'Copy this location',
+            onTap: () => _copyLocation(pane.displayPath),
+          ),
+          const SizedBox(width: 4),
+          _paneIconBtn('↑', tooltip: 'Go up one folder', onTap: pane.goUp),
+          const SizedBox(width: 4),
+          _paneIconBtn('↺', tooltip: 'Refresh listing', onTap: pane.refresh),
+        ],
+      ),
     );
   }
 
@@ -1150,16 +1601,23 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
               borderRadius: BorderRadius.circular(4),
               border: Border.all(color: FsColors.border),
             ),
-            child: Text(pane.displayPath,
-                overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: FsColors.text2)),
+            child: Text(
+              pane.displayPath,
+              overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 11, color: FsColors.text2),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _endpointPicker(PaneController pane,
-      {required bool left, required Color badgeBg, required Color badgeFg}) {
+  Widget _endpointPicker(
+    PaneController pane, {
+    required bool left,
+    required Color badgeBg,
+    required Color badgeFg,
+  }) {
     final badge = pane.badge;
     final connections = ref.read(connectionsProvider).connections;
     return Container(
@@ -1180,11 +1638,16 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             ...connections.map((c) => _pickerLabel(badge, c.name, badgeFg)),
           ],
           items: [
-            DropdownMenuItem<Connection?>(value: null, child: _menuRow('🖥', 'Local')),
-            ...connections.map((c) => DropdownMenuItem<Connection?>(
-                  value: c,
-                  child: _menuRow(c.isS3 ? '🪣' : '🌐', c.name),
-                )),
+            DropdownMenuItem<Connection?>(
+              value: null,
+              child: _menuRow('🖥', 'Local'),
+            ),
+            ...connections.map(
+              (c) => DropdownMenuItem<Connection?>(
+                value: c,
+                child: _menuRow(c.isS3 ? '🪣' : '🌐', c.name),
+              ),
+            ),
           ],
           onChanged: (c) => _sessions.setPaneEndpoint(left, c),
         ),
@@ -1193,28 +1656,45 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   }
 
   Widget _pickerLabel(String badge, String name, Color fg) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(badge, style: FsType.sans(size: 10, weight: FontWeight.w700, color: fg)),
-          const SizedBox(width: 6),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 150),
-            child: Text(name,
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 11, color: fg)),
-          ),
-        ]),
-      );
-
-  Widget _menuRow(String glyph, String name) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Text(glyph, style: const TextStyle(fontSize: 13)),
-        const SizedBox(width: 8),
-        // The dropdown menu is only as wide as the button, so a long connection
-        // name must ellipsise here instead of overflowing the row.
-        Flexible(
-          child: Text(name,
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 12, color: FsColors.text1)),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          badge,
+          style: FsType.sans(size: 10, weight: FontWeight.w700, color: fg),
         ),
-      ]);
+        const SizedBox(width: 6),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 150),
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: FsType.sans(size: 11, color: fg),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _menuRow(String glyph, String name) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(glyph, style: const TextStyle(fontSize: 13)),
+      const SizedBox(width: 8),
+      // The dropdown menu is only as wide as the button, so a long connection
+      // name must ellipsise here instead of overflowing the row.
+      Flexible(
+        child: Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: FsType.sans(size: 12, color: FsColors.text1),
+        ),
+      ),
+    ],
+  );
 
   Widget _paneIconBtn(String glyph, {VoidCallback? onTap, String? tooltip}) {
     Widget btn = GestureDetector(
@@ -1230,7 +1710,10 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             borderRadius: BorderRadius.circular(4),
             border: Border.all(color: FsColors.border),
           ),
-          child: Text(glyph, style: FsType.sans(size: 11, color: FsColors.text2)),
+          child: Text(
+            glyph,
+            style: FsType.sans(size: 11, color: FsColors.text2),
+          ),
         ),
       ),
     );
@@ -1253,14 +1736,17 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       // that many levels via repeated parentPath — backend-agnostic.
       final levels = segs.length - 1 - i;
       final clickable = i > 0 && levels > 0;
-      Widget seg = Text(segs[i],
-          overflow: TextOverflow.ellipsis,
-          style: FsType.sans(
-              size: 11,
-              color: active
-                  ? FsColors.text1
-                  : (clickable ? FsColors.accentHi : FsColors.text2),
-              weight: active ? FontWeight.w600 : FontWeight.w400));
+      Widget seg = Text(
+        segs[i],
+        overflow: TextOverflow.ellipsis,
+        style: FsType.sans(
+          size: 11,
+          color: active
+              ? FsColors.text1
+              : (clickable ? FsColors.accentHi : FsColors.text2),
+          weight: active ? FontWeight.w600 : FontWeight.w400,
+        ),
+      );
       if (clickable) {
         seg = GestureDetector(
           onTap: () => pane.goUpLevels(levels),
@@ -1269,10 +1755,15 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       }
       children.add(Flexible(child: seg));
       if (i < segs.length - 1) {
-        children.add(Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text('›', style: FsType.sans(size: 11, color: FsColors.text3)),
-        ));
+        children.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              '›',
+              style: FsType.sans(size: 11, color: FsColors.text3),
+            ),
+          ),
+        );
       }
     }
     return Container(
@@ -1291,7 +1782,8 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       return _placeholder(
         icon: Icons.cloud_off_outlined,
         title: 'Not connected',
-        message: 'Add Access Key, Secret & Bucket for\n${pane.endpointLabel} to browse this S3 endpoint.',
+        message:
+            'Add Access Key, Secret & Bucket for\n${pane.endpointLabel} to browse this S3 endpoint.',
         actionLabel: 'Open Connection Manager',
         onAction: () {
           if (pane.connection != null) {
@@ -1307,7 +1799,13 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
     if (pane.loading && pane.items.isEmpty) {
       return Center(
         child: SizedBox(
-            width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: FsColors.accent,
+          ),
+        ),
       );
     }
     if (pane.error != null) {
@@ -1319,11 +1817,20 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         onAction: pane.refresh,
       );
     }
-    return Column(children: [
-      if (pane.loading) _listingStrip(pane),
-      if (!pane.loading && pane.listingTruncated) _truncatedStrip(pane),
-      Expanded(child: _fileTable(pane, showPerms, left: left, scroll: left ? _leftScroll : _rightScroll)),
-    ]);
+    return Column(
+      children: [
+        if (pane.loading) _listingStrip(pane),
+        if (!pane.loading && pane.listingTruncated) _truncatedStrip(pane),
+        Expanded(
+          child: _fileTable(
+            pane,
+            showPerms,
+            left: left,
+            scroll: left ? _leftScroll : _rightScroll,
+          ),
+        ),
+      ],
+    );
   }
 
   /// Thin strip shown while a (possibly large) listing streams in: live count
@@ -1333,18 +1840,35 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       color: FsColors.bgActive,
-      child: Row(children: [
-        SizedBox(
-            width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.6, color: FsColors.accent)),
-        const SizedBox(width: 8),
-        Text('Loading… ${pane.loadedCount} item(s)', style: FsType.sans(size: 11, color: FsColors.text2)),
-        const Spacer(),
-        GestureDetector(
-          onTap: pane.cancelListing,
-          child: Text('Stop',
-              style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.amber)),
-        ),
-      ]),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.6,
+              color: FsColors.accent,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Loading… ${pane.loadedCount} item(s)',
+            style: FsType.sans(size: 11, color: FsColors.text2),
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: pane.cancelListing,
+            child: Text(
+              'Stop',
+              style: FsType.sans(
+                size: 11,
+                weight: FontWeight.w600,
+                color: FsColors.amber,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1354,20 +1878,29 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       color: FsColors.amber.withValues(alpha: 0.14),
-      child: Row(children: [
-        Icon(Icons.warning_amber_rounded, size: 13, color: FsColors.amber),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 13, color: FsColors.amber),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
               'Showing ${pane.loadedCount} item(s) — listing stopped. Narrow the path or filter to see the rest.',
-              style: FsType.sans(size: 11, color: FsColors.amber)),
-        ),
-        GestureDetector(
-          onTap: pane.refresh,
-          child: Text('Reload',
-              style: FsType.sans(size: 11, weight: FontWeight.w600, color: FsColors.amber)),
-        ),
-      ]),
+              style: FsType.sans(size: 11, color: FsColors.amber),
+            ),
+          ),
+          GestureDetector(
+            onTap: pane.refresh,
+            child: Text(
+              'Reload',
+              style: FsType.sans(
+                size: 11,
+                weight: FontWeight.w600,
+                color: FsColors.amber,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1382,15 +1915,29 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
       color: FsColors.bgSurface,
       alignment: Alignment.center,
       padding: const EdgeInsets.all(24),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 34, color: FsColors.text3),
-        const SizedBox(height: 12),
-        Text(title, style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-        const SizedBox(height: 6),
-        Text(message, textAlign: TextAlign.center, style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
-        const SizedBox(height: 16),
-        FsButton(actionLabel, kind: FsButtonKind.primary, onTap: onAction),
-      ]),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 34, color: FsColors.text3),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: FsType.sans(
+              size: 14,
+              weight: FontWeight.w600,
+              color: FsColors.text1,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          FsButton(actionLabel, kind: FsButtonKind.primary, onTap: onAction),
+        ],
+      ),
     );
   }
 
@@ -1405,52 +1952,79 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         border: Border(top: BorderSide(color: FsColors.border)),
       ),
       child: Text(
-        pane.isReady ? '$count items · Drop files here to transfer${isLocal ? '' : ' · S3 bucket'}' : '—',
+        pane.isReady
+            ? '$count items · Drop files here to transfer${isLocal ? '' : ' · S3 bucket'}'
+            : '—',
         style: FsType.sans(size: 10, color: FsColors.text3),
       ),
     );
   }
 
   // ── File table ──
-  Widget _fileTable(PaneController pane, bool showPerms,
-      {required bool left, required ScrollController scroll}) {
+  Widget _fileTable(
+    PaneController pane,
+    bool showPerms, {
+    required bool left,
+    required ScrollController scroll,
+  }) {
     return Container(
       color: FsColors.bgSurface,
-      child: Column(children: [
-        _tableHead(pane, showPerms),
-        Expanded(
-          child: ListView.builder(
-            controller: scroll,
-            itemExtent: _kRowExtent,
-            itemCount: pane.items.length,
-            itemBuilder: (context, i) {
-              final f = pane.items[i];
-              final selected = pane.isSelected(i);
-              final row = _fileRow(pane, f, i, showPerms, left: left, selected: selected);
-              if (!f.isDir) {
-                return Draggable<DragPayload>(
-                  data: DragPayload(f, left),
-                  dragAnchorStrategy: pointerDragAnchorStrategy,
-                  feedback: _dragGhost(f, pane.isSelected(i) ? pane.selectedItems().length : 1),
-                  onDragStarted: () {
-                    _sessions.focusPane(left);
-                    // Keep an existing multi-selection if this row is part of it.
-                    if (!pane.isSelected(i)) pane.select(i);
-                  },
-                  childWhenDragging: Opacity(opacity: 0.4, child: row),
-                  child: row,
+      child: Column(
+        children: [
+          _tableHead(pane, showPerms),
+          Expanded(
+            child: ListView.builder(
+              controller: scroll,
+              itemExtent: _kRowExtent,
+              itemCount: pane.items.length,
+              itemBuilder: (context, i) {
+                final f = pane.items[i];
+                final selected = pane.isSelected(i);
+                final row = _fileRow(
+                  pane,
+                  f,
+                  i,
+                  showPerms,
+                  left: left,
+                  selected: selected,
                 );
-              }
-              return row;
-            },
+                // Files and folders are both draggable (folders transfer
+                // recursively, like the context menu's transfer action); only
+                // the ".." parent row is not. Drag needs movement past the touch
+                // slop, so tap-select and double-click-to-open still work.
+                if (!f.isParent) {
+                  return Draggable<DragPayload>(
+                    data: DragPayload(f, left),
+                    dragAnchorStrategy: pointerDragAnchorStrategy,
+                    feedback: _dragGhost(
+                      f,
+                      pane.isSelected(i) ? pane.selectedItems().length : 1,
+                    ),
+                    onDragStarted: () {
+                      _sessions.focusPane(left);
+                      // Keep an existing multi-selection if this row is part of it.
+                      if (!pane.isSelected(i)) pane.select(i);
+                    },
+                    childWhenDragging: Opacity(opacity: 0.4, child: row),
+                    child: row,
+                  );
+                }
+                return row;
+              },
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 
   Widget _tableHead(PaneController pane, bool showPerms) {
-    Widget head(String t, int flex, SortKey key, {TextAlign align = TextAlign.left}) {
+    Widget head(
+      String t,
+      int flex,
+      SortKey key, {
+      TextAlign align = TextAlign.left,
+    }) {
       final active = pane.sortKey == key;
       final arrow = active ? (pane.sortAscending ? ' ↑' : ' ↓') : '';
       return Expanded(
@@ -1463,18 +2037,22 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
               child: Row(
-                mainAxisAlignment:
-                    align == TextAlign.right ? MainAxisAlignment.end : MainAxisAlignment.start,
+                mainAxisAlignment: align == TextAlign.right
+                    ? MainAxisAlignment.end
+                    : MainAxisAlignment.start,
                 children: [
                   Flexible(
-                    child: Text('$t$arrow',
-                        textAlign: align,
-                        overflow: TextOverflow.ellipsis,
-                        style: FsType.sans(
-                            size: 10,
-                            weight: FontWeight.w600,
-                            color: active ? FsColors.accentHi : FsColors.text3,
-                            letterSpacing: 0.6)),
+                    child: Text(
+                      '$t$arrow',
+                      textAlign: align,
+                      overflow: TextOverflow.ellipsis,
+                      style: FsType.sans(
+                        size: 10,
+                        weight: FontWeight.w600,
+                        color: active ? FsColors.accentHi : FsColors.text3,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -1490,92 +2068,138 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         color: FsColors.bgDeep,
         border: Border(bottom: BorderSide(color: FsColors.border)),
       ),
-      child: Row(children: [
-        head('NAME', 40, SortKey.name),
-        head('SIZE', 15, SortKey.size, align: TextAlign.right),
-        head('MODIFIED', 25, SortKey.modified),
-        // S3 has no POSIX permissions; the last column carries the bucket region
-        // there instead, so label it accordingly.
-        if (showPerms)
-          head(pane.kind == EndpointKind.s3 ? 'REGION' : 'PERMS', 20, SortKey.perms,
-              align: TextAlign.right),
-      ]),
+      child: Row(
+        children: [
+          head('NAME', 40, SortKey.name),
+          head('SIZE', 15, SortKey.size, align: TextAlign.right),
+          head('MODIFIED', 25, SortKey.modified),
+          // S3 has no POSIX permissions; the last column carries the bucket region
+          // there instead, so label it accordingly.
+          if (showPerms)
+            head(
+              pane.kind == EndpointKind.s3 ? 'REGION' : 'PERMS',
+              20,
+              SortKey.perms,
+              align: TextAlign.right,
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _fileRow(PaneController pane, FileItem f, int index, bool showPerms,
-      {required bool left, required bool selected}) {
-    return Hoverable(builder: (hover) {
-      Color bg = Colors.transparent;
-      if (selected) {
-        bg = FsColors.bgActive;
-      } else if (hover) {
-        bg = FsColors.bgHover;
-      }
-      final nameColor = f.isDir ? FsColors.accentHi : FsColors.text1;
-      return GestureDetector(
-        onTap: () {
-          _sessions.focusPane(left);
-          final kb = HardwareKeyboard.instance;
-          if (kb.isControlPressed || kb.isMetaPressed) {
-            pane.toggleSelect(index);
-          } else if (kb.isShiftPressed) {
-            pane.selectRange(index);
-          } else {
-            pane.select(index);
-          }
-        },
-        onDoubleTap: (f.isDir || f.isParent) ? () => pane.open(f) : null,
-        onSecondaryTapDown: f.isParent
-            ? null
-            : (d) {
-                _sessions.focusPane(left);
-                // Preserve a multi-selection if right-clicking inside it.
-                if (!pane.isSelected(index)) pane.select(index);
-                _showRowMenu(pane, left, f, d.globalPosition);
-              },
-        child: MouseRegion(
-          cursor: f.isDir ? SystemMouseCursors.click : SystemMouseCursors.grab,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: bg,
-              border: Border(bottom: BorderSide(color: FsColors.border)),
-            ),
-            child: Row(children: [
-              Expanded(
-                flex: 40,
-                child: Row(children: [
-                  _compareDot(pane, f),
-                  Text(f.icon, style: const TextStyle(fontSize: 14)),
-                  const SizedBox(width: 6),
+  Widget _fileRow(
+    PaneController pane,
+    FileItem f,
+    int index,
+    bool showPerms, {
+    required bool left,
+    required bool selected,
+  }) {
+    return Hoverable(
+      builder: (hover) {
+        Color bg = Colors.transparent;
+        if (selected) {
+          bg = FsColors.bgActive;
+        } else if (hover) {
+          bg = FsColors.bgHover;
+        }
+        final nameColor = f.isDir ? FsColors.accentHi : FsColors.text1;
+        return GestureDetector(
+          onTap: () {
+            _sessions.focusPane(left);
+            final kb = HardwareKeyboard.instance;
+            if (kb.isControlPressed || kb.isMetaPressed) {
+              pane.toggleSelect(index);
+            } else if (kb.isShiftPressed) {
+              pane.selectRange(index);
+            } else {
+              pane.select(index);
+            }
+          },
+          onDoubleTap: (f.isDir || f.isParent) ? () => pane.open(f) : null,
+          onSecondaryTapDown: f.isParent
+              ? null
+              : (d) {
+                  _sessions.focusPane(left);
+                  // Preserve a multi-selection if right-clicking inside it.
+                  if (!pane.isSelected(index)) pane.select(index);
+                  unawaited(_showRowMenu(pane, left, f, d.globalPosition));
+                },
+          child: MouseRegion(
+            cursor: f.isDir
+                ? SystemMouseCursors.click
+                : SystemMouseCursors.grab,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: bg,
+                border: Border(bottom: BorderSide(color: FsColors.border)),
+              ),
+              child: Row(
+                children: [
                   Expanded(
-                    child: Tooltip(
-                      message: f.name,
-                      waitDuration: const Duration(milliseconds: 500),
-                      child: Text(f.name, overflow: TextOverflow.ellipsis, style: FsType.sans(size: 12, color: nameColor)),
+                    flex: 40,
+                    child: Row(
+                      children: [
+                        _compareDot(pane, f),
+                        Text(f.icon, style: const TextStyle(fontSize: 14)),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Tooltip(
+                            message: f.name,
+                            waitDuration: const Duration(milliseconds: 500),
+                            child: Text(
+                              f.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: FsType.sans(size: 12, color: nameColor),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ]),
+                  Expanded(
+                    flex: 15,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 14),
+                      child: Text(
+                        f.sizeLabel,
+                        textAlign: TextAlign.right,
+                        style: FsType.sans(
+                          size: 11,
+                          color: FsColors.text2,
+                          tabular: true,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 25,
+                    child: Text(
+                      f.modified,
+                      style: FsType.sans(
+                        size: 11,
+                        color: FsColors.text2,
+                        tabular: true,
+                      ),
+                    ),
+                  ),
+                  if (showPerms)
+                    Expanded(
+                      flex: 20,
+                      child: Text(
+                        f.perms,
+                        textAlign: TextAlign.right,
+                        style: FsType.sans(size: 10, color: FsColors.text3),
+                      ),
+                    ),
+                ],
               ),
-              Expanded(
-                flex: 15,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 14),
-                  child: Text(f.sizeLabel, textAlign: TextAlign.right, style: FsType.sans(size: 11, color: FsColors.text2, tabular: true)),
-                ),
-              ),
-              Expanded(flex: 25, child: Text(f.modified, style: FsType.sans(size: 11, color: FsColors.text2, tabular: true))),
-              if (showPerms)
-                Expanded(
-                  flex: 20,
-                  child: Text(f.perms, textAlign: TextAlign.right, style: FsType.sans(size: 10, color: FsColors.text3)),
-                ),
-            ]),
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 
   Widget _dragGhost(FileItem f, int count) {
@@ -1588,13 +2212,31 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
           color: FsColors.bgActive,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: FsColors.accent, width: 2),
-          boxShadow: [BoxShadow(color: FsColors.accent.withValues(alpha: 0.3), blurRadius: 24)],
+          boxShadow: [
+            BoxShadow(
+              color: FsColors.accent.withValues(alpha: 0.3),
+              blurRadius: 24,
+            ),
+          ],
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(count > 1 ? '📦' : f.icon, style: const TextStyle(fontSize: 13)),
-          const SizedBox(width: 6),
-          Text(label, style: FsType.sans(size: 12, weight: FontWeight.w600, color: FsColors.accentHi)),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              count > 1 ? '📦' : f.icon,
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: FsType.sans(
+                size: 12,
+                weight: FontWeight.w600,
+                color: FsColors.accentHi,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1603,12 +2245,16 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
   Widget _queueStrip() {
     // Watch only the transfer queue here so status changes update the strip
     // without rebuilding the file tables above.
-    return Consumer(builder: (context, ref, _) {
-      final state = ref.watch(transfersProvider);
-      final active = state.transfers.where((t) => t.status == TransferStatus.active).toList();
-      final current = active.isNotEmpty ? active.first : null;
-      return _queueStripBody(state, current);
-    });
+    return Consumer(
+      builder: (context, ref, _) {
+        final state = ref.watch(transfersProvider);
+        final active = state.transfers
+            .where((t) => t.status == TransferStatus.active)
+            .toList();
+        final current = active.isNotEmpty ? active.first : null;
+        return _queueStripBody(state, current);
+      },
+    );
   }
 
   Widget _queueStripBody(TransfersState state, Transfer? current) {
@@ -1618,74 +2264,94 @@ class _BrowserScreenState extends ConsumerState<BrowserScreen> {
         color: FsColors.bgDeep,
         border: Border(top: BorderSide(color: FsColors.border)),
       ),
-      child: Row(children: [
-        StatusDot(current != null ? FsColors.green : FsColors.text3, glow: current != null),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(current != null ? 'Transferring — ${current.name}' : 'Idle',
+      child: Row(
+        children: [
+          StatusDot(
+            current != null ? FsColors.green : FsColors.text3,
+            glow: current != null,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              current != null ? 'Transferring — ${current.name}' : 'Idle',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: FsType.sans(size: 11, color: FsColors.text2)),
-        ),
-        const SizedBox(width: 10),
-        if (current != null)
-          // Live progress repaints here only — not the whole browser pane.
-          ValueListenableBuilder<int>(
-            valueListenable: current.liveTick,
-            builder: (context, _, _) => Row(children: [
-              SizedBox(
-                width: 200,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: current.progress,
-                    minHeight: 4,
-                    backgroundColor: FsColors.bgPanel,
-                    valueColor: AlwaysStoppedAnimation(FsColors.accent),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text('${(current.progress * 100).round()}% · ${current.speed}',
-                  style: FsType.sans(size: 10, color: FsColors.accentHi, tabular: true)),
-            ]),
+              style: FsType.sans(size: 11, color: FsColors.text2),
+            ),
           ),
-        const Spacer(),
-        Text('${state.queuedCount} remaining', style: FsType.sans(size: 11, color: FsColors.text2)),
-        const SizedBox(width: 10),
-        FsButton('Pause all', fontSize: 10, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), onTap: () => ref.read(transfersProvider.notifier).pauseAll()),
-        const SizedBox(width: 6),
-        FsButton('View queue', fontSize: 10, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), onTap: () => _go(AppScreen.queue)),
-      ]),
+          const SizedBox(width: 10),
+          if (current != null)
+            // Live progress repaints here only — not the whole browser pane.
+            ValueListenableBuilder<int>(
+              valueListenable: current.liveTick,
+              builder: (context, _, _) => Row(
+                children: [
+                  SizedBox(
+                    width: 200,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: current.progress,
+                        minHeight: 4,
+                        backgroundColor: FsColors.bgPanel,
+                        valueColor: AlwaysStoppedAnimation(FsColors.accent),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${(current.progress * 100).round()}% · ${current.speed}',
+                    style: FsType.sans(
+                      size: 10,
+                      color: FsColors.accentHi,
+                      tabular: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const Spacer(),
+          Text(
+            '${state.queuedCount} remaining',
+            style: FsType.sans(size: 11, color: FsColors.text2),
+          ),
+          const SizedBox(width: 10),
+          FsButton(
+            'Pause all',
+            fontSize: 10,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            onTap: () => ref.read(transfersProvider.notifier).pauseAll(),
+          ),
+          const SizedBox(width: 6),
+          FsButton(
+            'View queue',
+            fontSize: 10,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            onTap: () => _go(AppScreen.queue),
+          ),
+        ],
+      ),
     );
   }
 
   // ── SFTP / activity log console ──
   Widget _logPanel() {
-    Widget line(String marker, Color markerColor, String msg) => Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(marker, style: FsType.mono(size: 10, color: markerColor)),
-            const SizedBox(width: 10),
-            Expanded(child: Text(msg, style: FsType.mono(size: 10, color: FsColors.text3))),
-          ]),
+    // The same live diagnostics feed the Connection Manager shows — watched in
+    // a Consumer so new log lines repaint this strip only, not the file tables.
+    return Consumer(
+      builder: (context, ref, _) {
+        final lines = ref.watch(connectionLogProvider);
+        return Container(
+          height: 96,
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: FsColors.bgDeep,
+            border: Border(top: BorderSide(color: FsColors.border)),
+          ),
+          child: LogLinesView(lines: lines, emptyText: 'No activity yet.'),
         );
-    return Container(
-      height: 96,
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: FsColors.bgDeep,
-        border: Border(top: BorderSide(color: FsColors.border)),
-      ),
-      child: SingleChildScrollView(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          line('»', FsColors.accent, 'Drag files between panes to transfer (Local ⇄ S3, S3 ⇄ S3, SFTP).'),
-          line('✓', FsColors.green, 'Local endpoint ready'),
-          line('»', FsColors.accent, 'Select an S3 or SFTP endpoint in either pane to browse it'),
-          line('ℹ', FsColors.accentHi, 'Add credentials in Connection Manager to connect'),
-        ]),
-      ),
+      },
     );
   }
 }
@@ -1720,7 +2386,7 @@ class _FindDialogState extends State<_FindDialog> {
   @override
   void dispose() {
     _cancel?.cancel();
-    _sub?.cancel();
+    unawaited(_sub?.cancel());
     _q.dispose();
     super.dispose();
   }
@@ -1736,18 +2402,23 @@ class _FindDialogState extends State<_FindDialog> {
     });
     final cancel = SearchCancel();
     _cancel = cancel;
-    _sub = searchTree(widget.backend, widget.root, query,
-            cancel: cancel, onScanned: (n) => mounted ? setState(() => _scanned = n) : null)
-        .listen(
-      (hit) => mounted ? setState(() => _results.add(hit)) : null,
-      onDone: () => mounted ? setState(() => _searching = false) : null,
-      onError: (_) => mounted ? setState(() => _searching = false) : null,
-    );
+    _sub =
+        searchTree(
+          widget.backend,
+          widget.root,
+          query,
+          cancel: cancel,
+          onScanned: (n) => mounted ? setState(() => _scanned = n) : null,
+        ).listen(
+          (hit) => mounted ? setState(() => _results.add(hit)) : null,
+          onDone: () => mounted ? setState(() => _searching = false) : null,
+          onError: (_) => mounted ? setState(() => _searching = false) : null,
+        );
   }
 
   void _stop() {
     _cancel?.cancel();
-    _sub?.cancel();
+    unawaited(_sub?.cancel());
     _sub = null;
     if (mounted) setState(() => _searching = false);
   }
@@ -1756,94 +2427,154 @@ class _FindDialogState extends State<_FindDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: FsColors.bgPanel,
-      title: Text('Find', style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
+      title: Text(
+        'Find',
+        style: FsType.sans(
+          size: 14,
+          weight: FontWeight.w600,
+          color: FsColors.text1,
+        ),
+      ),
       content: SizedBox(
         width: 520,
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('in ${widget.rootLabel}',
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: FsType.sans(size: 11, color: FsColors.text3)),
-          const SizedBox(height: 10),
-          Row(children: [
-            Expanded(
-              child: TextField(
-                controller: _q,
-                autofocus: true,
-                onSubmitted: (_) => _start(),
-                style: FsType.sans(size: 13, color: FsColors.text1),
-                cursorColor: FsColors.accent,
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: 'name, or glob like *.log',
-                  hintStyle: FsType.sans(size: 13, color: FsColors.text3),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  filled: true,
-                  fillColor: FsColors.bgSurface,
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(FsColors.rField),
-                    borderSide: BorderSide(color: FsColors.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(FsColors.rField),
-                    borderSide: BorderSide(color: FsColors.accent, width: 1.5),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'in ${widget.rootLabel}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 11, color: FsColors.text3),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _q,
+                    autofocus: true,
+                    onSubmitted: (_) => _start(),
+                    style: FsType.sans(size: 13, color: FsColors.text1),
+                    cursorColor: FsColors.accent,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'name, or glob like *.log',
+                      hintStyle: FsType.sans(size: 13, color: FsColors.text3),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      filled: true,
+                      fillColor: FsColors.bgSurface,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(FsColors.rField),
+                        borderSide: BorderSide(color: FsColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(FsColors.rField),
+                        borderSide: BorderSide(
+                          color: FsColors.accent,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                _searching
+                    ? FsButton(
+                        'Cancel',
+                        kind: FsButtonKind.danger,
+                        onTap: _stop,
+                      )
+                    : FsButton(
+                        'Search',
+                        kind: FsButtonKind.primary,
+                        onTap: _start,
+                      ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _searching
+                  ? 'Searching… $_scanned scanned · ${_results.length} found'
+                  : (_results.isEmpty
+                        ? '$_scanned scanned'
+                        : '${_results.length} match(es)'),
+              style: FsType.sans(size: 11, color: FsColors.text3),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 320,
+              decoration: BoxDecoration(
+                color: FsColors.bgScaffold,
+                borderRadius: BorderRadius.circular(FsColors.rField),
+                border: Border.all(color: FsColors.border),
               ),
-            ),
-            const SizedBox(width: 8),
-            _searching
-                ? FsButton('Cancel', kind: FsButtonKind.danger, onTap: _stop)
-                : FsButton('Search', kind: FsButtonKind.primary, onTap: _start),
-          ]),
-          const SizedBox(height: 8),
-          Text(
-            _searching
-                ? 'Searching… $_scanned scanned · ${_results.length} found'
-                : (_results.isEmpty ? '$_scanned scanned' : '${_results.length} match(es)'),
-            style: FsType.sans(size: 11, color: FsColors.text3),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            height: 320,
-            decoration: BoxDecoration(
-              color: FsColors.bgScaffold,
-              borderRadius: BorderRadius.circular(FsColors.rField),
-              border: Border.all(color: FsColors.border),
-            ),
-            child: _results.isEmpty
-                ? Center(
-                    child: Text(_searching ? '…' : 'No matches yet',
-                        style: FsType.sans(size: 12, color: FsColors.text3)))
-                : ListView.builder(
-                    itemCount: _results.length,
-                    itemBuilder: (_, i) {
-                      final h = _results[i];
-                      return InkWell(
-                        onTap: () {
-                          Navigator.pop(context);
-                          widget.onPick(h);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                          child: Row(children: [
-                            Text(h.isDir ? '📁' : '📄', style: const TextStyle(fontSize: 13)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(h.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                    style: FsType.sans(size: 12, color: FsColors.text1)),
-                                Text(widget.backend.displayPath(h.path),
-                                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                                    style: FsType.sans(size: 10, color: FsColors.text3)),
-                              ]),
+              child: _results.isEmpty
+                  ? Center(
+                      child: Text(
+                        _searching ? '…' : 'No matches yet',
+                        style: FsType.sans(size: 12, color: FsColors.text3),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _results.length,
+                      itemBuilder: (_, i) {
+                        final h = _results[i];
+                        return InkWell(
+                          onTap: () {
+                            Navigator.pop(context);
+                            unawaited(widget.onPick(h));
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 7,
                             ),
-                          ]),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ]),
+                            child: Row(
+                              children: [
+                                Text(
+                                  h.isDir ? '📁' : '📄',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        h.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: FsType.sans(
+                                          size: 12,
+                                          color: FsColors.text1,
+                                        ),
+                                      ),
+                                      Text(
+                                        widget.backend.displayPath(h.path),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: FsType.sans(
+                                          size: 10,
+                                          color: FsColors.text3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
       actions: [FsButton('Close', onTap: () => Navigator.pop(context))],
     );
@@ -1871,8 +2602,12 @@ class _PreviewDialog extends StatefulWidget {
 
 class _PreviewDialogState extends State<_PreviewDialog> {
   final PreviewCancel _cancel = PreviewCancel();
-  late final Future<FilePreview> _future =
-      loadPreview(widget.backend, widget.path, widget.item, cancel: _cancel);
+  late final Future<FilePreview> _future = loadPreview(
+    widget.backend,
+    widget.path,
+    widget.item,
+    cancel: _cancel,
+  );
 
   @override
   void dispose() {
@@ -1885,7 +2620,9 @@ class _PreviewDialogState extends State<_PreviewDialog> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final sizeLabel = item.sizeBytes != null ? formatBytes(item.sizeBytes!) : '—';
+    final sizeLabel = item.sizeBytes != null
+        ? formatBytes(item.sizeBytes!)
+        : '—';
     // Size the preview to the window: at least 70% of the width and a generous
     // share of the height, so text and images get real room (not a tiny popup).
     final screen = MediaQuery.of(context).size;
@@ -1896,50 +2633,68 @@ class _PreviewDialogState extends State<_PreviewDialog> {
     return AlertDialog(
       backgroundColor: FsColors.bgPanel,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      title: Row(children: [
-        Text(item.icon, style: const TextStyle(fontSize: 16)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(item.name,
+      title: Row(
+        children: [
+          Text(item.icon, style: const TextStyle(fontSize: 16)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              item.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: FsType.sans(size: 14, weight: FontWeight.w600, color: FsColors.text1)),
-        ),
-      ]),
-      content: SizedBox(
-        width: dialogW,
-        height: dialogH,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${widget.endpointLabel} · $sizeLabel${item.modified.isNotEmpty ? ' · ${item.modified}' : ''}',
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: FsType.sans(size: 11, color: FsColors.text3)),
-          const SizedBox(height: 10),
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: FsColors.bgScaffold,
-                borderRadius: BorderRadius.circular(FsColors.rField),
-                border: Border.all(color: FsColors.border),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: FutureBuilder<FilePreview>(
-                future: _future,
-                builder: (ctx, snap) {
-                  if (!snap.hasData) {
-                    return Center(
-                      child: SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: FsColors.accent)),
-                    );
-                  }
-                  return _previewBody(snap.data!);
-                },
+              style: FsType.sans(
+                size: 14,
+                weight: FontWeight.w600,
+                color: FsColors.text1,
               ),
             ),
           ),
-        ]),
+        ],
+      ),
+      content: SizedBox(
+        width: dialogW,
+        height: dialogH,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${widget.endpointLabel} · $sizeLabel${item.modified.isNotEmpty ? ' · ${item.modified}' : ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FsType.sans(size: 11, color: FsColors.text3),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: FsColors.bgScaffold,
+                  borderRadius: BorderRadius.circular(FsColors.rField),
+                  border: Border.all(color: FsColors.border),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: FutureBuilder<FilePreview>(
+                  future: _future,
+                  builder: (ctx, snap) {
+                    if (!snap.hasData) {
+                      return Center(
+                        child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: FsColors.accent,
+                          ),
+                        ),
+                      );
+                    }
+                    return _previewBody(snap.data!);
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
       actions: [FsButton('Close', onTap: () => Navigator.pop(context))],
     );
@@ -1948,25 +2703,37 @@ class _PreviewDialogState extends State<_PreviewDialog> {
   Widget _previewBody(FilePreview p) {
     switch (p.kind) {
       case PreviewKind.text:
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (p.truncated)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              color: FsColors.badgePausedBg,
-              child: Text('Showing the first part of a larger file.',
-                  style: FsType.sans(size: 10, color: FsColors.badgePausedFg)),
-            ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(12),
-              child: SelectableText(
-                p.text!.isEmpty ? '(empty)' : p.text!,
-                style: FsType.mono(size: 11, color: FsColors.text2, height: 1.45),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (p.truncated)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                color: FsColors.badgePausedBg,
+                child: Text(
+                  'Showing the first part of a larger file.',
+                  style: FsType.sans(size: 10, color: FsColors.badgePausedFg),
+                ),
+              ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(12),
+                child: SelectableText(
+                  p.text!.isEmpty ? '(empty)' : p.text!,
+                  style: FsType.mono(
+                    size: 11,
+                    color: FsColors.text2,
+                    height: 1.45,
+                  ),
+                ),
               ),
             ),
-          ),
-        ]);
+          ],
+        );
       case PreviewKind.image:
         return InteractiveViewer(
           maxScale: 6,
@@ -1977,7 +2744,10 @@ class _PreviewDialogState extends State<_PreviewDialog> {
                 p.bytes!,
                 fit: BoxFit.contain,
                 filterQuality: FilterQuality.medium,
-                errorBuilder: (_, _, _) => _notice(Icons.broken_image_outlined, 'Could not decode this image.'),
+                errorBuilder: (_, _, _) => _notice(
+                  Icons.broken_image_outlined,
+                  'Could not decode this image.',
+                ),
               ),
             ),
           ),
@@ -1985,24 +2755,133 @@ class _PreviewDialogState extends State<_PreviewDialog> {
       case PreviewKind.tooLarge:
         return _notice(Icons.unfold_more, p.message ?? 'Too large to preview.');
       case PreviewKind.binary:
-        return _notice(Icons.description_outlined, p.message ?? 'No inline preview.');
+        return _notice(
+          Icons.description_outlined,
+          p.message ?? 'No inline preview.',
+        );
       case PreviewKind.empty:
         return _notice(Icons.insert_drive_file_outlined, 'This file is empty.');
       case PreviewKind.error:
-        return _notice(Icons.error_outline, p.message ?? 'Could not read this file.');
+        return _notice(
+          Icons.error_outline,
+          p.message ?? 'Could not read this file.',
+        );
     }
   }
 
   Widget _notice(IconData icon, String message) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 34, color: FsColors.text3),
-            const SizedBox(height: 12),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5)),
-          ]),
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 34, color: FsColors.text3),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: FsType.sans(size: 12, color: FsColors.text2, height: 1.5),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// A single-field name prompt (new folder / rename). Pops with the trimmed
+/// name; the confirm action stays disabled while the input is empty or contains
+/// a path separator. Stateful so the controller is owned and disposed here.
+class _PromptDialog extends StatefulWidget {
+  final String title;
+  final String initial;
+  final String hint;
+  final String confirm;
+  const _PromptDialog({
+    required this.title,
+    required this.initial,
+    required this.hint,
+    required this.confirm,
+  });
+
+  @override
+  State<_PromptDialog> createState() => _PromptDialogState();
+}
+
+class _PromptDialogState extends State<_PromptDialog> {
+  late final TextEditingController _ctl =
+      TextEditingController(text: widget.initial)
+        ..selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: widget.initial.length,
+        );
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  /// The submittable name, or null when the input is empty (after trimming) or
+  /// contains a path separator (which would silently target another location).
+  String? get _name {
+    final t = _ctl.text.trim();
+    if (t.isEmpty || t.contains('/') || t.contains(r'\')) return null;
+    return t;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = _name;
+    return AlertDialog(
+      backgroundColor: FsColors.bgPanel,
+      title: Text(
+        widget.title,
+        style: FsType.sans(
+          size: 14,
+          weight: FontWeight.w600,
+          color: FsColors.text1,
         ),
-      );
+      ),
+      content: SizedBox(
+        width: 360,
+        child: TextField(
+          controller: _ctl,
+          autofocus: true,
+          onChanged: (_) => setState(() {}), // re-evaluate the confirm button
+          onSubmitted: (_) {
+            final n = _name;
+            if (n != null) Navigator.pop(context, n);
+          },
+          style: FsType.sans(size: 13, color: FsColors.text1),
+          cursorColor: FsColors.accent,
+          decoration: InputDecoration(
+            hintText: widget.hint,
+            hintStyle: FsType.sans(size: 13, color: FsColors.text3),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: FsColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: FsColors.accent),
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        FsButton('Cancel', onTap: () => Navigator.pop(context)),
+        // Dimmed while the name is invalid (same look as ToolButton's disabled
+        // state); validity is re-checked on tap so it can never pop bad input.
+        Opacity(
+          opacity: name != null ? 1 : 0.4,
+          child: FsButton(
+            widget.confirm,
+            kind: FsButtonKind.primary,
+            onTap: () {
+              final n = _name;
+              if (n != null) Navigator.pop(context, n);
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }

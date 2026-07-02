@@ -32,6 +32,13 @@ class Transfer {
   /// backoff and is shown on the queue row.
   int attempts;
 
+  /// True when a pause aborted this transfer mid-stream but kept its
+  /// `.drag-partial` staging file, so the next run may resume from those bytes
+  /// even on a first attempt (the per-id staging name proves the partial is
+  /// ours). Set by `TransferService` on a pause-abort; cleared when the next
+  /// run consumes it.
+  bool pausedWithPartial = false;
+
   /// Real (S3 / local) transfers are driven by [TransferService]; simulated
   /// ones (seed data, SFTP demo) are advanced by the AppState ticker.
   final bool live;
@@ -73,8 +80,9 @@ class Transfer {
   });
 
   /// Elapsed transfer time, once finished.
-  Duration? get elapsed =>
-      (startedAt != null && finishedAt != null) ? finishedAt!.difference(startedAt!) : null;
+  Duration? get elapsed => (startedAt != null && finishedAt != null)
+      ? finishedAt!.difference(startedAt!)
+      : null;
 
   /// Human-friendly elapsed time, e.g. "0.8s", "1m 04s".
   String get elapsedLabel => formatDuration(elapsed);
@@ -90,4 +98,3 @@ String formatDuration(Duration? d) {
   final s = d.inSeconds % 60;
   return '${m}m ${s.toString().padLeft(2, '0')}s';
 }
-

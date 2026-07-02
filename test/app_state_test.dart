@@ -17,13 +17,57 @@ import 'support/harness.dart';
 const _mB = 1024 * 1024;
 
 List<Transfer> _seedTransfers() => [
-      Transfer(name: 'big.tar.gz', route: 'r', direction: TransferDirection.upload, sizeBytes: 248 * _mB, session: 's', status: TransferStatus.active, speed: '1.4 MB/s'),
-      Transfer(name: 'config.yaml', route: 'r', direction: TransferDirection.upload, sizeBytes: 4096, session: 's', status: TransferStatus.active),
-      Transfer(name: 'deploy.sh', route: 'r', direction: TransferDirection.upload, sizeBytes: 1800, session: 's', status: TransferStatus.queued),
-      Transfer(name: 'dist.zip', route: 'r', direction: TransferDirection.upload, sizeBytes: 35 * _mB, session: 's', status: TransferStatus.paused),
-      Transfer(name: '.env', route: 'r', direction: TransferDirection.upload, sizeBytes: 512, session: 's', status: TransferStatus.error, errorMessage: 'denied'),
-      Transfer(name: 'server.js', route: 'r', direction: TransferDirection.download, sizeBytes: 22000, session: 's', status: TransferStatus.done),
-    ];
+  Transfer(
+    name: 'big.tar.gz',
+    route: 'r',
+    direction: TransferDirection.upload,
+    sizeBytes: 248 * _mB,
+    session: 's',
+    status: TransferStatus.active,
+    speed: '1.4 MB/s',
+  ),
+  Transfer(
+    name: 'config.yaml',
+    route: 'r',
+    direction: TransferDirection.upload,
+    sizeBytes: 4096,
+    session: 's',
+    status: TransferStatus.active,
+  ),
+  Transfer(
+    name: 'deploy.sh',
+    route: 'r',
+    direction: TransferDirection.upload,
+    sizeBytes: 1800,
+    session: 's',
+    status: TransferStatus.queued,
+  ),
+  Transfer(
+    name: 'dist.zip',
+    route: 'r',
+    direction: TransferDirection.upload,
+    sizeBytes: 35 * _mB,
+    session: 's',
+    status: TransferStatus.paused,
+  ),
+  Transfer(
+    name: '.env',
+    route: 'r',
+    direction: TransferDirection.upload,
+    sizeBytes: 512,
+    session: 's',
+    status: TransferStatus.error,
+    errorMessage: 'denied',
+  ),
+  Transfer(
+    name: 'server.js',
+    route: 'r',
+    direction: TransferDirection.download,
+    sizeBytes: 22000,
+    session: 's',
+    status: TransferStatus.done,
+  ),
+];
 
 void main() {
   group('navigation', () {
@@ -53,7 +97,8 @@ void main() {
     late TransfersNotifier q;
     setUp(() {
       c = makeContainer();
-      q = c.read(transfersProvider.notifier)..debugSetTransfers(_seedTransfers());
+      q = c.read(transfersProvider.notifier)
+        ..debugSetTransfers(_seedTransfers());
     });
 
     TransfersState state() => c.read(transfersProvider);
@@ -93,7 +138,9 @@ void main() {
     });
 
     test('togglePause flips a transfer between paused and queued', () {
-      final t = state().transfers.firstWhere((t) => t.status == TransferStatus.active);
+      final t = state().transfers.firstWhere(
+        (t) => t.status == TransferStatus.active,
+      );
       q.togglePause(t);
       expect(t.status, TransferStatus.paused);
       q.togglePause(t);
@@ -102,14 +149,18 @@ void main() {
 
     test('cancel removes a transfer from the queue', () {
       final before = state().transfers.length;
-      final t = state().transfers.firstWhere((t) => t.status == TransferStatus.active);
+      final t = state().transfers.firstWhere(
+        (t) => t.status == TransferStatus.active,
+      );
       q.cancel(t);
       expect(state().transfers.length, before - 1);
       expect(state().transfers.contains(t), isFalse);
     });
 
     test('retry resets an errored transfer', () {
-      final t = state().transfers.firstWhere((t) => t.status == TransferStatus.error);
+      final t = state().transfers.firstWhere(
+        (t) => t.status == TransferStatus.error,
+      );
       q.retry(t);
       expect(t.status, TransferStatus.queued);
       expect(t.errorMessage, isNull);
@@ -144,10 +195,17 @@ void main() {
       final s = c.read(sessionsProvider.notifier);
       final conn1 = Connection(id: 'cx', name: 'srv', protocol: Protocol.sftp);
       // A rebuilt Connection object with the same id (e.g. after an edit).
-      final conn2 = Connection(id: 'cx', name: 'srv-edited', protocol: Protocol.sftp);
+      final conn2 = Connection(
+        id: 'cx',
+        name: 'srv-edited',
+        protocol: Protocol.sftp,
+      );
 
       final b1 = s.backendFor(conn1);
-      expect(identical(s.backendFor(conn2), b1), isTrue); // same id ⇒ same backend
+      expect(
+        identical(s.backendFor(conn2), b1),
+        isTrue,
+      ); // same id ⇒ same backend
 
       s.evictBackend(conn1);
       expect(identical(s.backendFor(conn1), b1), isFalse); // evicted ⇒ rebuilt
@@ -168,7 +226,10 @@ void main() {
       await s.setPaneEndpoint(true, null);
       expect(s.leftPane.kind, EndpointKind.local);
 
-      final s3 = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
+      final s3 = c
+          .read(connectionsProvider)
+          .connections
+          .firstWhere((x) => x.isS3);
       await s.setPaneEndpoint(false, s3);
       expect(s.rightPane.kind, EndpointKind.s3);
       expect(identical(s.rightPane.connection, s3), isTrue);
@@ -178,32 +239,44 @@ void main() {
     test('connect() refuses S3 without credentials', () async {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
-      final s3 = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
+      final s3 = c
+          .read(connectionsProvider)
+          .connections
+          .firstWhere((x) => x.isS3);
       await s.connect(s3);
       expect(s3.online, isFalse);
       expect(c.read(toastsProvider).last.kind, ToastKind.error);
     });
 
-    test('connect() verifies and stays offline against an unreachable endpoint', () async {
-      final c = makeContainer(connections: sampleConnections());
-      final s = c.read(sessionsProvider.notifier);
-      final s3 = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3)
-        ..accessKeyId = 'AKIA'
-        ..secretAccessKey = 'sec'
-        ..bucket = 'b'
-        ..endpoint = '127.0.0.1:1'; // closed port → the real listing fails
-      await s.connect(s3);
-      // No longer optimistically "online" — verification failed.
-      expect(s3.online, isFalse);
-      expect(c.read(toastsProvider).last.title, 'Connection failed');
-    });
+    test(
+      'connect() verifies and stays offline against an unreachable endpoint',
+      () async {
+        final c = makeContainer(connections: sampleConnections());
+        final s = c.read(sessionsProvider.notifier);
+        final s3 =
+            c.read(connectionsProvider).connections.firstWhere((x) => x.isS3)
+              ..accessKeyId = 'AKIA'
+              ..secretAccessKey = 'sec'
+              ..bucket = 'b'
+              ..endpoint =
+                  '127.0.0.1:1'; // closed port → the real listing fails
+        await s.connect(s3);
+        // No longer optimistically "online" — verification failed.
+        expect(s3.online, isFalse);
+        expect(c.read(toastsProvider).last.title, 'Connection failed');
+      },
+    );
 
     test('connect() stays offline for an unreachable SFTP host', () async {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
-      final sftp = c.read(connectionsProvider).connections.firstWhere((x) => x.kind == EndpointKind.sftp)
-        ..host = '127.0.0.1'
-        ..port = 1;
+      final sftp =
+          c
+              .read(connectionsProvider)
+              .connections
+              .firstWhere((x) => x.kind == EndpointKind.sftp)
+            ..host = '127.0.0.1'
+            ..port = 1;
       await s.connect(sftp);
       expect(sftp.online, isFalse);
       expect(c.read(toastsProvider).last.title, 'Connection failed');
@@ -243,7 +316,9 @@ void main() {
     test('deleteItems removes multiple files', () async {
       await File(p.join(dir.path, 'c.txt')).writeAsString('c');
       await s.leftPane.refresh();
-      final items = s.leftPane.items.where((e) => e.name == 'a.txt' || e.name == 'c.txt').toList();
+      final items = s.leftPane.items
+          .where((e) => e.name == 'a.txt' || e.name == 'c.txt')
+          .toList();
       expect(items.length, 2);
       await s.deleteItems(s.leftPane, items);
       expect(await File(p.join(dir.path, 'a.txt')).exists(), isFalse);
@@ -251,7 +326,9 @@ void main() {
     });
 
     test('createFolder on a read-only backend reports an error', () async {
-      s.leftPane.backend = FakeRemoteBackend(Connection(name: 'd', protocol: Protocol.sftp));
+      s.leftPane.backend = FakeRemoteBackend(
+        Connection(name: 'd', protocol: Protocol.sftp),
+      );
       await s.createFolder(s.leftPane, 'x');
       expect(c.read(toastsProvider).last.kind, ToastKind.error);
     });
@@ -270,7 +347,10 @@ void main() {
     test('openSession adds a tab and focuses it', () {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
-      final conn = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
+      final conn = c
+          .read(connectionsProvider)
+          .connections
+          .firstWhere((x) => x.isS3);
       final opened = s.openSession(conn);
       expect(c.read(sessionsProvider).sessions.length, 2);
       expect(c.read(sessionsProvider).activeSessionId, opened.id);
@@ -280,20 +360,70 @@ void main() {
     test('openSession focuses the existing tab for the same connection', () {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
-      final conn = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
+      final conn = c
+          .read(connectionsProvider)
+          .connections
+          .firstWhere((x) => x.isS3);
       final first = s.openSession(conn);
       final again = s.openSession(conn);
       expect(c.read(sessionsProvider).sessions.length, 2); // not 3
       expect(again.id, first.id);
     });
 
+    test(
+      'openSession matches an existing tab by connection id (rebuilt object)',
+      () {
+        final c = makeContainer(connections: sampleConnections());
+        final s = c.read(sessionsProvider.notifier);
+        final conn = c
+            .read(connectionsProvider)
+            .connections
+            .firstWhere((x) => x.isS3);
+        final first = s.openSession(conn);
+        // Same endpoint, different object (e.g. reloaded from the store after an
+        // edit) — must focus the existing tab, not open a duplicate.
+        final rebuilt = Connection.fromJson(conn.toJson());
+        final again = s.openSession(rebuilt);
+        expect(c.read(sessionsProvider).sessions.length, 2); // not 3
+        expect(again.id, first.id);
+      },
+    );
+
+    test('reconnect re-points open panes at the fresh backend', () async {
+      final c = makeContainer(connections: sampleConnections());
+      final s = c.read(sessionsProvider.notifier);
+      final sftp =
+          c
+              .read(connectionsProvider)
+              .connections
+              .firstWhere((x) => x.kind == EndpointKind.sftp)
+            ..host = '127.0.0.1'
+            ..port =
+                1; // closed port — the listing fails, but panes are wired up
+      await s.connect(sftp);
+      final session = c.read(sessionsProvider).sessions.last;
+      final oldBackend = session.right.backend;
+
+      // Reconnecting evicts (and disposes) the cached backend; the open tab's
+      // pane must be moved onto the replacement, not left on the dead client.
+      await s.connect(sftp);
+      expect(identical(session.right.backend, oldBackend), isFalse);
+      expect(identical(session.right.backend, s.backendFor(sftp)), isTrue);
+    });
+
     test('closeSession removes a tab and re-points active', () {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
-      final conn = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
+      final conn = c
+          .read(connectionsProvider)
+          .connections
+          .firstWhere((x) => x.isS3);
       final opened = s.openSession(conn);
       s.closeSession(opened.id);
-      expect(c.read(sessionsProvider).sessions.any((x) => x.id == opened.id), isFalse);
+      expect(
+        c.read(sessionsProvider).sessions.any((x) => x.id == opened.id),
+        isFalse,
+      );
       expect(c.read(sessionsProvider).sessions.length, 1);
     });
 
@@ -315,80 +445,99 @@ void main() {
       expect(c.read(transfersProvider).transfers, isEmpty);
     });
 
-    test('directory drops transfer the whole tree recursively (Local→Local)', () async {
-      final c = makeContainer();
-      final s = c.read(sessionsProvider.notifier);
-      final src = await Directory.systemTemp.createTemp('drop_tree_src');
-      final dst = await Directory.systemTemp.createTemp('drop_tree_dst');
-      addTearDown(() => src.delete(recursive: true));
-      addTearDown(() => dst.delete(recursive: true));
-      // folder/a.txt, folder/sub/b.txt, folder/empty/
-      final folder = Directory(p.join(src.path, 'folder'))..createSync();
-      await File(p.join(folder.path, 'a.txt')).writeAsString('aaa');
-      final sub = Directory(p.join(folder.path, 'sub'))..createSync();
-      await File(p.join(sub.path, 'b.txt')).writeAsString('bbb');
-      Directory(p.join(folder.path, 'empty')).createSync();
+    test(
+      'directory drops transfer the whole tree recursively (Local→Local)',
+      () async {
+        final c = makeContainer();
+        final s = c.read(sessionsProvider.notifier);
+        final src = await Directory.systemTemp.createTemp('drop_tree_src');
+        final dst = await Directory.systemTemp.createTemp('drop_tree_dst');
+        addTearDown(() => src.delete(recursive: true));
+        addTearDown(() => dst.delete(recursive: true));
+        // folder/a.txt, folder/sub/b.txt, folder/empty/
+        final folder = Directory(p.join(src.path, 'folder'))..createSync();
+        await File(p.join(folder.path, 'a.txt')).writeAsString('aaa');
+        final sub = Directory(p.join(folder.path, 'sub'))..createSync();
+        await File(p.join(sub.path, 'b.txt')).writeAsString('bbb');
+        Directory(p.join(folder.path, 'empty')).createSync();
 
-      s.leftPane
-        ..backend = LocalBackend()
-        ..path = src.path;
-      await s.leftPane.refresh();
-      s.rightPane
-        ..backend = LocalBackend()
-        ..connection = null
-        ..path = dst.path;
-      await s.rightPane.refresh();
+        s.leftPane
+          ..backend = LocalBackend()
+          ..path = src.path;
+        await s.leftPane.refresh();
+        s.rightPane
+          ..backend = LocalBackend()
+          ..connection = null
+          ..path = dst.path;
+        await s.rightPane.refresh();
 
-      final item = s.leftPane.items.firstWhere((e) => e.name == 'folder');
-      s.dropTransfer(DragPayload(item, true), false);
+        final item = s.leftPane.items.firstWhere((e) => e.name == 'folder');
+        s.dropTransfer(DragPayload(item, true), false);
 
-      // enqueueTree walks asynchronously, then the file transfers run.
-      final aFile = File(p.join(dst.path, 'folder', 'a.txt'));
-      final bFile = File(p.join(dst.path, 'folder', 'sub', 'b.txt'));
-      for (var i = 0; i < 200 && !(aFile.existsSync() && bFile.existsSync()); i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      expect(await aFile.readAsString(), 'aaa');
-      expect(await bFile.readAsString(), 'bbb');
-      // Empty subdirectories are recreated too.
-      expect(Directory(p.join(dst.path, 'folder', 'empty')).existsSync(), isTrue);
-      // Two files were enqueued.
-      expect(c.read(transfersProvider).transfers.length, 2);
-    });
+        // enqueueTree walks asynchronously, then the file transfers run.
+        final aFile = File(p.join(dst.path, 'folder', 'a.txt'));
+        final bFile = File(p.join(dst.path, 'folder', 'sub', 'b.txt'));
+        for (
+          var i = 0;
+          i < 200 && !(aFile.existsSync() && bFile.existsSync());
+          i++
+        ) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(await aFile.readAsString(), 'aaa');
+        expect(await bFile.readAsString(), 'bbb');
+        // Empty subdirectories are recreated too.
+        expect(
+          Directory(p.join(dst.path, 'folder', 'empty')).existsSync(),
+          isTrue,
+        );
+        // Two files were enqueued.
+        expect(c.read(transfersProvider).transfers.length, 2);
+      },
+    );
 
-    test('importFiles uploads OS files and folders into the destination pane', () async {
-      final c = makeContainer();
-      final s = c.read(sessionsProvider.notifier);
-      final ext = await Directory.systemTemp.createTemp('os_ext'); // simulated OS files
-      final dst = await Directory.systemTemp.createTemp('os_dst');
-      addTearDown(() => ext.delete(recursive: true));
-      addTearDown(() => dst.delete(recursive: true));
-      await File(p.join(ext.path, 'f.txt')).writeAsString('F');
-      final folder = Directory(p.join(ext.path, 'fold'))..createSync();
-      await File(p.join(folder.path, 'g.txt')).writeAsString('G');
+    test(
+      'importFiles uploads OS files and folders into the destination pane',
+      () async {
+        final c = makeContainer();
+        final s = c.read(sessionsProvider.notifier);
+        final ext = await Directory.systemTemp.createTemp(
+          'os_ext',
+        ); // simulated OS files
+        final dst = await Directory.systemTemp.createTemp('os_dst');
+        addTearDown(() => ext.delete(recursive: true));
+        addTearDown(() => dst.delete(recursive: true));
+        await File(p.join(ext.path, 'f.txt')).writeAsString('F');
+        final folder = Directory(p.join(ext.path, 'fold'))..createSync();
+        await File(p.join(folder.path, 'g.txt')).writeAsString('G');
 
-      s.rightPane
-        ..backend = LocalBackend()
-        ..connection = null
-        ..path = dst.path;
-      await s.rightPane.refresh();
+        s.rightPane
+          ..backend = LocalBackend()
+          ..connection = null
+          ..path = dst.path;
+        await s.rightPane.refresh();
 
-      c.read(transfersProvider.notifier)
-          .importFiles(s.rightPane, [p.join(ext.path, 'f.txt'), folder.path]);
+        c.read(transfersProvider.notifier).importFiles(s.rightPane, [
+          p.join(ext.path, 'f.txt'),
+          folder.path,
+        ]);
 
-      final f = File(p.join(dst.path, 'f.txt'));
-      final g = File(p.join(dst.path, 'fold', 'g.txt'));
-      for (var i = 0; i < 200 && !(f.existsSync() && g.existsSync()); i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      expect(await f.readAsString(), 'F');
-      expect(await g.readAsString(), 'G');
-    });
+        final f = File(p.join(dst.path, 'f.txt'));
+        final g = File(p.join(dst.path, 'fold', 'g.txt'));
+        for (var i = 0; i < 200 && !(f.existsSync() && g.existsSync()); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(await f.readAsString(), 'F');
+        expect(await g.readAsString(), 'G');
+      },
+    );
 
     // Sets up Local→Local panes where the destination already holds a file of
     // the same name, with a conflict resolver returning [action].
     Future<(SessionsNotifier, Directory)> conflictSetup(
-        ProviderContainer c, ConflictAction action) async {
+      ProviderContainer c,
+      ConflictAction action,
+    ) async {
       final s = c.read(sessionsProvider.notifier);
       c
           .read(transfersProvider.notifier)
@@ -411,15 +560,18 @@ void main() {
       return (s, dst);
     }
 
-    test('conflict: Skip leaves the destination untouched and enqueues nothing', () async {
-      final c = makeContainer();
-      final (s, dst) = await conflictSetup(c, ConflictAction.skip);
-      final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
-      s.dropTransfer(DragPayload(item, true), false);
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      expect(c.read(transfersProvider).transfers, isEmpty);
-      expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
-    });
+    test(
+      'conflict: Skip leaves the destination untouched and enqueues nothing',
+      () async {
+        final c = makeContainer();
+        final (s, dst) = await conflictSetup(c, ConflictAction.skip);
+        final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
+        s.dropTransfer(DragPayload(item, true), false);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        expect(c.read(transfersProvider).transfers, isEmpty);
+        expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
+      },
+    );
 
     test('conflict: Overwrite replaces the destination file', () async {
       final c = makeContainer();
@@ -433,45 +585,54 @@ void main() {
       expect(await f.readAsString(), 'SRC');
     });
 
-    test('conflict policy preset (skip) is applied without a resolver', () async {
-      final c = makeContainer();
-      c.read(settingsProvider.notifier).setConflictPolicy('skip');
-      final s = c.read(sessionsProvider.notifier);
-      // No conflict resolver registered — the preset must drive the decision.
-      final src = await Directory.systemTemp.createTemp('cp_src');
-      final dst = await Directory.systemTemp.createTemp('cp_dst');
-      addTearDown(() => src.delete(recursive: true));
-      addTearDown(() => dst.delete(recursive: true));
-      await File(p.join(src.path, 'dup.txt')).writeAsString('SRC');
-      await File(p.join(dst.path, 'dup.txt')).writeAsString('DST');
-      s.leftPane
-        ..backend = LocalBackend()
-        ..path = src.path;
-      await s.leftPane.refresh();
-      s.rightPane
-        ..backend = LocalBackend()
-        ..connection = null
-        ..path = dst.path;
-      await s.rightPane.refresh();
-      final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
-      s.dropTransfer(DragPayload(item, true), false);
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      expect(c.read(transfersProvider).transfers, isEmpty); // skipped, nothing queued
-      expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
-    });
+    test(
+      'conflict policy preset (skip) is applied without a resolver',
+      () async {
+        final c = makeContainer();
+        c.read(settingsProvider.notifier).setConflictPolicy('skip');
+        final s = c.read(sessionsProvider.notifier);
+        // No conflict resolver registered — the preset must drive the decision.
+        final src = await Directory.systemTemp.createTemp('cp_src');
+        final dst = await Directory.systemTemp.createTemp('cp_dst');
+        addTearDown(() => src.delete(recursive: true));
+        addTearDown(() => dst.delete(recursive: true));
+        await File(p.join(src.path, 'dup.txt')).writeAsString('SRC');
+        await File(p.join(dst.path, 'dup.txt')).writeAsString('DST');
+        s.leftPane
+          ..backend = LocalBackend()
+          ..path = src.path;
+        await s.leftPane.refresh();
+        s.rightPane
+          ..backend = LocalBackend()
+          ..connection = null
+          ..path = dst.path;
+        await s.rightPane.refresh();
+        final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
+        s.dropTransfer(DragPayload(item, true), false);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        expect(
+          c.read(transfersProvider).transfers,
+          isEmpty,
+        ); // skipped, nothing queued
+        expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
+      },
+    );
 
-    test('conflict: Rename writes a non-colliding copy and keeps the original', () async {
-      final c = makeContainer();
-      final (s, dst) = await conflictSetup(c, ConflictAction.rename);
-      final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
-      s.dropTransfer(DragPayload(item, true), false);
-      final renamed = File(p.join(dst.path, 'dup (1).txt'));
-      for (var i = 0; i < 200 && !renamed.existsSync(); i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      expect(await renamed.readAsString(), 'SRC');
-      expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
-    });
+    test(
+      'conflict: Rename writes a non-colliding copy and keeps the original',
+      () async {
+        final c = makeContainer();
+        final (s, dst) = await conflictSetup(c, ConflictAction.rename);
+        final item = s.leftPane.items.firstWhere((e) => e.name == 'dup.txt');
+        s.dropTransfer(DragPayload(item, true), false);
+        final renamed = File(p.join(dst.path, 'dup (1).txt'));
+        for (var i = 0; i < 200 && !renamed.existsSync(); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(await renamed.readAsString(), 'SRC');
+        expect(await File(p.join(dst.path, 'dup.txt')).readAsString(), 'DST');
+      },
+    );
 
     test('auto-retries a transient failure and then succeeds', () async {
       final c = makeContainer();
@@ -483,7 +644,8 @@ void main() {
       addTearDown(() => dst.delete(recursive: true));
       await File(p.join(src.path, 'x.bin')).writeAsBytes(List.filled(512, 7));
 
-      final flaky = _FlakyLocal()..failsLeft = 2; // fail first 2 reads, succeed on the 3rd
+      final flaky = _FlakyLocal()
+        ..failsLeft = 2; // fail first 2 reads, succeed on the 3rd
       s.leftPane
         ..backend = flaky
         ..path = src.path;
@@ -505,7 +667,8 @@ void main() {
         t = list.isEmpty ? null : list.first;
         if (t != null &&
             (t.status == TransferStatus.done ||
-                (t.status == TransferStatus.error && t.attempts >= TransfersNotifier.maxAttempts))) {
+                (t.status == TransferStatus.error &&
+                    t.attempts >= TransfersNotifier.maxAttempts))) {
           break;
         }
         await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -517,7 +680,8 @@ void main() {
 
     test('manual retry re-runs an exhausted transfer', () async {
       final c = makeContainer();
-      final n = c.read(transfersProvider.notifier)..backoffFor = (_) => Duration.zero;
+      final n = c.read(transfersProvider.notifier)
+        ..backoffFor = (_) => Duration.zero;
       final s = c.read(sessionsProvider.notifier);
       final src = await Directory.systemTemp.createTemp('mr_src');
       final dst = await Directory.systemTemp.createTemp('mr_dst');
@@ -543,7 +707,9 @@ void main() {
       for (var i = 0; i < 300; i++) {
         final list = c.read(transfersProvider).transfers;
         t = list.isEmpty ? null : list.first;
-        if (t != null && t.status == TransferStatus.error && t.attempts >= TransfersNotifier.maxAttempts) {
+        if (t != null &&
+            t.status == TransferStatus.error &&
+            t.attempts >= TransfersNotifier.maxAttempts) {
           break;
         }
         await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -565,25 +731,37 @@ void main() {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
       await s.setPaneEndpoint(true, null);
-      final s3 = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
+      final s3 = c
+          .read(connectionsProvider)
+          .connections
+          .firstWhere((x) => x.isS3);
       await s.setPaneEndpoint(false, s3);
       s.dropTransfer(const DragPayload(_file, true), false);
       expect(c.read(transfersProvider).transfers, isEmpty);
       expect(c.read(toastsProvider).last.kind, ToastKind.error);
     });
 
-    test('a non-transferring backend is rejected with an error toast', () async {
-      final c = makeContainer();
-      final s = c.read(sessionsProvider.notifier);
-      await s.setPaneEndpoint(true, null); // local ready
-      s.rightPane
-        ..backend = FakeRemoteBackend(Connection(name: 'demo', protocol: Protocol.sftp, remotePath: '/srv'))
-        ..connection = Connection(name: 'demo', protocol: Protocol.sftp);
-      await s.rightPane.refresh();
-      s.dropTransfer(const DragPayload(_file, true), false);
-      expect(c.read(transfersProvider).transfers, isEmpty);
-      expect(c.read(toastsProvider).last.kind, ToastKind.error);
-    });
+    test(
+      'a non-transferring backend is rejected with an error toast',
+      () async {
+        final c = makeContainer();
+        final s = c.read(sessionsProvider.notifier);
+        await s.setPaneEndpoint(true, null); // local ready
+        s.rightPane
+          ..backend = FakeRemoteBackend(
+            Connection(
+              name: 'demo',
+              protocol: Protocol.sftp,
+              remotePath: '/srv',
+            ),
+          )
+          ..connection = Connection(name: 'demo', protocol: Protocol.sftp);
+        await s.rightPane.refresh();
+        s.dropTransfer(const DragPayload(_file, true), false);
+        expect(c.read(transfersProvider).transfers, isEmpty);
+        expect(c.read(toastsProvider).last.kind, ToastKind.error);
+      },
+    );
 
     test('Local→Local creates a real (live) transfer that completes', () async {
       final c = makeContainer();
@@ -592,7 +770,9 @@ void main() {
       final dst = await Directory.systemTemp.createTemp('drop_dst');
       addTearDown(() => src.delete(recursive: true));
       addTearDown(() => dst.delete(recursive: true));
-      await File(p.join(src.path, 'payload.bin')).writeAsBytes(List.filled(4096, 9));
+      await File(
+        p.join(src.path, 'payload.bin'),
+      ).writeAsBytes(List.filled(4096, 9));
 
       s.leftPane
         ..backend = LocalBackend()
@@ -610,11 +790,20 @@ void main() {
       final t = c.read(transfersProvider).transfers.first;
       expect(t.live, isTrue);
 
-      for (var i = 0; i < 100 && t.status != TransferStatus.done && t.status != TransferStatus.error; i++) {
+      for (
+        var i = 0;
+        i < 100 &&
+            t.status != TransferStatus.done &&
+            t.status != TransferStatus.error;
+        i++
+      ) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
-      expect(await File(p.join(dst.path, 'payload.bin')).readAsBytes(), List.filled(4096, 9));
+      expect(
+        await File(p.join(dst.path, 'payload.bin')).readAsBytes(),
+        List.filled(4096, 9),
+      );
     });
 
     test('dropping a multi-selection transfers every selected file', () async {
@@ -639,22 +828,34 @@ void main() {
 
       for (var i = 0; i < s.leftPane.items.length; i++) {
         final f = s.leftPane.items[i];
-        if (f.name == 'f1.bin' || f.name == 'f2.bin') s.leftPane.toggleSelect(i);
+        if (f.name == 'f1.bin' || f.name == 'f2.bin') {
+          s.leftPane.toggleSelect(i);
+        }
       }
       final dragged = s.leftPane.items.firstWhere((e) => e.name == 'f1.bin');
       s.dropTransfer(DragPayload(dragged, true), false);
 
       // dropTransfer enqueues asynchronously now (it resolves conflicts first).
-      int selectedCount() =>
-          c.read(transfersProvider).transfers.where((t) => t.name == 'f1.bin' || t.name == 'f2.bin').length;
+      int selectedCount() => c
+          .read(transfersProvider)
+          .transfers
+          .where((t) => t.name == 'f1.bin' || t.name == 'f2.bin')
+          .length;
       for (var i = 0; i < 100 && selectedCount() < 2; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 5));
       }
       expect(selectedCount(), 2);
 
       for (var i = 0; i < 200; i++) {
-        final pending = c.read(transfersProvider).transfers
-            .where((t) => t.live && t.status != TransferStatus.done && t.status != TransferStatus.error);
+        final pending = c
+            .read(transfersProvider)
+            .transfers
+            .where(
+              (t) =>
+                  t.live &&
+                  t.status != TransferStatus.done &&
+                  t.status != TransferStatus.error,
+            );
         if (pending.isEmpty) break;
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
@@ -674,7 +875,9 @@ void main() {
       final dst = await Directory.systemTemp.createTemp('hist_dst');
       addTearDown(() => src.delete(recursive: true));
       addTearDown(() => dst.delete(recursive: true));
-      await File(p.join(src.path, 'rec.bin')).writeAsBytes(List.filled(2048, 5));
+      await File(
+        p.join(src.path, 'rec.bin'),
+      ).writeAsBytes(List.filled(2048, 5));
 
       s.leftPane
         ..backend = LocalBackend()
@@ -690,15 +893,27 @@ void main() {
       s.dropTransfer(DragPayload(item, true), false);
 
       final t = c.read(transfersProvider).transfers.first;
-      for (var i = 0; i < 200 && t.status != TransferStatus.done && t.status != TransferStatus.error; i++) {
+      for (
+        var i = 0;
+        i < 200 &&
+            t.status != TransferStatus.done &&
+            t.status != TransferStatus.error;
+        i++
+      ) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
 
-      // record runs asynchronously; let it settle.
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // record persists asynchronously and the dashboard refresh is debounced;
+      // poll until it lands.
+      for (var i = 0; i < 100 && c.read(historyProvider).records.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
       expect(c.read(historyProvider).records, isNotEmpty);
-      expect(c.read(historyProvider).records.any((r) => r.name == 'rec.bin'), isTrue);
+      expect(
+        c.read(historyProvider).records.any((r) => r.name == 'rec.bin'),
+        isTrue,
+      );
     });
   });
 }

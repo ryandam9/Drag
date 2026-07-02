@@ -43,16 +43,27 @@ bool entriesDiffer(FileItem a, FileItem b) {
 /// Compares two directory listings by name, producing a [CompareMark] for every
 /// entry on each side (parent ".." entries are ignored).
 PaneDiff comparePanes(List<FileItem> left, List<FileItem> right) {
-  final l = {for (final i in left) if (!i.isParent) i.name: i};
-  final r = {for (final i in right) if (!i.isParent) i.name: i};
+  final l = {
+    for (final i in left)
+      if (!i.isParent) i.name: i,
+  };
+  final r = {
+    for (final i in right)
+      if (!i.isParent) i.name: i,
+  };
 
-  Map<String, CompareMark> marksFor(Map<String, FileItem> a, Map<String, FileItem> b) {
+  Map<String, CompareMark> marksFor(
+    Map<String, FileItem> a,
+    Map<String, FileItem> b,
+  ) {
     final out = <String, CompareMark>{};
     for (final e in a.entries) {
       final other = b[e.key];
       out[e.key] = other == null
           ? CompareMark.onlyHere
-          : (entriesDiffer(e.value, other) ? CompareMark.differs : CompareMark.same);
+          : (entriesDiffer(e.value, other)
+                ? CompareMark.differs
+                : CompareMark.same);
     }
     return out;
   }
@@ -74,10 +85,10 @@ enum CompareMode {
 
 extension CompareModeLabel on CompareMode {
   String get label => switch (this) {
-        CompareMode.size => 'Size',
-        CompareMode.sizeAndTime => 'Size + modified',
-        CompareMode.checksum => 'Checksum (slow)',
-      };
+    CompareMode.size => 'Size',
+    CompareMode.sizeAndTime => 'Size + modified',
+    CompareMode.checksum => 'Checksum (slow)',
+  };
 }
 
 /// Computes a content hash for the file at [path] on one side (used only by
@@ -135,6 +146,7 @@ class MirrorPlan {
   final List<MirrorMkdir> mkdirs;
   final List<MirrorCopy> copies;
   final List<MirrorDelete> deletes;
+
   /// True when planning stopped early because a limit (max depth / max files)
   /// was hit or the user cancelled — so the plan is partial.
   final bool truncated;
@@ -190,8 +202,15 @@ Future<MirrorPlan> planMirrorRecursive({
   var stopped = false;
 
   // Whether a same-named source/destination *file* pair differs, per [mode].
-  Future<bool> fileDiffers(FileItem s, FileItem d, String sPath, String dPath) async {
-    if ((d.sizeBytes ?? 0) != (s.sizeBytes ?? 0)) return true; // size always wins
+  Future<bool> fileDiffers(
+    FileItem s,
+    FileItem d,
+    String sPath,
+    String dPath,
+  ) async {
+    if ((d.sizeBytes ?? 0) != (s.sizeBytes ?? 0)) {
+      return true; // size always wins
+    }
     if (mode == CompareMode.sizeAndTime) return s.modified != d.modified;
     if (mode == CompareMode.checksum && hashSrc != null && hashDst != null) {
       return (await hashSrc(sPath)) != (await hashDst(dPath));
@@ -205,8 +224,16 @@ Future<MirrorPlan> planMirrorRecursive({
       return;
     }
     if (maxDepth != null && depth > maxDepth) return;
-    final srcEntries = [for (final e in await listSrc(sDir)) if (!e.isParent) e];
-    final dstEntries = dstExists ? [for (final e in await listDst(dDir)) if (!e.isParent) e] : <FileItem>[];
+    final srcEntries = [
+      for (final e in await listSrc(sDir))
+        if (!e.isParent) e,
+    ];
+    final dstEntries = dstExists
+        ? [
+            for (final e in await listDst(dDir))
+              if (!e.isParent) e,
+          ]
+        : <FileItem>[];
     final dstByName = {for (final e in dstEntries) e.name: e};
     final srcNames = {for (final e in srcEntries) e.name};
 
@@ -243,9 +270,23 @@ Future<MirrorPlan> planMirrorRecursive({
         if (d != null && d.isDir) {
           // A folder blocks the file — remove it, then copy.
           deletes.add(MirrorDelete(joinDst(dDir, s.name, true), true));
-          copies.add(MirrorCopy(srcPath: sPath, dstPath: dPath, name: s.name, sizeBytes: size));
+          copies.add(
+            MirrorCopy(
+              srcPath: sPath,
+              dstPath: dPath,
+              name: s.name,
+              sizeBytes: size,
+            ),
+          );
         } else if (d == null || await fileDiffers(s, d, sPath, dPath)) {
-          copies.add(MirrorCopy(srcPath: sPath, dstPath: dPath, name: s.name, sizeBytes: size));
+          copies.add(
+            MirrorCopy(
+              srcPath: sPath,
+              dstPath: dPath,
+              name: s.name,
+              sizeBytes: size,
+            ),
+          );
         }
       }
     }
@@ -262,9 +303,10 @@ Future<MirrorPlan> planMirrorRecursive({
   await walk(srcRoot, dstRoot, true, 0);
   onScanned?.call(scanned);
   return MirrorPlan(
-      leftToRight: leftToRight,
-      mkdirs: mkdirs,
-      copies: copies,
-      deletes: deletes,
-      truncated: stopped);
+    leftToRight: leftToRight,
+    mkdirs: mkdirs,
+    copies: copies,
+    deletes: deletes,
+    truncated: stopped,
+  );
 }

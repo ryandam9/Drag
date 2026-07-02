@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'app_db.dart';
 import 'db_migrations.dart';
 
 /// User-adjustable app preferences plus the last window geometry. Persisted as
@@ -103,52 +104,51 @@ class AppSettings {
     double? windowHeight,
     double? windowX,
     double? windowY,
-  }) =>
-      AppSettings(
-        themeName: themeName ?? this.themeName,
-        brightnessMode: brightnessMode ?? this.brightnessMode,
-        accentValue: accentValue ?? this.accentValue,
-        accentHiValue: accentHiValue ?? this.accentHiValue,
-        uiFontSize: uiFontSize ?? this.uiFontSize,
-        uiFont: uiFont ?? this.uiFont,
-        monospaceFont: monospaceFont ?? this.monospaceFont,
-        showHiddenFiles: showHiddenFiles ?? this.showHiddenFiles,
-        showPermsColumn: showPermsColumn ?? this.showPermsColumn,
-        showLogOnStartup: showLogOnStartup ?? this.showLogOnStartup,
-        confirmOverwrite: confirmOverwrite ?? this.confirmOverwrite,
-        conflictPolicy: conflictPolicy ?? this.conflictPolicy,
-        verifyLevel: verifyLevel ?? this.verifyLevel,
-        transferLimitKbps: transferLimitKbps ?? this.transferLimitKbps,
-        notifyOnComplete: notifyOnComplete ?? this.notifyOnComplete,
-        sidebarCollapsed: sidebarCollapsed ?? this.sidebarCollapsed,
-        windowWidth: windowWidth ?? this.windowWidth,
-        windowHeight: windowHeight ?? this.windowHeight,
-        windowX: windowX ?? this.windowX,
-        windowY: windowY ?? this.windowY,
-      );
+  }) => AppSettings(
+    themeName: themeName ?? this.themeName,
+    brightnessMode: brightnessMode ?? this.brightnessMode,
+    accentValue: accentValue ?? this.accentValue,
+    accentHiValue: accentHiValue ?? this.accentHiValue,
+    uiFontSize: uiFontSize ?? this.uiFontSize,
+    uiFont: uiFont ?? this.uiFont,
+    monospaceFont: monospaceFont ?? this.monospaceFont,
+    showHiddenFiles: showHiddenFiles ?? this.showHiddenFiles,
+    showPermsColumn: showPermsColumn ?? this.showPermsColumn,
+    showLogOnStartup: showLogOnStartup ?? this.showLogOnStartup,
+    confirmOverwrite: confirmOverwrite ?? this.confirmOverwrite,
+    conflictPolicy: conflictPolicy ?? this.conflictPolicy,
+    verifyLevel: verifyLevel ?? this.verifyLevel,
+    transferLimitKbps: transferLimitKbps ?? this.transferLimitKbps,
+    notifyOnComplete: notifyOnComplete ?? this.notifyOnComplete,
+    sidebarCollapsed: sidebarCollapsed ?? this.sidebarCollapsed,
+    windowWidth: windowWidth ?? this.windowWidth,
+    windowHeight: windowHeight ?? this.windowHeight,
+    windowX: windowX ?? this.windowX,
+    windowY: windowY ?? this.windowY,
+  );
 
   Map<String, Object?> toJson() => {
-        'themeName': themeName,
-        'brightnessMode': brightnessMode,
-        'accentValue': accentValue,
-        'accentHiValue': accentHiValue,
-        'uiFontSize': uiFontSize,
-        'uiFont': uiFont,
-        'monospaceFont': monospaceFont,
-        'showHiddenFiles': showHiddenFiles,
-        'showPermsColumn': showPermsColumn,
-        'showLogOnStartup': showLogOnStartup,
-        'confirmOverwrite': confirmOverwrite,
-        'conflictPolicy': conflictPolicy,
-        'verifyLevel': verifyLevel,
-        'transferLimitKbps': transferLimitKbps,
-        'notifyOnComplete': notifyOnComplete,
-        'sidebarCollapsed': sidebarCollapsed,
-        'windowWidth': windowWidth,
-        'windowHeight': windowHeight,
-        'windowX': windowX,
-        'windowY': windowY,
-      };
+    'themeName': themeName,
+    'brightnessMode': brightnessMode,
+    'accentValue': accentValue,
+    'accentHiValue': accentHiValue,
+    'uiFontSize': uiFontSize,
+    'uiFont': uiFont,
+    'monospaceFont': monospaceFont,
+    'showHiddenFiles': showHiddenFiles,
+    'showPermsColumn': showPermsColumn,
+    'showLogOnStartup': showLogOnStartup,
+    'confirmOverwrite': confirmOverwrite,
+    'conflictPolicy': conflictPolicy,
+    'verifyLevel': verifyLevel,
+    'transferLimitKbps': transferLimitKbps,
+    'notifyOnComplete': notifyOnComplete,
+    'sidebarCollapsed': sidebarCollapsed,
+    'windowWidth': windowWidth,
+    'windowHeight': windowHeight,
+    'windowX': windowX,
+    'windowY': windowY,
+  };
 
   factory AppSettings.fromJson(Map<String, Object?> j) {
     double? d(Object? v) => (v as num?)?.toDouble();
@@ -187,44 +187,39 @@ class SettingsStore {
   static const _rowId = 1;
 
   static Future<SettingsStore> open([String? path]) async {
-    sqfliteFfiInit();
-    final factory = databaseFactoryFfi;
-    final dbPath = path ?? await _defaultPath(factory);
-    final db = await factory.openDatabase(
-      dbPath,
-      options: OpenDatabaseOptions(
-        version: 1,
-        onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
-        onCreate: (db, _) => db.execute('''
-          CREATE TABLE $_table (
-            id INTEGER PRIMARY KEY,
-            data TEXT NOT NULL
-          )
-        '''),
-      ),
+    final db = await openAppDb(
+      'drag_settings.db',
+      path: path,
+      migrations: _migrations,
+      onCreate: (db) => db.execute('''
+        CREATE TABLE $_table (
+          id INTEGER PRIMARY KEY,
+          data TEXT NOT NULL
+        )
+      '''),
     );
     return SettingsStore._(db);
   }
 
-  static Future<String> _defaultPath(DatabaseFactory factory) async {
-    final base = await factory.getDatabasesPath();
-    return base.endsWith('/') ? '${base}drag_settings.db' : '$base/drag_settings.db';
-  }
-
   /// Loads persisted settings, or returns defaults on first run.
   Future<AppSettings> load() async {
-    final rows = await _db.query(_table, where: 'id = ?', whereArgs: [_rowId], limit: 1);
+    final rows = await _db.query(
+      _table,
+      where: 'id = ?',
+      whereArgs: [_rowId],
+      limit: 1,
+    );
     if (rows.isEmpty) return AppSettings();
     return AppSettings.fromJson(
-        jsonDecode(rows.first['data'] as String) as Map<String, Object?>);
+      jsonDecode(rows.first['data'] as String) as Map<String, Object?>,
+    );
   }
 
   Future<void> save(AppSettings s) async {
-    await _db.insert(
-      _table,
-      {'id': _rowId, 'data': jsonEncode(s.toJson())},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await _db.insert(_table, {
+      'id': _rowId,
+      'data': jsonEncode(s.toJson()),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> close() => _db.close();

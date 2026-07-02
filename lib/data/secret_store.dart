@@ -20,8 +20,11 @@ enum SecretStoreStatus {
 /// keep them in the OS keychain; a memory fallback is used when none is
 /// available (and in tests).
 abstract class SecretStore {
-  /// Save [c]'s secrets, keyed by its `id`.
-  Future<void> save(Connection c);
+  /// Save [c]'s secrets, keyed by its `id`. When every secret field is empty
+  /// this is a no-op — so a save racing the initial keychain load can never
+  /// wipe stored secrets — unless [clear] is true, which explicitly removes
+  /// the stored entry (the user really emptied the fields).
+  Future<void> save(Connection c, {bool clear = false});
 
   /// Current backend health — whether secrets are persisted or memory-only.
   SecretStoreStatus get status;
@@ -34,11 +37,11 @@ abstract class SecretStore {
 
   // ── Shared (de)serialisation of the secret subset ──
   static Map<String, String> secretsOf(Connection c) => {
-        'password': c.password,
-        'passphrase': c.passphrase,
-        'secretAccessKey': c.secretAccessKey,
-        'sessionToken': c.sessionToken,
-      };
+    'password': c.password,
+    'passphrase': c.passphrase,
+    'secretAccessKey': c.secretAccessKey,
+    'sessionToken': c.sessionToken,
+  };
 
   static void apply(Connection c, Map<String, dynamic> m) {
     String s(String k) => (m[k] as String?) ?? '';
@@ -64,8 +67,13 @@ class MemorySecretStore implements SecretStore {
   SecretStoreStatus get status => SecretStoreStatus.memoryFallback;
 
   @override
-  Future<void> save(Connection c) async {
+  Future<void> save(Connection c, {bool clear = false}) async {
     if (c.id.isEmpty) return;
+    if (!SecretStore._hasAny(c)) {
+      // No-op unless the caller explicitly asked to clear (see [SecretStore.save]).
+      if (clear) _store.remove(c.id);
+      return;
+    }
     _store[c.id] = jsonEncode(SecretStore.secretsOf(c));
   }
 
@@ -85,7 +93,7 @@ class MemorySecretStore implements SecretStore {
 /// transparently degrades to an in-memory map so the app keeps working.
 class KeychainSecretStore implements SecretStore {
   KeychainSecretStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
   final Map<String, String> _fallback = {};
@@ -98,10 +106,15 @@ class KeychainSecretStore implements SecretStore {
   String _key(String id) => 'drag_secret_$id';
 
   @override
-  Future<void> save(Connection c) async {
+  Future<void> save(Connection c, {bool clear = false}) async {
     if (c.id.isEmpty) return;
-    // Nothing secret to store → make sure no stale entry lingers.
-    if (!SecretStore._hasAny(c)) return delete(c.id);
+    // Nothing secret to store → only remove an existing entry when the caller
+    // explicitly cleared the fields; never implicitly, so a save racing the
+    // initial keychain load can't wipe stored secrets (issue: startup race).
+    if (!SecretStore._hasAny(c)) {
+      if (clear) await delete(c.id);
+      return;
+    }
     final value = jsonEncode(SecretStore.secretsOf(c));
     if (_degraded) {
       _fallback[c.id] = value;

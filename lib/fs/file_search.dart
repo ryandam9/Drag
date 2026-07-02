@@ -9,7 +9,12 @@ class SearchHit {
   final String path; // full backend path
   final bool isDir;
   final int? sizeBytes;
-  const SearchHit({required this.name, required this.path, required this.isDir, this.sizeBytes});
+  const SearchHit({
+    required this.name,
+    required this.path,
+    required this.isDir,
+    this.sizeBytes,
+  });
 }
 
 /// A cancellation flag shared with a running [searchTree].
@@ -83,7 +88,12 @@ Stream<SearchHit> searchTree(
       scanned++;
       final full = backend.childPath(node.dir, it.name, it.isDir);
       if (matchesQuery(it.name, query)) {
-        yield SearchHit(name: it.name, path: full, isDir: it.isDir, sizeBytes: it.sizeBytes);
+        yield SearchHit(
+          name: it.name,
+          path: full,
+          isDir: it.isDir,
+          sizeBytes: it.sizeBytes,
+        );
         if (++hits >= maxHits) return;
       }
       if (it.isDir && (maxDepth == null || node.depth < maxDepth)) {

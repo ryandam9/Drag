@@ -15,23 +15,24 @@ enum ToastKind { success, error, info }
 
 extension ToastKindStyle on ToastKind {
   String get icon => switch (this) {
-        ToastKind.success => '✅',
-        ToastKind.error => '❌',
-        ToastKind.info => 'ℹ️',
-      };
+    ToastKind.success => '✅',
+    ToastKind.error => '❌',
+    ToastKind.info => 'ℹ️',
+  };
 
   Color get color => switch (this) {
-        ToastKind.success => FsColors.green,
-        ToastKind.error => FsColors.red,
-        ToastKind.info => FsColors.accent,
-      };
+    ToastKind.success => FsColors.green,
+    ToastKind.error => FsColors.red,
+    ToastKind.info => FsColors.accent,
+  };
 
   Color get fg => switch (this) {
-        ToastKind.success => FsColors.badgeDoneFg,
-        ToastKind.error => FsColors.badgeErrorFg,
-        ToastKind.info => FsColors.accentHi,
-      };
+    ToastKind.success => FsColors.badgeDoneFg,
+    ToastKind.error => FsColors.badgeErrorFg,
+    ToastKind.info => FsColors.accentHi,
+  };
 }
 
 /// Signature for emitting a toast from a controller back up to the coordinator.
-typedef ToastSink = void Function(String title, String sub, ToastKind kind, {String? detail});
+typedef ToastSink =
+    void Function(String title, String sub, ToastKind kind, {String? detail});

@@ -17,16 +17,15 @@ void main() {
     b.platformDispatcher.views.first.devicePixelRatio = 1.0;
   });
   tearDown(() {
-    TestWidgetsFlutterBinding.ensureInitialized()
-        .platformDispatcher
-        .views
-        .first
+    TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher.views.first
         .resetPhysicalSize();
   });
 
   /// Both panes on in-memory backends (no disk I/O → resolves under fake-async).
-  Future<(ProviderContainer, MemoryBackend, MemoryBackend)> setup(WidgetTester tester,
-      {String leftPath = '/'}) async {
+  Future<(ProviderContainer, MemoryBackend, MemoryBackend)> setup(
+    WidgetTester tester, {
+    String leftPath = '/',
+  }) async {
     final c = makeContainer(connections: sampleConnections());
     final s = c.read(sessionsProvider.notifier);
     final left = MemoryBackend.sample();
@@ -40,15 +39,19 @@ void main() {
       ..connection = null
       ..path = '/';
     await s.rightPane.refresh();
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: c,
-      child: const MaterialApp(home: Scaffold(body: BrowserScreen())),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: c,
+        child: const MaterialApp(home: Scaffold(body: BrowserScreen())),
+      ),
+    );
     await tester.pump();
     return (c, left, right);
   }
 
-  testWidgets('renders panes, toolbar, file rows and the idle queue strip', (tester) async {
+  testWidgets('renders panes, toolbar, file rows and the idle queue strip', (
+    tester,
+  ) async {
     final (_, _, _) = await setup(tester);
     expect(find.text('LOCAL'), findsWidgets);
     expect(find.text('⊕ New Folder'), findsOneWidget);
@@ -63,11 +66,19 @@ void main() {
     final (c, _, _) = await setup(tester);
     await tester.tap(find.text('alpha.txt'));
     await tester.pump();
-    expect(c.read(sessionsProvider.notifier).leftPane.selectedItems().map((e) => e.name),
-        contains('alpha.txt'));
+    expect(
+      c
+          .read(sessionsProvider.notifier)
+          .leftPane
+          .selectedItems()
+          .map((e) => e.name),
+      contains('alpha.txt'),
+    );
   });
 
-  testWidgets('toolbar Hidden toggle flips the show-hidden setting', (tester) async {
+  testWidgets('toolbar Hidden toggle flips the show-hidden setting', (
+    tester,
+  ) async {
     final (c, _, _) = await setup(tester);
     // Hidden files are off by default.
     expect(c.read(settingsProvider).showHiddenFiles, isFalse);
@@ -78,7 +89,9 @@ void main() {
     expect(c.read(sessionsProvider.notifier).leftPane.showHidden, isTrue);
   });
 
-  testWidgets('toolbar Up navigates the focused pane to its parent', (tester) async {
+  testWidgets('toolbar Up navigates the focused pane to its parent', (
+    tester,
+  ) async {
     final (c, _, _) = await setup(tester, leftPath: '/nested');
     final pane = c.read(sessionsProvider.notifier).leftPane;
     expect(pane.path, '/nested');
@@ -92,14 +105,18 @@ void main() {
     await tester.tap(find.text('⊕ New Folder'));
     await tester.pumpAndSettle();
     expect(find.text('New folder'), findsOneWidget);
-    final dialogField =
-        find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
+    final dialogField = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
     await tester.enterText(dialogField, 'created_dir');
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
     expect(find.text('created_dir'), findsOneWidget);
     expect((await left.list('/')).any((e) => e.name == 'created_dir'), isTrue);
-    await tester.pump(const Duration(seconds: 11)); // drain the success-toast timer
+    await tester.pump(
+      const Duration(seconds: 11),
+    ); // drain the success-toast timer
   });
 
   testWidgets('F2 with nothing selected shows an info toast', (tester) async {
@@ -110,88 +127,126 @@ void main() {
     await tester.pump(const Duration(seconds: 11)); // drain the toast timer
   });
 
-  testWidgets('endpoint picker offers Local plus every saved connection', (tester) async {
+  testWidgets('endpoint picker offers Local plus every saved connection', (
+    tester,
+  ) async {
     final (c, _, _) = await setup(tester);
     final picker = tester.widget<DropdownButton<Connection?>>(
-        find.byType(DropdownButton<Connection?>).first);
+      find.byType(DropdownButton<Connection?>).first,
+    );
     final values = picker.items!.map((i) => i.value).toList();
     // Local (null) + the three sample connections.
     expect(values.length, 1 + c.read(connectionsProvider).connections.length);
     expect(values, contains(null));
-    expect(values.whereType<Connection>().map((x) => x.name),
-        contains('s3-prod (Account A)'));
+    expect(
+      values.whereType<Connection>().map((x) => x.name),
+      contains('s3-prod (Account A)'),
+    );
   });
 
-  testWidgets('a long connection name does not overflow the endpoint picker menu',
-      (tester) async {
-    const longName =
-        'production-data-lake-replication-bucket (Account A / us-east-1 / read-only)';
-    final c = makeContainer(connections: [
-      Connection(id: 'long', name: longName, protocol: Protocol.s3, bucket: 'b'),
-    ]);
-    final s = c.read(sessionsProvider.notifier);
-    final left = MemoryBackend.sample();
-    s.leftPane
-      ..backend = left
-      ..path = '/';
-    await s.leftPane.refresh();
-    final right = MemoryBackend();
-    s.rightPane
-      ..backend = right
-      ..connection = null
-      ..path = '/';
-    await s.rightPane.refresh();
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: c,
-      child: const MaterialApp(home: Scaffold(body: BrowserScreen())),
-    ));
-    await tester.pump();
+  testWidgets(
+    'a long connection name does not overflow the endpoint picker menu',
+    (tester) async {
+      const longName =
+          'production-data-lake-replication-bucket (Account A / us-east-1 / read-only)';
+      final c = makeContainer(
+        connections: [
+          Connection(
+            id: 'long',
+            name: longName,
+            protocol: Protocol.s3,
+            bucket: 'b',
+          ),
+        ],
+      );
+      final s = c.read(sessionsProvider.notifier);
+      final left = MemoryBackend.sample();
+      s.leftPane
+        ..backend = left
+        ..path = '/';
+      await s.leftPane.refresh();
+      final right = MemoryBackend();
+      s.rightPane
+        ..backend = right
+        ..connection = null
+        ..path = '/';
+      await s.rightPane.refresh();
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: const MaterialApp(home: Scaffold(body: BrowserScreen())),
+        ),
+      );
+      await tester.pump();
 
-    // Opening the dropdown renders the menu rows, including the long name — it
-    // must ellipsise within the menu width rather than overflowing the row.
-    await tester.tap(find.byType(DropdownButton<Connection?>).first);
-    await tester.pumpAndSettle();
+      // Opening the dropdown renders the menu rows, including the long name — it
+      // must ellipsise within the menu width rather than overflowing the row.
+      await tester.tap(find.byType(DropdownButton<Connection?>).first);
+      await tester.pumpAndSettle();
 
-    expect(find.text(longName), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.text(longName), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('queue strip surfaces the active transfer', (tester) async {
     final c = makeContainer(connections: sampleConnections());
     final s = c.read(sessionsProvider.notifier);
-    s.leftPane..backend = MemoryBackend.sample()..path = '/';
+    s.leftPane
+      ..backend = MemoryBackend.sample()
+      ..path = '/';
     await s.leftPane.refresh();
     c.read(transfersProvider.notifier).debugSetTransfers([
       Transfer(
-          name: 'moving.bin',
-          route: 'Local → s3',
-          direction: TransferDirection.upload,
-          sizeBytes: 1000,
-          session: 's',
-          status: TransferStatus.active,
-          progress: 0.5,
-          speed: '1.0 MB/s'),
+        name: 'moving.bin',
+        route: 'Local → s3',
+        direction: TransferDirection.upload,
+        sizeBytes: 1000,
+        session: 's',
+        status: TransferStatus.active,
+        progress: 0.5,
+        speed: '1.0 MB/s',
+      ),
     ]);
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: c,
-      child: const MaterialApp(home: Scaffold(body: BrowserScreen())),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: c,
+        child: const MaterialApp(home: Scaffold(body: BrowserScreen())),
+      ),
+    );
     await tester.pump();
     expect(find.textContaining('Transferring — moving.bin'), findsOneWidget);
   });
 
-  testWidgets('the log panel toggles from the toolbar', (tester) async {
-    await setup(tester);
-    expect(find.text('Local endpoint ready'), findsNothing);
+  testWidgets('the log panel toggles from the toolbar and shows real log lines', (
+    tester,
+  ) async {
+    final (c, _, _) = await setup(tester);
+    c.read(connectionLogProvider.notifier).success('prod-server-01: connected');
+    expect(find.text('prod-server-01: connected'), findsNothing);
     await tester.tap(find.text('📋 Log'));
     await tester.pump();
-    expect(find.text('Local endpoint ready'), findsOneWidget);
+    // The panel renders the shared connection log, not canned placeholder text.
+    expect(find.text('prod-server-01: connected'), findsOneWidget);
   });
 
-  testWidgets('session tabs reflect open sessions and can be closed', (tester) async {
+  testWidgets('the log panel shows a subtle empty state with no activity', (
+    tester,
+  ) async {
+    await setup(tester);
+    await tester.tap(find.text('📋 Log'));
+    await tester.pump();
+    expect(find.text('No activity yet.'), findsOneWidget);
+  });
+
+  testWidgets('session tabs reflect open sessions and can be closed', (
+    tester,
+  ) async {
     final (c, _, _) = await setup(tester);
     final s = c.read(sessionsProvider.notifier);
-    s.openSession(c.read(connectionsProvider).connections.firstWhere((x) => x.isS3));
+    s.openSession(
+      c.read(connectionsProvider).connections.firstWhere((x) => x.isS3),
+    );
     await tester.pump();
     expect(find.text('s3-prod (Account A)'), findsWidgets);
     expect(c.read(sessionsProvider).sessions.length, 2);
@@ -201,7 +256,9 @@ void main() {
     expect(c.read(sessionsProvider).sessions.length, 1);
   });
 
-  testWidgets('clicking the New Session + opens the connection manager', (tester) async {
+  testWidgets('clicking the New Session + opens the connection manager', (
+    tester,
+  ) async {
     final (c, _, _) = await setup(tester);
     await tester.tap(find.text('＋').first);
     await tester.pump();
@@ -215,16 +272,23 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.f2);
     await tester.pumpAndSettle();
     expect(find.text('Rename'), findsWidgets);
-    final field = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
+    final field = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
     await tester.enterText(field, 'renamed.txt');
-    await tester.tap(find.text('Rename').last); // the confirm button (title is also 'Rename')
+    await tester.tap(
+      find.text('Rename').last,
+    ); // the confirm button (title is also 'Rename')
     await tester.pumpAndSettle();
     expect((await left.list('/')).any((e) => e.name == 'renamed.txt'), isTrue);
     expect((await left.list('/')).any((e) => e.name == 'alpha.txt'), isFalse);
     await tester.pump(const Duration(seconds: 11));
   });
 
-  testWidgets('Delete key removes the selected file after confirmation', (tester) async {
+  testWidgets('Delete key removes the selected file after confirmation', (
+    tester,
+  ) async {
     final (c, left, _) = await setup(tester);
     await tester.tap(find.text('beta.bin'));
     await tester.pump();
@@ -249,7 +313,9 @@ void main() {
     expect(find.text('inner.txt'), findsOneWidget);
   });
 
-  testWidgets('arrow keys move the selection and Enter opens a folder', (tester) async {
+  testWidgets('arrow keys move the selection and Enter opens a folder', (
+    tester,
+  ) async {
     final (c, _, _) = await setup(tester);
     final pane = c.read(sessionsProvider.notifier).leftPane;
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
@@ -270,7 +336,9 @@ void main() {
     expect(c.read(sessionsProvider).focusedLeft, isFalse);
   });
 
-  testWidgets('Space opens a preview popup for the selected file', (tester) async {
+  testWidgets('Space opens a preview popup for the selected file', (
+    tester,
+  ) async {
     await setup(tester);
     await tester.tap(find.text('alpha.txt'));
     await tester.pump();
@@ -284,7 +352,9 @@ void main() {
     expect(find.text('Close'), findsNothing);
   });
 
-  testWidgets('clicking a column header sorts the focused pane', (tester) async {
+  testWidgets('clicking a column header sorts the focused pane', (
+    tester,
+  ) async {
     final (c, _, _) = await setup(tester);
     final pane = c.read(sessionsProvider.notifier).leftPane;
     expect(pane.sortKey, SortKey.name);
@@ -314,6 +384,21 @@ void main() {
     expect(c.read(sessionsProvider.notifier).leftPane.filterQuery, 'beta');
   });
 
+  testWidgets('pane shortcuts do not fire while typing in the filter box', (
+    tester,
+  ) async {
+    final (c, _, _) = await setup(tester, leftPath: '/nested');
+    final pane = c.read(sessionsProvider.notifier).leftPane;
+    expect(pane.path, '/nested');
+
+    // Focus the toolbar filter and type; Backspace must edit the text, not
+    // navigate the pane up a folder.
+    await tester.enterText(find.byType(TextField).first, 'inner');
+    await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+    await tester.pump();
+    expect(pane.path, '/nested'); // unchanged — the key stayed with the field
+  });
+
   testWidgets('type-ahead jumps to the matching row', (tester) async {
     final (c, _, _) = await setup(tester);
     final pane = c.read(sessionsProvider.notifier).leftPane;
@@ -322,7 +407,9 @@ void main() {
     expect(pane.items[pane.selectedIndex!].name, 'beta.bin');
   });
 
-  testWidgets('dragging a file onto the other pane transfers it', (tester) async {
+  testWidgets('dragging a file onto the other pane transfers it', (
+    tester,
+  ) async {
     final (c, _, right) = await setup(tester);
     expect((await right.list('/')).any((e) => e.name == 'alpha.txt'), isFalse);
 
@@ -335,5 +422,65 @@ void main() {
     }
     expect((await right.list('/')).any((e) => e.name == 'alpha.txt'), isTrue);
     await tester.pump(const Duration(seconds: 11));
+  });
+
+  testWidgets(
+    'dragging a folder onto the other pane transfers it recursively',
+    (tester) async {
+      final (c, _, right) = await setup(tester);
+      expect((await right.list('/')).any((e) => e.name == 'nested'), isFalse);
+
+      await tester.drag(find.text('nested'), const Offset(1100, 0));
+      await tester.pumpAndSettle();
+
+      // Let the recursive walk + streamed copies finish.
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(
+        (await right.list('/')).any((e) => e.name == 'nested' && e.isDir),
+        isTrue,
+      );
+      expect(
+        (await right.list('/nested')).any((e) => e.name == 'inner.txt'),
+        isTrue,
+      );
+      await tester.pump(const Duration(seconds: 11));
+    },
+  );
+
+  testWidgets('name prompts reject empty and separator-containing input', (
+    tester,
+  ) async {
+    final (c, left, _) = await setup(tester);
+    await tester.tap(find.text('⊕ New Folder'));
+    await tester.pumpAndSettle();
+    final field = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+
+    // A name with a path separator can't be confirmed (button inert, Enter no-op).
+    await tester.enterText(field, 'bad/name');
+    await tester.tap(find.text('Create'));
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsOneWidget); // still open
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    // A padded valid name is trimmed before use.
+    await tester.enterText(field, '  ok  ');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      (await left.list('/')).any((e) => e.name == 'ok' && e.isDir),
+      isTrue,
+    );
+    expect((await left.list('/')).any((e) => e.name == 'bad'), isFalse);
+    await tester.pump(
+      const Duration(seconds: 11),
+    ); // drain the success-toast timer
   });
 }

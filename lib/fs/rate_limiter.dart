@@ -9,8 +9,8 @@ class RateLimiter {
     this.bytesPerSecond,
     int Function()? clockMs,
     Future<void> Function(Duration)? sleep,
-  })  : _clockMs = clockMs ?? _defaultClock,
-        _sleep = sleep ?? _realSleep;
+  }) : _clockMs = clockMs ?? _defaultClock,
+       _sleep = sleep ?? _realSleep;
 
   /// The aggregate cap in bytes/second. `null` or `<= 0` means unlimited.
   int? bytesPerSecond;

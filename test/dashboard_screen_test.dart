@@ -13,10 +13,7 @@ void main() {
     b.platformDispatcher.views.first.devicePixelRatio = 1.0;
   });
   tearDown(() {
-    TestWidgetsFlutterBinding.ensureInitialized()
-        .platformDispatcher
-        .views
-        .first
+    TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher.views.first
         .resetPhysicalSize();
   });
 
@@ -24,10 +21,12 @@ void main() {
   // SQLite I/O wouldn't resolve under the widget tester's async zone anyway).
   Future<ProviderContainer> pump(WidgetTester tester) async {
     final c = makeContainer();
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: c,
-      child: const MaterialApp(home: Scaffold(body: DashboardScreen())),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: c,
+        child: const MaterialApp(home: Scaffold(body: DashboardScreen())),
+      ),
+    );
     await tester.pump();
     return c;
   }
@@ -37,7 +36,9 @@ void main() {
     expect(find.text('⬇ Export CSV'), findsOneWidget);
   });
 
-  testWidgets('exporting empty history reports nothing to export', (tester) async {
+  testWidgets('exporting empty history reports nothing to export', (
+    tester,
+  ) async {
     final c = await pump(tester);
 
     await tester.tap(find.text('⬇ Export CSV'));

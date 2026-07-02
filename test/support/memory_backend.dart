@@ -11,8 +11,8 @@ import 'package:drag/models/file_item.dart';
 /// Paths are POSIX-like and rooted at '/'.
 class MemoryBackend extends StorageBackend {
   MemoryBackend({Set<String>? dirs, Map<String, Uint8List>? files})
-      : _dirs = dirs ?? {'/'},
-        _files = files ?? {} {
+    : _dirs = dirs ?? {'/'},
+      _files = files ?? {} {
     _dirs.add('/');
   }
 
@@ -21,13 +21,13 @@ class MemoryBackend extends StorageBackend {
 
   /// Convenience: a backend pre-seeded with a couple of files and a folder.
   factory MemoryBackend.sample() => MemoryBackend(
-        dirs: {'/', '/nested'},
-        files: {
-          '/alpha.txt': Uint8List.fromList(List.filled(4, 1)),
-          '/beta.bin': Uint8List.fromList(List.filled(2048, 2)),
-          '/nested/inner.txt': Uint8List.fromList(List.filled(8, 3)),
-        },
-      );
+    dirs: {'/', '/nested'},
+    files: {
+      '/alpha.txt': Uint8List.fromList(List.filled(4, 1)),
+      '/beta.bin': Uint8List.fromList(List.filled(2048, 2)),
+      '/nested/inner.txt': Uint8List.fromList(List.filled(8, 3)),
+    },
+  );
 
   @override
   EndpointKind get kind => EndpointKind.local;
@@ -40,7 +40,9 @@ class MemoryBackend extends StorageBackend {
 
   @override
   Future<List<FileItem>> list(String path) async {
-    final base = path == '/' ? '/' : (path.endsWith('/') ? path.substring(0, path.length - 1) : path);
+    final base = path == '/'
+        ? '/'
+        : (path.endsWith('/') ? path.substring(0, path.length - 1) : path);
     final items = <FileItem>[];
     if (base != '/') items.add(const FileItem(name: '..', isDir: true));
     final seen = <String>{};
@@ -50,13 +52,15 @@ class MemoryBackend extends StorageBackend {
       final rest = full.substring(prefix.length);
       if (rest.isEmpty || rest.contains('/')) return; // not a direct child
       if (!seen.add(rest)) return;
-      items.add(FileItem(
-        name: rest,
-        isDir: isDir,
-        sizeBytes: isDir ? null : _files[full]?.length,
-        modified: '2025-01-01  00:00',
-        perms: isDir ? 'drwxr-xr-x' : '-rw-r--r--',
-      ));
+      items.add(
+        FileItem(
+          name: rest,
+          isDir: isDir,
+          sizeBytes: isDir ? null : _files[full]?.length,
+          modified: '2025-01-01  00:00',
+          perms: isDir ? 'drwxr-xr-x' : '-rw-r--r--',
+        ),
+      );
     }
 
     for (final d in _dirs) {
@@ -82,8 +86,12 @@ class MemoryBackend extends StorageBackend {
   bool get atomicWrite => true;
 
   @override
-  Future<void> write(String path, Stream<Uint8List> data, int length,
-      {void Function(int sent)? onProgress}) async {
+  Future<void> write(
+    String path,
+    Stream<Uint8List> data,
+    int length, {
+    void Function(int sent)? onProgress,
+  }) async {
     final out = <int>[];
     await for (final chunk in data) {
       out.addAll(chunk);
@@ -117,13 +125,17 @@ class MemoryBackend extends StorageBackend {
 
   @override
   String childPath(String path, String name, bool isDir) {
-    final base = path == '/' ? '' : (path.endsWith('/') ? path.substring(0, path.length - 1) : path);
+    final base = path == '/'
+        ? ''
+        : (path.endsWith('/') ? path.substring(0, path.length - 1) : path);
     return '$base/$name';
   }
 
   @override
   String parentPath(String path) {
-    final trimmed = path.endsWith('/') && path.length > 1 ? path.substring(0, path.length - 1) : path;
+    final trimmed = path.endsWith('/') && path.length > 1
+        ? path.substring(0, path.length - 1)
+        : path;
     final idx = trimmed.lastIndexOf('/');
     return idx <= 0 ? '/' : trimmed.substring(0, idx);
   }

@@ -19,18 +19,25 @@ import 'settings_provider.dart';
 import 'toasts_provider.dart';
 import 'transfers_provider.dart';
 
-export 'session.dart' show Session;
 export 'pane_controller.dart' show DragPayload;
+export 'session.dart' show Session;
 
 /// The open browser tabs and which pane is focused. [rev] is bumped on every
-/// in-place pane change (listing, selection, navigation) so watchers rebuild
-/// even though [Session]/[PaneController] objects are reused.
+/// structural change (tabs opened/closed/switched, focus, endpoint switch) so
+/// watchers rebuild even though [Session]/[PaneController] objects are reused.
+/// In-place pane changes (listing, selection, navigation) do NOT flow through
+/// here — panes are [ChangeNotifier]s and their widgets listen directly.
 class SessionsState {
   final List<Session> sessions;
   final int activeSessionId;
   final bool focusedLeft;
   final int rev;
-  const SessionsState(this.sessions, this.activeSessionId, this.focusedLeft, this.rev);
+  const SessionsState(
+    this.sessions,
+    this.activeSessionId,
+    this.focusedLeft,
+    this.rev,
+  );
 }
 
 /// Owns the session tabs (Local ⇄ remote dual-pane views), pane focus,
@@ -63,28 +70,32 @@ class SessionsNotifier extends Notifier<SessionsState> {
     });
 
     // React to the "show hidden files" setting without rebuilding this notifier.
-    ref.listen<bool>(settingsProvider.select((s) => s.showHiddenFiles),
-        (_, show) => applyShowHidden(show));
+    ref.listen<bool>(
+      settingsProvider.select((s) => s.showHiddenFiles),
+      (_, show) => applyShowHidden(show),
+    );
 
     final showHidden = ref.read(settingsProvider).showHiddenFiles;
     final autoRefresh = ref.read(autoRefreshPanesProvider);
     final layout = ref.read(initialSessionLayoutProvider);
     final connById = {
       for (final c in ref.read(connectionsProvider).connections)
-        if (c.id.isNotEmpty) c.id: c
+        if (c.id.isNotEmpty) c.id: c,
     };
 
     final sessions = <Session>[];
     var activeIndex = 0;
     if (layout != null && layout.sessions.isNotEmpty) {
       for (final r in layout.sessions) {
-        sessions.add(_buildSession(
-          showHidden,
-          leftConn: connById[r.leftConnId],
-          leftPath: r.leftPath,
-          rightConn: connById[r.rightConnId],
-          rightPath: r.rightPath,
-        ));
+        sessions.add(
+          _buildSession(
+            showHidden,
+            leftConn: connById[r.leftConnId],
+            leftPath: r.leftPath,
+            rightConn: connById[r.rightConnId],
+            rightPath: r.rightPath,
+          ),
+        );
       }
       activeIndex = layout.activeIndex.clamp(0, sessions.length - 1);
     } else {
@@ -92,20 +103,29 @@ class SessionsNotifier extends Notifier<SessionsState> {
     }
 
     if (autoRefresh) {
-      Future.microtask(() {
-        for (final s in sessions) {
-          s.left.refresh();
-          s.right.refresh();
-        }
-      });
+      final connections = ref.read(connectionsProvider.notifier);
+      unawaited(
+        Future.microtask(() async {
+          // Restored remote tabs must not log in before the keychain secrets
+          // have been loaded onto their connections — an early refresh would
+          // attempt the login with still-empty credentials.
+          await connections.secretsReady;
+          if (_disposed) return;
+          for (final s in sessions) {
+            unawaited(s.left.refresh());
+            unawaited(s.right.refresh());
+          }
+        }),
+      );
     }
     return SessionsState(sessions, sessions[activeIndex].id, true, 0);
   }
 
   // ── Accessors ──
   Session get activeSession => state.sessions.firstWhere(
-      (s) => s.id == state.activeSessionId,
-      orElse: () => state.sessions.first);
+    (s) => s.id == state.activeSessionId,
+    orElse: () => state.sessions.first,
+  );
   PaneController get leftPane => activeSession.left;
   PaneController get rightPane => activeSession.right;
   PaneController get focusedPane => state.focusedLeft ? leftPane : rightPane;
@@ -113,8 +133,13 @@ class SessionsNotifier extends Notifier<SessionsState> {
   // ── Backends ──
   StorageBackend backendFor(Connection? c) {
     if (c == null) return _localBackend;
-    if (c.id.isEmpty) return c.isS3 ? S3Backend(c) : SftpBackend(c); // don't cache unsaved
-    return _backendCache.putIfAbsent(c.id, () => c.isS3 ? S3Backend(c) : SftpBackend(c));
+    if (c.id.isEmpty) {
+      return c.isS3 ? S3Backend(c) : SftpBackend(c); // don't cache unsaved
+    }
+    return _backendCache.putIfAbsent(
+      c.id,
+      () => c.isS3 ? S3Backend(c) : SftpBackend(c),
+    );
   }
 
   void evictBackend(Connection c) {
@@ -122,8 +147,28 @@ class SessionsNotifier extends Notifier<SessionsState> {
     _backendCache.remove(c.id)?.dispose(); // release the old client's sockets
   }
 
+  /// After [evictBackend], point every open pane that was showing connection
+  /// [c] (in any tab) at the freshly cached backend — otherwise a reconnect
+  /// would keep refreshing those panes on the old, disposed client.
+  void _repointBackend(Connection c) {
+    if (c.id.isEmpty) return;
+    final fresh = backendFor(c); // creates and caches the replacement
+    for (final s in state.sessions) {
+      for (final pane in [s.left, s.right]) {
+        if (pane.connection != null && pane.connection!.id == c.id) {
+          pane.backend = fresh;
+          pane.connection = c; // adopt the (possibly rebuilt) Connection object
+        }
+      }
+    }
+  }
+
   // ── State plumbing ──
-  void _emit({List<Session>? sessions, int? activeSessionId, bool? focusedLeft}) {
+  void _emit({
+    List<Session>? sessions,
+    int? activeSessionId,
+    bool? focusedLeft,
+  }) {
     if (_disposed) return;
     state = SessionsState(
       sessions ?? state.sessions,
@@ -133,9 +178,11 @@ class SessionsNotifier extends Notifier<SessionsState> {
     );
   }
 
-  /// Called by panes after any in-place change.
+  /// Called by panes after any in-place change. Only persistence is scheduled
+  /// here — pane repaints ride on the pane's own [ChangeNotifier], so a
+  /// selection click or a streamed listing page no longer re-emits the global
+  /// sessions state (which used to rebuild every tab, pane and toolbar).
   void _onPaneChanged() {
-    _emit();
     _scheduleSave();
   }
 
@@ -147,16 +194,18 @@ class SessionsNotifier extends Notifier<SessionsState> {
     String? rightPath,
   }) {
     final left = PaneController(
-        backend: backendFor(leftConn),
-        connection: leftConn,
-        onChanged: _onPaneChanged,
-        showHidden: showHidden);
+      backend: backendFor(leftConn),
+      connection: leftConn,
+      onChanged: _onPaneChanged,
+      showHidden: showHidden,
+    );
     if (leftPath != null && leftPath.isNotEmpty) left.path = leftPath;
     final right = PaneController(
-        backend: backendFor(rightConn),
-        connection: rightConn,
-        onChanged: _onPaneChanged,
-        showHidden: showHidden);
+      backend: backendFor(rightConn),
+      connection: rightConn,
+      onChanged: _onPaneChanged,
+      showHidden: showHidden,
+    );
     if (rightPath != null && rightPath.isNotEmpty) right.path = rightPath;
     return Session(id: _seq++, left: left, right: right);
   }
@@ -165,8 +214,18 @@ class SessionsNotifier extends Notifier<SessionsState> {
   Session openSession(Connection? remote) {
     if (remote != null) {
       for (final s in state.sessions) {
-        if (identical(s.connection, remote)) {
-          s.right.refresh();
+        final open = s.connection;
+        // Match by stable id, not object identity — an edited/reloaded
+        // Connection is a rebuilt object but still the same endpoint, and must
+        // focus its existing tab instead of opening a duplicate. Unsaved
+        // connections (empty id) can only match by identity.
+        final same =
+            open != null &&
+            (remote.id.isNotEmpty
+                ? open.id == remote.id
+                : identical(open, remote));
+        if (same) {
+          unawaited(s.right.refresh());
           _emit(activeSessionId: s.id);
           _scheduleSave();
           return s;
@@ -177,8 +236,8 @@ class SessionsNotifier extends Notifier<SessionsState> {
     final s = _buildSession(showHidden, rightConn: remote);
     final sessions = [...state.sessions, s];
     if (ref.read(autoRefreshPanesProvider)) {
-      s.left.refresh();
-      s.right.refresh();
+      unawaited(s.left.refresh());
+      unawaited(s.right.refresh());
     }
     _emit(sessions: sessions, activeSessionId: s.id);
     _scheduleSave();
@@ -195,11 +254,16 @@ class SessionsNotifier extends Notifier<SessionsState> {
   void closeSession(int id) {
     final idx = state.sessions.indexWhere((s) => s.id == id);
     if (idx < 0) return;
+    final closed = state.sessions[idx];
     final sessions = [...state.sessions]..removeAt(idx);
+    // Release the closed tab's pane notifiers; a listing still streaming into
+    // them finishes harmlessly (PaneController._changed is dispose-safe).
+    closed.left.dispose();
+    closed.right.dispose();
     if (sessions.isEmpty) {
       final fresh = _buildSession(ref.read(settingsProvider).showHiddenFiles);
       sessions.add(fresh);
-      if (ref.read(autoRefreshPanesProvider)) fresh.left.refresh();
+      if (ref.read(autoRefreshPanesProvider)) unawaited(fresh.left.refresh());
       _emit(sessions: sessions, activeSessionId: fresh.id);
     } else {
       final active = state.activeSessionId == id
@@ -226,17 +290,28 @@ class SessionsNotifier extends Notifier<SessionsState> {
   /// online — so the status reflects an actual login, not just intent. S3
   /// connections need credentials first.
   Future<void> connect(Connection c) async {
-    c.status = ConnectionStatus.testing; // not connected until a real listing succeeds
+    c.status =
+        ConnectionStatus.testing; // not connected until a real listing succeeds
     evictBackend(c); // pick up freshly entered credentials
+    // Panes that were showing this connection still hold the old (now
+    // disposed) client — point them at the fresh backend before anything
+    // refreshes them (openSession below refreshes the existing tab's pane).
+    _repointBackend(c);
     ref.read(connectionsProvider.notifier).touch();
     final toast = ref.read(toastsProvider.notifier);
     final log = ref.read(connectionLogProvider.notifier);
     if (c.isS3 && !c.hasS3Credentials) {
       c.status = ConnectionStatus.notConfigured;
-      c.lastError = 'Missing AWS credentials (set a profile or access key/secret)';
-      toast.push('Missing credentials',
-          'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
-      log.error('${c.name}: missing AWS credentials (set a profile or access key/secret)');
+      c.lastError =
+          'Missing AWS credentials (set a profile or access key/secret)';
+      toast.push(
+        'Missing credentials',
+        'Enter Access Key, Secret & Bucket for ${c.name}',
+        ToastKind.error,
+      );
+      log.error(
+        '${c.name}: missing AWS credentials (set a profile or access key/secret)',
+      );
       return;
     }
     // Connecting counts as committing to this connection — persist it (record
@@ -247,7 +322,11 @@ class SessionsNotifier extends Notifier<SessionsState> {
     // background; the pane shows its own loading/error state meanwhile.
     openSession(c);
     ref.read(navProvider.notifier).go(AppScreen.browser);
-    toast.push('Connecting…', '${c.name} · ${c.protocol.label}', ToastKind.info);
+    toast.push(
+      'Connecting…',
+      '${c.name} · ${c.protocol.label}',
+      ToastKind.info,
+    );
     log.info('Opening "${c.name}" — ${_target(c)}');
 
     final backend = backendFor(c); // same cached backend the pane uses
@@ -256,9 +335,15 @@ class SessionsNotifier extends Notifier<SessionsState> {
       c.status = ConnectionStatus.connected;
       c.lastTestedAt = DateTime.now();
       c.lastError = null;
-      toast.push('Session connected', '${c.name} is reachable', ToastKind.success);
-      log.success('${c.name}: connected — listed ${items.length} '
-          '${items.length == 1 ? 'entry' : 'entries'}');
+      toast.push(
+        'Session connected',
+        '${c.name} is reachable',
+        ToastKind.success,
+      );
+      log.success(
+        '${c.name}: connected — listed ${items.length} '
+        '${items.length == 1 ? 'entry' : 'entries'}',
+      );
     } catch (e) {
       c.status = ConnectionStatus.failed;
       c.lastTestedAt = DateTime.now();
@@ -284,13 +369,19 @@ class SessionsNotifier extends Notifier<SessionsState> {
     final toasts = ref.read(toastsProvider.notifier);
     if (entries.isEmpty) return;
     if (!src.isReady || !dst.isReady) {
-      toasts.push('Not connected', 'Connect the S3 endpoint (add credentials) first', ToastKind.error);
+      toasts.push(
+        'Not connected',
+        'Connect the S3 endpoint (add credentials) first',
+        ToastKind.error,
+      );
       return;
     }
 
     // Files transfer immediately; folders are walked recursively. Destination
     // name clashes are resolved by the transfers layer (Skip/Overwrite/Rename).
-    ref.read(transfersProvider.notifier).transferSelection(src, dst, entries);
+    unawaited(
+      ref.read(transfersProvider.notifier).transferSelection(src, dst, entries),
+    );
   }
 
   /// Actually verify a connection: open a fresh backend with the current
@@ -302,17 +393,28 @@ class SessionsNotifier extends Notifier<SessionsState> {
     final log = ref.read(connectionLogProvider.notifier);
     if (c.isS3 && !c.hasS3Credentials) {
       c.status = ConnectionStatus.notConfigured;
-      c.lastError = 'Missing AWS credentials (set a profile or access key/secret)';
+      c.lastError =
+          'Missing AWS credentials (set a profile or access key/secret)';
       ref.read(connectionsProvider.notifier).touch();
-      toasts.push('Missing credentials', 'Enter Access Key, Secret & Bucket for ${c.name}', ToastKind.error);
-      log.error('${c.name}: missing AWS credentials (set a profile or access key/secret)');
+      toasts.push(
+        'Missing credentials',
+        'Enter Access Key, Secret & Bucket for ${c.name}',
+        ToastKind.error,
+      );
+      log.error(
+        '${c.name}: missing AWS credentials (set a profile or access key/secret)',
+      );
       return;
     }
     if (!c.isS3 && (c.host.isEmpty || c.username.isEmpty)) {
       c.status = ConnectionStatus.notConfigured;
       c.lastError = 'Missing host or username';
       ref.read(connectionsProvider.notifier).touch();
-      toasts.push('Missing details', 'Enter a host and username for ${c.name}', ToastKind.error);
+      toasts.push(
+        'Missing details',
+        'Enter a host and username for ${c.name}',
+        ToastKind.error,
+      );
       log.error('${c.name}: missing host or username');
       return;
     }
@@ -330,8 +432,10 @@ class SessionsNotifier extends Notifier<SessionsState> {
       c.lastError = null;
       ref.read(connectionsProvider.notifier).touch();
       toasts.push('Connection OK', '${c.name} is reachable', ToastKind.success);
-      log.success('${c.name}: connected — listed ${items.length} '
-          '${items.length == 1 ? 'entry' : 'entries'} at "${backend.initialPath}"');
+      log.success(
+        '${c.name}: connected — listed ${items.length} '
+        '${items.length == 1 ? 'entry' : 'entries'} at "${backend.initialPath}"',
+      );
     } catch (e) {
       c.status = ConnectionStatus.failed;
       c.lastTestedAt = DateTime.now();
@@ -365,16 +469,21 @@ class SessionsNotifier extends Notifier<SessionsState> {
   PaneDiff compareActivePanes() {
     final l = leftPane, r = rightPane;
     final diff = comparePanes(l.items, r.items);
-    l.compareMarks = diff.left;
-    r.compareMarks = diff.right;
-    _emit();
+    l.setCompareMarks(diff.left);
+    r.setCompareMarks(diff.right);
     final toasts = ref.read(toastsProvider.notifier);
     if (diff.isIdentical) {
-      toasts.push('Panes match', 'No differences in the current folders', ToastKind.success);
+      toasts.push(
+        'Panes match',
+        'No differences in the current folders',
+        ToastKind.success,
+      );
     } else {
-      toasts.push('Compared',
-          '${diff.onlyLeft} only left · ${diff.differing} differ · ${diff.onlyRight} only right',
-          ToastKind.info);
+      toasts.push(
+        'Compared',
+        '${diff.onlyLeft} only left · ${diff.differing} differ · ${diff.onlyRight} only right',
+        ToastKind.info,
+      );
     }
     return diff;
   }
@@ -397,6 +506,7 @@ class SessionsNotifier extends Notifier<SessionsState> {
       final handle = await b.openRead(path);
       return (await md5.bind(handle.stream).single).toString();
     }
+
     return planMirrorRecursive(
       srcRoot: src.path,
       dstRoot: dst.path,
@@ -407,8 +517,12 @@ class SessionsNotifier extends Notifier<SessionsState> {
       leftToRight: leftToRight,
       deleteExtras: deleteExtras,
       mode: mode,
-      hashSrc: mode == CompareMode.checksum ? (p) => hasher(src.backend, p) : null,
-      hashDst: mode == CompareMode.checksum ? (p) => hasher(dst.backend, p) : null,
+      hashSrc: mode == CompareMode.checksum
+          ? (p) => hasher(src.backend, p)
+          : null,
+      hashDst: mode == CompareMode.checksum
+          ? (p) => hasher(dst.backend, p)
+          : null,
       cancel: cancel,
       onScanned: onScanned,
       maxDepth: maxDepth,
@@ -424,7 +538,11 @@ class SessionsNotifier extends Notifier<SessionsState> {
     final dst = plan.leftToRight ? rightPane : leftPane;
     final toasts = ref.read(toastsProvider.notifier);
     if (!src.isReady || !dst.isReady) {
-      toasts.push('Not connected', 'Connect both endpoints first', ToastKind.error);
+      toasts.push(
+        'Not connected',
+        'Connect both endpoints first',
+        ToastKind.error,
+      );
       return;
     }
     var deleted = 0;
@@ -456,27 +574,38 @@ class SessionsNotifier extends Notifier<SessionsState> {
         blocked++;
         continue;
       }
-      transfers.enqueueFile(src, dst, c.srcPath, c.dstPath, c.name, c.sizeBytes, announce: false);
+      transfers.enqueueFile(
+        src,
+        dst,
+        c.srcPath,
+        c.dstPath,
+        c.name,
+        c.sizeBytes,
+        announce: false,
+      );
       queued++;
     }
     if (plan.deletes.isNotEmpty || plan.mkdirs.isNotEmpty) await dst.refresh();
 
     if (failures.isEmpty) {
       toasts.push(
-          'Mirroring',
-          '$queued file(s) · ${plan.mkdirs.length} folder(s) · $deleted deleted → ${dst.endpointLabel}',
-          ToastKind.info);
+        'Mirroring',
+        '$queued file(s) · ${plan.mkdirs.length} folder(s) · $deleted deleted → ${dst.endpointLabel}',
+        ToastKind.info,
+      );
     } else {
       final detail = [
-        if (blocked > 0) '$blocked copy(ies) skipped (parent folder unavailable)',
+        if (blocked > 0)
+          '$blocked copy(ies) skipped (parent folder unavailable)',
         ...failures.take(8),
         if (failures.length > 8) '…and ${failures.length - 8} more',
       ].join('\n');
       toasts.push(
-          'Mirror finished with ${failures.length} problem(s)',
-          '$queued queued · $deleted deleted · ${failures.length} failed on ${dst.endpointLabel}',
-          ToastKind.error,
-          detail: detail);
+        'Mirror finished with ${failures.length} problem(s)',
+        '$queued queued · $deleted deleted · ${failures.length} failed on ${dst.endpointLabel}',
+        ToastKind.error,
+        detail: detail,
+      );
     }
   }
 
@@ -495,11 +624,17 @@ class SessionsNotifier extends Notifier<SessionsState> {
   Future<void> createFolder(PaneController pane, String name) async {
     if (name.trim().isEmpty) return;
     if (!pane.backend.mutableAt(pane.path)) {
-      _toast('Not supported', 'Open a bucket first to create folders here', ToastKind.error);
+      _toast(
+        'Not supported',
+        'Open a bucket first to create folders here',
+        ToastKind.error,
+      );
       return;
     }
     try {
-      await pane.backend.makeDir(pane.backend.childPath(pane.path, name.trim(), true));
+      await pane.backend.makeDir(
+        pane.backend.childPath(pane.path, name.trim(), true),
+      );
       await pane.refresh();
       _toast('Folder created', name.trim(), ToastKind.success);
     } catch (e) {
@@ -507,10 +642,22 @@ class SessionsNotifier extends Notifier<SessionsState> {
     }
   }
 
-  Future<void> renameItem(PaneController pane, FileItem item, String newName) async {
-    if (item.isParent || newName.trim().isEmpty || newName.trim() == item.name) return;
+  Future<void> renameItem(
+    PaneController pane,
+    FileItem item,
+    String newName,
+  ) async {
+    if (item.isParent ||
+        newName.trim().isEmpty ||
+        newName.trim() == item.name) {
+      return;
+    }
     if (!pane.backend.mutableAt(pane.path)) {
-      _toast('Not supported', 'Open a bucket first to rename items here', ToastKind.error);
+      _toast(
+        'Not supported',
+        'Open a bucket first to rename items here',
+        ToastKind.error,
+      );
       return;
     }
     try {
@@ -524,30 +671,44 @@ class SessionsNotifier extends Notifier<SessionsState> {
     }
   }
 
-  Future<void> deleteItem(PaneController pane, FileItem item) => deleteItems(pane, [item]);
+  Future<void> deleteItem(PaneController pane, FileItem item) =>
+      deleteItems(pane, [item]);
 
   Future<void> deleteItems(PaneController pane, List<FileItem> items) async {
     final targets = items.where((i) => !i.isParent).toList();
     if (targets.isEmpty) return;
     if (!pane.backend.mutableAt(pane.path)) {
-      _toast('Not supported', 'Buckets can\'t be deleted from Drag', ToastKind.error);
+      _toast(
+        'Not supported',
+        'Buckets can\'t be deleted from Drag',
+        ToastKind.error,
+      );
       return;
     }
     var failed = 0;
     for (final item in targets) {
       try {
-        await pane.backend.delete(pane.backend.childPath(pane.path, item.name, item.isDir),
-            isDir: item.isDir);
+        await pane.backend.delete(
+          pane.backend.childPath(pane.path, item.name, item.isDir),
+          isDir: item.isDir,
+        );
       } catch (_) {
         failed++;
       }
     }
     await pane.refresh();
     if (failed == 0) {
-      _toast('Deleted', targets.length == 1 ? targets.first.name : '${targets.length} items',
-          ToastKind.info);
+      _toast(
+        'Deleted',
+        targets.length == 1 ? targets.first.name : '${targets.length} items',
+        ToastKind.info,
+      );
     } else {
-      _toast('Delete incomplete', '$failed of ${targets.length} failed', ToastKind.error);
+      _toast(
+        'Delete incomplete',
+        '$failed of ${targets.length} failed',
+        ToastKind.error,
+      );
     }
   }
 
@@ -558,14 +719,14 @@ class SessionsNotifier extends Notifier<SessionsState> {
 
   // ── Persistence ──
   List<SessionRecord> _records() => [
-        for (final s in state.sessions)
-          SessionRecord(
-            leftConnId: s.left.connection?.id,
-            leftPath: s.left.path,
-            rightConnId: s.right.connection?.id,
-            rightPath: s.right.path,
-          )
-      ];
+    for (final s in state.sessions)
+      SessionRecord(
+        leftConnId: s.left.connection?.id,
+        leftPath: s.left.path,
+        rightConnId: s.right.connection?.id,
+        rightPath: s.right.path,
+      ),
+  ];
 
   int _activeIndex() {
     final i = state.sessions.indexWhere((s) => s.id == state.activeSessionId);
@@ -584,10 +745,11 @@ class SessionsNotifier extends Notifier<SessionsState> {
           '${records.map((r) => '${r.leftConnId}|${r.leftPath}|${r.rightConnId}|${r.rightPath}').join(';')}#$active';
       if (fingerprint == _lastSaved) return;
       _lastSaved = fingerprint;
-      store.replaceAll(records, activeIndex: active);
+      unawaited(store.replaceAll(records, activeIndex: active));
     });
   }
 }
 
-final sessionsProvider =
-    NotifierProvider<SessionsNotifier, SessionsState>(SessionsNotifier.new);
+final sessionsProvider = NotifierProvider<SessionsNotifier, SessionsState>(
+  SessionsNotifier.new,
+);

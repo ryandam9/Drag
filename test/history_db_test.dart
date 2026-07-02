@@ -17,18 +17,17 @@ void main() {
     int direction = 0,
     int durationMs = 500,
     bool success = true,
-  }) =>
-      TransferRecord(
-        name: name,
-        sourcePath: 'Local:/a/$name',
-        destPath: 's3://bucket/$name',
-        session: 'bucket',
-        sizeBytes: size,
-        direction: direction,
-        durationMs: durationMs,
-        success: success,
-        finishedAt: DateTime.now(),
-      );
+  }) => TransferRecord(
+    name: name,
+    sourcePath: 'Local:/a/$name',
+    destPath: 's3://bucket/$name',
+    session: 'bucket',
+    sizeBytes: size,
+    direction: direction,
+    durationMs: durationMs,
+    success: success,
+    finishedAt: DateTime.now(),
+  );
 
   test('starts empty', () async {
     expect(await repo.recent(), isEmpty);
@@ -46,9 +45,15 @@ void main() {
   });
 
   test('stats aggregates totals, success/fail and average speed', () async {
-    await repo.add(rec(name: 'ok1.bin', size: 1000, durationMs: 1000, success: true)); // 1000 B/s
-    await repo.add(rec(name: 'ok2.bin', size: 3000, durationMs: 1000, success: true)); // 3000 B/s
-    await repo.add(rec(name: 'bad.bin', size: 500, durationMs: 0, success: false));
+    await repo.add(
+      rec(name: 'ok1.bin', size: 1000, durationMs: 1000, success: true),
+    ); // 1000 B/s
+    await repo.add(
+      rec(name: 'ok2.bin', size: 3000, durationMs: 1000, success: true),
+    ); // 3000 B/s
+    await repo.add(
+      rec(name: 'bad.bin', size: 500, durationMs: 0, success: false),
+    );
 
     final s = await repo.stats();
     expect(s.total, 3);
@@ -67,7 +72,9 @@ void main() {
   });
 
   test('round-trips fields through the DB', () async {
-    await repo.add(rec(name: 'photo.jpg', size: 2048, direction: 1, durationMs: 750));
+    await repo.add(
+      rec(name: 'photo.jpg', size: 2048, direction: 1, durationMs: 750),
+    );
     final r = (await repo.recent()).single;
     expect(r.name, 'photo.jpg');
     expect(r.sizeBytes, 2048);
@@ -79,18 +86,19 @@ void main() {
 
   group('TransferRecord.fromTransfer', () {
     test('maps a finished transfer', () {
-      final t = Transfer(
-        name: 'x.zip',
-        route: 'r',
-        direction: TransferDirection.download,
-        sizeBytes: 4096,
-        session: 'bk',
-        sourcePath: 's3://bk/x.zip',
-        destPath: 'Local:/tmp/x.zip',
-        status: TransferStatus.done,
-      )
-        ..startedAt = DateTime(2025, 1, 1, 0, 0, 0)
-        ..finishedAt = DateTime(2025, 1, 1, 0, 0, 2);
+      final t =
+          Transfer(
+              name: 'x.zip',
+              route: 'r',
+              direction: TransferDirection.download,
+              sizeBytes: 4096,
+              session: 'bk',
+              sourcePath: 's3://bk/x.zip',
+              destPath: 'Local:/tmp/x.zip',
+              status: TransferStatus.done,
+            )
+            ..startedAt = DateTime(2025, 1, 1, 0, 0, 0)
+            ..finishedAt = DateTime(2025, 1, 1, 0, 0, 2);
       final r = TransferRecord.fromTransfer(t);
       expect(r.success, isTrue);
       expect(r.direction, 1);

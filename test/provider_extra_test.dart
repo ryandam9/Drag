@@ -2,6 +2,7 @@ import 'package:drag/data/history_db.dart';
 import 'package:drag/data/settings_store.dart';
 import 'package:drag/fs/storage_backend.dart';
 import 'package:drag/models/connection.dart';
+import 'package:drag/models/transfer.dart';
 import 'package:drag/state/app.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
@@ -85,7 +86,8 @@ void main() {
       final store = await SettingsStore.open(inMemoryDatabasePath);
       addTearDown(store.close);
       final c = makeContainer(settingsStore: store);
-      await c.read(settingsProvider.notifier)
+      await c
+          .read(settingsProvider.notifier)
           .saveWindowState(width: 1200, height: 800, x: 40, y: 60);
       final loaded = await store.load();
       expect(loaded.windowWidth, 1200);
@@ -104,17 +106,19 @@ void main() {
     test('refresh loads records and clear empties them', () async {
       final repo = await HistoryRepository.open(inMemoryDatabasePath);
       addTearDown(repo.close);
-      await repo.add(TransferRecord(
-        name: 'x.bin',
-        sourcePath: 'Local:/x.bin',
-        destPath: 's3://b/x.bin',
-        session: 'b',
-        sizeBytes: 1000,
-        direction: 0,
-        durationMs: 500,
-        success: true,
-        finishedAt: DateTime.now(),
-      ));
+      await repo.add(
+        TransferRecord(
+          name: 'x.bin',
+          sourcePath: 'Local:/x.bin',
+          destPath: 's3://b/x.bin',
+          session: 'b',
+          sizeBytes: 1000,
+          direction: 0,
+          durationMs: 500,
+          success: true,
+          finishedAt: DateTime.now(),
+        ),
+      );
       final c = makeContainer(history: repo);
       final n = c.read(historyProvider.notifier);
       await n.refresh();
@@ -125,10 +129,44 @@ void main() {
       expect(c.read(historyProvider).stats.total, 0);
     });
 
-    test('without a repository, history is empty and flagged as unavailable', () {
-      final c = makeContainer();
-      expect(c.read(historyProvider).hasDb, isFalse);
-      expect(c.read(historyProvider).records, isEmpty);
+    test(
+      'without a repository, history is empty and flagged as unavailable',
+      () {
+        final c = makeContainer();
+        expect(c.read(historyProvider).hasDb, isFalse);
+        expect(c.read(historyProvider).records, isEmpty);
+      },
+    );
+
+    test('a burst of records debounces into a single refresh', () async {
+      final repo = await HistoryRepository.open(inMemoryDatabasePath);
+      addTearDown(repo.close);
+      final c = makeContainer(history: repo);
+      final n = c.read(historyProvider.notifier)
+        ..refreshDebounce = const Duration(milliseconds: 40);
+      // Let build()'s initial refresh settle before counting emissions.
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      var emissions = 0;
+      c.listen(historyProvider, (_, _) => emissions++);
+
+      Transfer done(String name) => Transfer(
+        name: name,
+        route: 'a → b',
+        direction: TransferDirection.upload,
+        sizeBytes: 10,
+        session: 's',
+        status: TransferStatus.done,
+      );
+      for (var i = 0; i < 5; i++) {
+        await n.record(done('f$i.bin'));
+      }
+      // Every record is persisted immediately, but the dashboard reloads once,
+      // after the trailing debounce — not once per completed file.
+      expect(emissions, 0);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(emissions, 1);
+      expect(c.read(historyProvider).records.length, 5);
     });
   });
 
@@ -136,7 +174,12 @@ void main() {
     test('backendFor caches per connection and evict drops the cache', () {
       final c = makeContainer();
       final s = c.read(sessionsProvider.notifier);
-      final conn = Connection(id: 'x', name: 's3', protocol: Protocol.s3, bucket: 'b');
+      final conn = Connection(
+        id: 'x',
+        name: 's3',
+        protocol: Protocol.s3,
+        bucket: 'b',
+      );
       final b1 = s.backendFor(conn);
       expect(identical(s.backendFor(conn), b1), isTrue);
       expect(s.backendFor(null), isA<LocalBackend>());
@@ -163,9 +206,13 @@ void main() {
 
     test('connect navigates to the browser screen', () async {
       final c = makeContainer(connections: sampleConnections());
-      final sftp = c.read(connectionsProvider).connections.firstWhere((x) => x.kind == EndpointKind.sftp)
-        ..host = '127.0.0.1'
-        ..port = 1;
+      final sftp =
+          c
+              .read(connectionsProvider)
+              .connections
+              .firstWhere((x) => x.kind == EndpointKind.sftp)
+            ..host = '127.0.0.1'
+            ..port = 1;
       c.read(navProvider.notifier).go(AppScreen.connections);
       await c.read(sessionsProvider.notifier).connect(sftp);
       expect(c.read(navProvider), AppScreen.browser);
@@ -184,9 +231,9 @@ void main() {
     });
 
     test('deleting the last connection clears the selection', () async {
-      final c = makeContainer(connections: [
-        Connection(id: 'only', name: 'only'),
-      ]);
+      final c = makeContainer(
+        connections: [Connection(id: 'only', name: 'only')],
+      );
       final n = c.read(connectionsProvider.notifier);
       await n.delete(c.read(connectionsProvider).connections.single);
       expect(c.read(connectionsProvider).connections, isEmpty);

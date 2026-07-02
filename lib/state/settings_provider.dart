@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,8 +31,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void _applyGlobals(AppSettings s) {
     // Generate the whole palette from the active theme's seed colour, at the
     // resolved brightness (light / dark / follow-the-OS).
-    FsColors.applyTheme(birdThemeByName(s.themeName),
-        brightness: resolveBrightness(s.brightnessMode));
+    FsColors.applyTheme(
+      birdThemeByName(s.themeName),
+      brightness: resolveBrightness(s.brightnessMode),
+    );
     // Apply the chosen fonts (sanitised against the known families).
     FsType.uiFontFamily = AppFont.resolve(s.uiFont, mono: false);
     FsType.monoFontFamily = AppFont.resolve(s.monospaceFont, mono: true);
@@ -43,47 +47,63 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void _update(AppSettings next) {
     state = next;
     _applyGlobals(next);
-    _store?.save(next);
+    unawaited(_store?.save(next));
   }
 
   void setThemeName(String v) => _update(state.copyWith(themeName: v));
 
   /// Set the UI brightness mode (`'light'` / `'dark'` / `'system'`).
-  void setBrightnessMode(String v) => _update(state.copyWith(brightnessMode: v));
+  void setBrightnessMode(String v) =>
+      _update(state.copyWith(brightnessMode: v));
 
   /// Apply a named bird theme. Its primary seeds the light Material 3 palette;
   /// the resolved accent is persisted too (for the pre-frame paint in main).
   void setTheme(BirdTheme t) {
-    final cs = ColorScheme.fromSeed(seedColor: t.primary, brightness: Brightness.light);
-    _update(state.copyWith(
-      themeName: t.name,
-      accentValue: cs.primary.toARGB32(),
-      accentHiValue: cs.onSecondaryContainer.toARGB32(),
-    ));
+    final cs = ColorScheme.fromSeed(
+      seedColor: t.primary,
+      brightness: Brightness.light,
+    );
+    _update(
+      state.copyWith(
+        themeName: t.name,
+        accentValue: cs.primary.toARGB32(),
+        accentHiValue: cs.onSecondaryContainer.toARGB32(),
+      ),
+    );
   }
 
   void setUiFontSize(double v) => _update(state.copyWith(uiFontSize: v));
   void setUiFont(String v) => _update(state.copyWith(uiFont: v));
   void setMonospaceFont(String v) => _update(state.copyWith(monospaceFont: v));
-  void setShowHiddenFiles(bool v) => _update(state.copyWith(showHiddenFiles: v));
-  void setShowPermsColumn(bool v) => _update(state.copyWith(showPermsColumn: v));
-  void setShowLogOnStartup(bool v) => _update(state.copyWith(showLogOnStartup: v));
-  void setConfirmOverwrite(bool v) => _update(state.copyWith(confirmOverwrite: v));
-  void setConflictPolicy(String v) => _update(state.copyWith(conflictPolicy: v));
+  void setShowHiddenFiles(bool v) =>
+      _update(state.copyWith(showHiddenFiles: v));
+  void setShowPermsColumn(bool v) =>
+      _update(state.copyWith(showPermsColumn: v));
+  void setShowLogOnStartup(bool v) =>
+      _update(state.copyWith(showLogOnStartup: v));
+  void setConfirmOverwrite(bool v) =>
+      _update(state.copyWith(confirmOverwrite: v));
+  void setConflictPolicy(String v) =>
+      _update(state.copyWith(conflictPolicy: v));
   void setVerifyLevel(String v) => _update(state.copyWith(verifyLevel: v));
-  void setTransferLimitKbps(int v) => _update(state.copyWith(transferLimitKbps: v));
-  void setNotifyOnComplete(bool v) => _update(state.copyWith(notifyOnComplete: v));
-  void setSidebarCollapsed(bool v) => _update(state.copyWith(sidebarCollapsed: v));
+  void setTransferLimitKbps(int v) =>
+      _update(state.copyWith(transferLimitKbps: v));
+  void setNotifyOnComplete(bool v) =>
+      _update(state.copyWith(notifyOnComplete: v));
+  void setSidebarCollapsed(bool v) =>
+      _update(state.copyWith(sidebarCollapsed: v));
   void toggleSidebar() => setSidebarCollapsed(!state.sidebarCollapsed);
 
   /// Restore everything to defaults, keeping the remembered window geometry.
   void resetSettings() {
-    _update(AppSettings(
-      windowWidth: state.windowWidth,
-      windowHeight: state.windowHeight,
-      windowX: state.windowX,
-      windowY: state.windowY,
-    ));
+    _update(
+      AppSettings(
+        windowWidth: state.windowWidth,
+        windowHeight: state.windowHeight,
+        windowX: state.windowX,
+        windowY: state.windowY,
+      ),
+    );
   }
 
   /// Persist the latest window geometry (from the window listener). Does not
@@ -104,5 +124,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 }
 
-final settingsProvider =
-    NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);
+final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(
+  SettingsNotifier.new,
+);
