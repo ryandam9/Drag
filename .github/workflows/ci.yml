@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # sqflite_common_ffi (history DB) loads libsqlite3 at runtime.
       - name: Install SQLite
@@ -63,7 +63,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # No native SQLite provisioning step needed here: the `sqlite3` Dart
       # package (v3.x, behind sqflite_common_ffi) ships a native-assets build
@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install SQLite
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-0 libsqlite3-dev
@@ -129,7 +129,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install SQLite
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-0 libsqlite3-dev
@@ -200,7 +200,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
