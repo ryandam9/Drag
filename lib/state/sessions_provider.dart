@@ -92,7 +92,13 @@ class SessionsNotifier extends Notifier<SessionsState> {
     }
 
     if (autoRefresh) {
-      Future.microtask(() {
+      final connections = ref.read(connectionsProvider.notifier);
+      Future.microtask(() async {
+        // Restored remote tabs must not log in before the keychain secrets
+        // have been loaded onto their connections — an early refresh would
+        // attempt the login with still-empty credentials.
+        await connections.secretsReady;
+        if (_disposed) return;
         for (final s in sessions) {
           s.left.refresh();
           s.right.refresh();
@@ -120,6 +126,22 @@ class SessionsNotifier extends Notifier<SessionsState> {
   void evictBackend(Connection c) {
     if (c.id.isEmpty) return;
     _backendCache.remove(c.id)?.dispose(); // release the old client's sockets
+  }
+
+  /// After [evictBackend], point every open pane that was showing connection
+  /// [c] (in any tab) at the freshly cached backend — otherwise a reconnect
+  /// would keep refreshing those panes on the old, disposed client.
+  void _repointBackend(Connection c) {
+    if (c.id.isEmpty) return;
+    final fresh = backendFor(c); // creates and caches the replacement
+    for (final s in state.sessions) {
+      for (final pane in [s.left, s.right]) {
+        if (pane.connection != null && pane.connection!.id == c.id) {
+          pane.backend = fresh;
+          pane.connection = c; // adopt the (possibly rebuilt) Connection object
+        }
+      }
+    }
   }
 
   // ── State plumbing ──
@@ -165,7 +187,14 @@ class SessionsNotifier extends Notifier<SessionsState> {
   Session openSession(Connection? remote) {
     if (remote != null) {
       for (final s in state.sessions) {
-        if (identical(s.connection, remote)) {
+        final open = s.connection;
+        // Match by stable id, not object identity — an edited/reloaded
+        // Connection is a rebuilt object but still the same endpoint, and must
+        // focus its existing tab instead of opening a duplicate. Unsaved
+        // connections (empty id) can only match by identity.
+        final same = open != null &&
+            (remote.id.isNotEmpty ? open.id == remote.id : identical(open, remote));
+        if (same) {
           s.right.refresh();
           _emit(activeSessionId: s.id);
           _scheduleSave();
@@ -228,6 +257,10 @@ class SessionsNotifier extends Notifier<SessionsState> {
   Future<void> connect(Connection c) async {
     c.status = ConnectionStatus.testing; // not connected until a real listing succeeds
     evictBackend(c); // pick up freshly entered credentials
+    // Panes that were showing this connection still hold the old (now
+    // disposed) client — point them at the fresh backend before anything
+    // refreshes them (openSession below refreshes the existing tab's pane).
+    _repointBackend(c);
     ref.read(connectionsProvider.notifier).touch();
     final toast = ref.read(toastsProvider.notifier);
     final log = ref.read(connectionLogProvider.notifier);

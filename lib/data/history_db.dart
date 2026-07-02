@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'app_db.dart';
 import 'db_migrations.dart';
 
 import '../models/transfer.dart';
@@ -119,33 +120,28 @@ class HistoryRepository {
 
   /// Opens (and migrates) the database. Pass `inMemoryDatabasePath` for tests.
   static Future<HistoryRepository> open([String? path]) async {
-    sqfliteFfiInit();
-    final factory = databaseFactoryFfi;
-    final dbPath = path ?? await _defaultPath(factory);
-    final db = await factory.openDatabase(
-      dbPath,
-      options: OpenDatabaseOptions(
-        version: 1,
-        onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
-        onCreate: (db, _) async {
-          await db.execute('''
-            CREATE TABLE $_table (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              name TEXT NOT NULL,
-              source_path TEXT NOT NULL,
-              dest_path TEXT NOT NULL,
-              session TEXT NOT NULL,
-              size_bytes INTEGER NOT NULL,
-              direction INTEGER NOT NULL,
-              duration_ms INTEGER NOT NULL,
-              success INTEGER NOT NULL,
-              error TEXT,
-              finished_at TEXT NOT NULL
-            )
-          ''');
-          await db.execute('CREATE INDEX idx_finished ON $_table(finished_at DESC)');
-        },
-      ),
+    final db = await openAppDb(
+      'drag_history.db',
+      path: path,
+      migrations: _migrations,
+      onCreate: (db) async {
+        await db.execute('''
+          CREATE TABLE $_table (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            source_path TEXT NOT NULL,
+            dest_path TEXT NOT NULL,
+            session TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            direction INTEGER NOT NULL,
+            duration_ms INTEGER NOT NULL,
+            success INTEGER NOT NULL,
+            error TEXT,
+            finished_at TEXT NOT NULL
+          )
+        ''');
+        await db.execute('CREATE INDEX idx_finished ON $_table(finished_at DESC)');
+      },
     );
     final repo = HistoryRepository._(db);
     await repo._purgeLegacySeed();
@@ -167,11 +163,6 @@ class HistoryRepository {
     } catch (_) {
       // Best-effort — never block startup on cleanup.
     }
-  }
-
-  static Future<String> _defaultPath(DatabaseFactory factory) async {
-    final base = await factory.getDatabasesPath();
-    return base.endsWith('/') ? '${base}drag_history.db' : '$base/drag_history.db';
   }
 
   Future<int> add(TransferRecord record) =>

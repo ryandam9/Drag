@@ -24,6 +24,13 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
   ConnectionStore? get _store => ref.read(connectionStoreProvider);
   SecretStore? get _secrets => ref.read(secretStoreProvider);
 
+  /// Completes once the startup keychain load has landed on the restored
+  /// connections (immediately when there's nothing to load). Anything that
+  /// persists secrets — or logs in with them — must await this first, so it
+  /// can never race the load and see (or save) still-empty secret fields.
+  Future<void> get secretsReady => _secretsReady;
+  Future<void> _secretsReady = Future.value();
+
   @override
   ConnectionsState build() {
     final initial = ref.read(initialConnectionsProvider);
@@ -32,7 +39,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
     // into the form, once the app is running (keychain plugins aren't ready
     // before the first frame).
     if (_secrets != null && list.isNotEmpty) {
-      Future.microtask(() => _loadSecrets(list));
+      _secretsReady = Future.microtask(() => _loadSecrets(list));
     }
     return ConnectionsState(list, list.isEmpty ? null : list.first);
   }
@@ -69,10 +76,14 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
   /// Non-secret fields go to SQLite; secrets go to the OS keychain.
   Future<void> save(Connection c) async {
     if (c.id.isEmpty) c.id = Connection.newId();
+    // Never persist before the startup keychain load has landed on [c] —
+    // otherwise an early save could capture (and wipe) still-empty secrets.
+    await secretsReady;
     // [c] is mutated in place by the form; emit a fresh list so watchers rebuild.
     state = ConnectionsState(List.of(_list), c);
     await _store?.upsert(c, _list.indexOf(c).clamp(0, _list.length));
-    await _secrets?.save(c);
+    // An explicit Save honours emptied secret fields by clearing the keychain.
+    await _secrets?.save(c, clear: true);
   }
 
   /// Persist [c] (record + secrets) without changing the current selection or
@@ -82,6 +93,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
   /// upsert but its secrets are still saved.
   Future<void> remember(Connection c) async {
     if (c.id.isEmpty) c.id = Connection.newId();
+    await secretsReady; // don't race the startup keychain load
     final idx = _list.indexOf(c);
     if (idx >= 0) await _store?.upsert(c, idx);
     await _secrets?.save(c);

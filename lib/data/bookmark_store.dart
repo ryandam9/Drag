@@ -1,5 +1,6 @@
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'app_db.dart';
 import 'db_migrations.dart';
 
 /// A saved (endpoint, path) shortcut. [connId] is the connection id the path
@@ -36,31 +37,21 @@ class BookmarkStore {
   static const _table = 'bookmarks';
 
   static Future<BookmarkStore> open([String? path]) async {
-    sqfliteFfiInit();
-    final factory = databaseFactoryFfi;
-    final dbPath = path ?? await _defaultPath(factory);
-    final db = await factory.openDatabase(
-      dbPath,
-      options: OpenDatabaseOptions(
-        version: 1,
-        onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
-        onCreate: (db, _) => db.execute('''
-          CREATE TABLE $_table (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            conn_id TEXT,
-            path TEXT NOT NULL,
-            label TEXT NOT NULL,
-            created_at TEXT NOT NULL
-          )
-        '''),
-      ),
+    final db = await openAppDb(
+      'drag_bookmarks.db',
+      path: path,
+      migrations: _migrations,
+      onCreate: (db) => db.execute('''
+        CREATE TABLE $_table (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          conn_id TEXT,
+          path TEXT NOT NULL,
+          label TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      '''),
     );
     return BookmarkStore._(db);
-  }
-
-  static Future<String> _defaultPath(DatabaseFactory factory) async {
-    final base = await factory.getDatabasesPath();
-    return base.endsWith('/') ? '${base}drag_bookmarks.db' : '$base/drag_bookmarks.db';
   }
 
   Future<List<Bookmark>> load() async {

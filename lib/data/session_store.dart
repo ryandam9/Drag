@@ -1,5 +1,6 @@
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'app_db.dart';
 import 'db_migrations.dart';
 
 /// One persisted browser tab: which endpoint each pane points at (a saved
@@ -54,32 +55,22 @@ class SessionStore {
   static const _table = 'sessions';
 
   static Future<SessionStore> open([String? path]) async {
-    sqfliteFfiInit();
-    final factory = databaseFactoryFfi;
-    final dbPath = path ?? await _defaultPath(factory);
-    final db = await factory.openDatabase(
-      dbPath,
-      options: OpenDatabaseOptions(
-        version: 1,
-        onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
-        onCreate: (db, _) => db.execute('''
-          CREATE TABLE $_table (
-            sort INTEGER PRIMARY KEY,
-            left_conn TEXT,
-            left_path TEXT NOT NULL,
-            right_conn TEXT,
-            right_path TEXT NOT NULL,
-            active INTEGER NOT NULL DEFAULT 0
-          )
-        '''),
-      ),
+    final db = await openAppDb(
+      'drag_sessions.db',
+      path: path,
+      migrations: _migrations,
+      onCreate: (db) => db.execute('''
+        CREATE TABLE $_table (
+          sort INTEGER PRIMARY KEY,
+          left_conn TEXT,
+          left_path TEXT NOT NULL,
+          right_conn TEXT,
+          right_path TEXT NOT NULL,
+          active INTEGER NOT NULL DEFAULT 0
+        )
+      '''),
     );
     return SessionStore._(db);
-  }
-
-  static Future<String> _defaultPath(DatabaseFactory factory) async {
-    final base = await factory.getDatabasesPath();
-    return base.endsWith('/') ? '${base}drag_sessions.db' : '$base/drag_sessions.db';
   }
 
   Future<SessionLayout> load() async {

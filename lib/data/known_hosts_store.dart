@@ -1,5 +1,6 @@
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'app_db.dart';
 import 'db_migrations.dart';
 
 /// Whether trusted host keys survive a restart, or only last the session.
@@ -65,40 +66,33 @@ class KnownHostsStore {
   static const _hostPortIndex = 'idx_known_hosts_host_port';
 
   static Future<KnownHostsStore> open([String? path]) async {
-    sqfliteFfiInit();
-    final factory = databaseFactoryFfi;
-    final dbPath = path ?? await _defaultPath(factory);
-    final db = await factory.openDatabase(
-      dbPath,
-      options: OpenDatabaseOptions(
-        version: 2,
-        onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
-        onCreate: (db, _) async {
-          await db.execute('''
-            CREATE TABLE $_table (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              host TEXT NOT NULL,
-              port INTEGER NOT NULL,
-              type TEXT NOT NULL,
-              fingerprint TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            )
-          ''');
-          // One trusted key per host:port — upsert on re-trust, no duplicates.
-          await db.execute(
-              'CREATE UNIQUE INDEX $_hostPortIndex ON $_table(host, port)');
-        },
-      ),
+    final db = await openAppDb(
+      'drag_known_hosts.db',
+      path: path,
+      version: 2,
+      migrations: _migrations,
+      onCreate: (db) async {
+        await db.execute('''
+          CREATE TABLE $_table (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            host TEXT NOT NULL,
+            port INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            fingerprint TEXT NOT NULL,
+            created_at TEXT NOT NULL
+          )
+        ''');
+        // One trusted key per host:port — upsert on re-trust, no duplicates.
+        await db.execute(
+            'CREATE UNIQUE INDEX $_hostPortIndex ON $_table(host, port)');
+      },
     );
-    final status = dbPath == inMemoryDatabasePath
+    // The default path is always an on-disk file; only an explicit in-memory
+    // path (the fallback when the disk store can't open) is session-only.
+    final status = path == inMemoryDatabasePath
         ? KnownHostsStoreStatus.memoryOnly
         : KnownHostsStoreStatus.persistent;
     return KnownHostsStore._(db, status);
-  }
-
-  static Future<String> _defaultPath(DatabaseFactory factory) async {
-    final base = await factory.getDatabasesPath();
-    return base.endsWith('/') ? '${base}drag_known_hosts.db' : '$base/drag_known_hosts.db';
   }
 
   Future<List<KnownHost>> load() async {

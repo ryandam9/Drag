@@ -44,13 +44,26 @@ class _Batch {
 }
 
 
-/// The transfer queue plus the parallel-thread budget.
+/// The transfer queue plus the parallel-thread budget. Per-status counts are
+/// tallied once at construction, so hot readers (nav badge, queue toolbar)
+/// don't rescan the whole list on every access.
 class TransfersState {
   final List<Transfer> transfers;
   final int maxThreads;
-  const TransfersState({this.transfers = const [], this.maxThreads = 5});
+  final List<int> _counts; // indexed by TransferStatus.index
 
-  int countOf(TransferStatus s) => transfers.where((t) => t.status == s).length;
+  TransfersState({this.transfers = const [], this.maxThreads = 5})
+      : _counts = _countByStatus(transfers);
+
+  static List<int> _countByStatus(List<Transfer> transfers) {
+    final counts = List<int>.filled(TransferStatus.values.length, 0);
+    for (final t in transfers) {
+      counts[t.status.index]++;
+    }
+    return counts;
+  }
+
+  int countOf(TransferStatus s) => _counts[s.index];
   int get activeCount => countOf(TransferStatus.active);
   int get queuedCount => countOf(TransferStatus.queued);
   int get doneCount => countOf(TransferStatus.done);
@@ -81,15 +94,28 @@ class TransfersNotifier extends Notifier<TransfersState> {
     }, fireImmediately: true);
     ref.onDispose(() {
       _disposed = true;
+      // Abort every in-flight run first; each settles asynchronously and
+      // disposes its own transfer's liveTick via the _cancelled path in
+      // _runOnce. Disposing those notifiers here, while their streams are
+      // still unwinding, would be a use-after-dispose.
+      final inFlight = Set<Transfer>.of(_controls.keys);
+      for (final control in _controls.values) {
+        control.abort();
+      }
+      _cancelled.addAll(inFlight);
       _runners.clear();
-      _controls.clear();
       _deferred.clear();
-      _cancelled.clear();
+      _partialCleanups.clear();
       for (final t in _current) {
+        if (!inFlight.contains(t)) t.dispose();
+      }
+      // Transfers parked in a folder-walk batch were never published (nor
+      // started), so they aren't in _current — release them too.
+      for (final t in _batch ?? const <Transfer>[]) {
         t.dispose();
       }
     });
-    return const TransfersState();
+    return TransfersState();
   }
 
   /// The shared limiter's current cap in bytes/sec (null = unlimited). Exposed
@@ -150,7 +176,15 @@ class TransfersNotifier extends Notifier<TransfersState> {
       sourcePath: '${src.endpointLabel}:$srcPath',
       destPath: dst.backend.displayPath(dstPath),
     );
-    _emit([t, ..._list]);
+    // During a folder walk new transfers are parked in the batch and published
+    // as one emission per slice (see _flushBatch), so queuing thousands of
+    // files doesn't copy + emit the whole list once per file.
+    final batch = _batch;
+    if (batch != null) {
+      batch.add(t);
+    } else {
+      _emit([t, ..._list]);
+    }
 
     if (announce) {
       _toast('Transfer started', '$name → ${dst.endpointLabel}', ToastKind.info);
@@ -159,6 +193,9 @@ class TransfersNotifier extends Notifier<TransfersState> {
     // Remember how to (re)run this transfer so the scheduler and manual/auto
     // retry can replay it; the limiter starts it when a slot is free.
     _runners[t] = () => _runOnce(t, src, srcPath, dst, dstPath);
+    // How to discard the staging partial a pause keeps for resume, should the
+    // transfer later be cancelled while paused (no run in flight to clean up).
+    _partialCleanups[t] = () => _service.discardPartial(dst.backend, dstPath, t);
     _pump();
   }
 
@@ -185,6 +222,27 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// The abort handle for each transfer's in-flight run (present only while
   /// active). Pause/cancel abort through this to stop the byte stream.
   final Map<Transfer, TransferControl> _controls = {};
+
+  /// How to discard the staging partial each transfer's pause may have kept,
+  /// keyed like [_runners]. Invoked by [cancel] on a paused transfer, since no
+  /// run is in flight then to clean up after itself.
+  final Map<Transfer, Future<void> Function()> _partialCleanups = {};
+
+  /// While non-null (during a folder walk), [enqueueFile] parks new transfers
+  /// here instead of emitting a fresh state per file; [_flushBatch] publishes
+  /// the accumulated slice in a single emission.
+  List<Transfer>? _batch;
+
+  /// Publish the batched transfers (newest-first, matching [enqueueFile]'s
+  /// per-file ordering) in one state emission, then let the scheduler start
+  /// them.
+  void _flushBatch() {
+    final batch = _batch;
+    if (batch == null || batch.isEmpty) return;
+    _emit([...batch.reversed, ..._list]);
+    batch.clear();
+    _pump();
+  }
 
   /// Queued transfers waiting out a retry backoff — excluded from [_pump] until
   /// their timer fires, so the concurrency limiter doesn't restart them early.
@@ -241,7 +299,11 @@ class TransfersNotifier extends Notifier<TransfersState> {
       srcPath: srcPath,
       dst: dst.backend,
       dstPath: dstPath,
-      onStatus: () => _emit(_list),
+      // Guarded: a run aborted by disposal still fires onStatus while
+      // unwinding, when the notifier's state must no longer be touched.
+      onStatus: () {
+        if (!_disposed) _emit(_list);
+      },
       onProgress: t.touchLive, // progress repaints only the progress widgets
       verify: ref.read(settingsProvider).verifyLevel,
       bytesPerSecond: _transferBytesPerSecond,
@@ -333,14 +395,19 @@ class TransfersNotifier extends Notifier<TransfersState> {
       _withScan(() => _transferFolder(src, dst, folder, _Batch(), false));
 
   /// Runs a folder-walk [body] with scan progress/cancel state set up and torn
-  /// down, so [isScanning] and [cancelFolderScan] work for the duration.
+  /// down, so [isScanning] and [cancelFolderScan] work for the duration. The
+  /// walk's enqueues are batched (see [_flushBatch]) so a big tree produces a
+  /// few list emissions instead of one per file.
   Future<T> _withScan<T>(Future<T> Function() body) async {
     _scanning = true;
     _scanCancelled = false;
     _scanned = 0;
+    _batch = <Transfer>[];
     try {
       return await body();
     } finally {
+      _flushBatch();
+      _batch = null;
       _scanning = false;
     }
   }
@@ -433,9 +500,11 @@ class TransfersNotifier extends Notifier<TransfersState> {
         if (await _maybeEnqueue(
             src, dst, srcDir, dstDir, it.name, it.sizeBytes ?? 0, destNames, batch, confirm)) {
           count++;
-          // Report progress and yield to the event loop periodically so a huge
-          // tree doesn't freeze the UI while it's being queued.
+          // Publish the queued slice, report progress and yield to the event
+          // loop periodically so a huge tree doesn't freeze the UI (or flood
+          // watchers with per-file emissions) while it's being queued.
           if (++_scanned % 50 == 0) {
+            _flushBatch();
             _toast('Queuing folder…', '$_scanned files queued so far', ToastKind.info);
             await Future<void>.delayed(Duration.zero);
           }
@@ -515,7 +584,7 @@ class TransfersNotifier extends Notifier<TransfersState> {
   void pauseAll() {
     for (final t in _list) {
       if (t.status == TransferStatus.active || t.status == TransferStatus.queued) {
-        _controls[t]?.abort();
+        _controls[t]?.abort(AbortReason.pause); // keep the partial for resume
         // Clear any retry-backoff deferral too, otherwise a transfer paused
         // mid-backoff stays skipped by _pump() after resume until its timer
         // happens to fire.
@@ -544,15 +613,17 @@ class TransfersNotifier extends Notifier<TransfersState> {
       _controls.remove(t);
       _deferred.remove(t);
       _cancelled.remove(t);
+      _partialCleanups.remove(t);
       t.dispose();
     }
     _emit(_list.where((t) => t.status != TransferStatus.done).toList());
   }
 
-  /// Pause [t]: abort its in-flight stream (if active) and mark it paused. A
-  /// queued transfer simply won't start.
+  /// Pause [t]: abort its in-flight stream (if active) and mark it paused,
+  /// keeping the staging partial so resume can continue from it. A queued
+  /// transfer simply won't start.
   void pause(Transfer t) {
-    _controls[t]?.abort();
+    _controls[t]?.abort(AbortReason.pause);
     _deferred.remove(t);
     t.status = TransferStatus.paused;
     t.speed = '—';
@@ -561,9 +632,10 @@ class TransfersNotifier extends Notifier<TransfersState> {
     _pump(); // pausing frees a concurrency slot
   }
 
-  /// Resume a paused transfer by re-running it from the start (a fresh attempt,
-  /// so pausing never eats into the auto-retry budget). The scheduler starts it
-  /// when a slot is free.
+  /// Resume a paused transfer by re-queuing it (a fresh attempt, so pausing
+  /// never eats into the auto-retry budget). A pause that kept its staging
+  /// partial continues from those bytes (see TransferService); otherwise the
+  /// run restarts from zero. The scheduler starts it when a slot is free.
   void resume(Transfer t) {
     if (t.status != TransferStatus.paused) return;
     t.status = TransferStatus.queued;
@@ -577,9 +649,16 @@ class TransfersNotifier extends Notifier<TransfersState> {
   /// destination) and remove it from the queue.
   void cancel(Transfer t) {
     final inFlight = _controls.containsKey(t);
-    _controls[t]?.abort();
+    _controls[t]?.abort(); // a cancel: the run discards its own partial
     _runners.remove(t);
     _deferred.remove(t);
+    // A transfer paused mid-stream kept its staging partial for resume; a
+    // cancel means it's no longer wanted — discard it (best-effort).
+    final cleanup = _partialCleanups.remove(t);
+    if (t.pausedWithPartial) {
+      t.pausedWithPartial = false;
+      cleanup?.call();
+    }
     _emit(_list.where((x) => !identical(x, t)).toList());
     if (inFlight) {
       // The run is still unwinding and may touch the transfer's live notifier;

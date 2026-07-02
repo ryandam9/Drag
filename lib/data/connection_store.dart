@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'app_db.dart';
 import 'db_migrations.dart';
 
 import '../models/connection.dart';
@@ -16,29 +17,19 @@ class ConnectionStore {
   static const _table = 'connections';
 
   static Future<ConnectionStore> open([String? path]) async {
-    sqfliteFfiInit();
-    final factory = databaseFactoryFfi;
-    final dbPath = path ?? await _defaultPath(factory);
-    final db = await factory.openDatabase(
-      dbPath,
-      options: OpenDatabaseOptions(
-        version: 1,
-        onUpgrade: (db, oldV, newV) => runMigrations(db, oldV, newV, _migrations),
-        onCreate: (db, _) => db.execute('''
-          CREATE TABLE $_table (
-            id TEXT PRIMARY KEY,
-            sort INTEGER NOT NULL,
-            data TEXT NOT NULL
-          )
-        '''),
-      ),
+    final db = await openAppDb(
+      'drag_connections.db',
+      path: path,
+      migrations: _migrations,
+      onCreate: (db) => db.execute('''
+        CREATE TABLE $_table (
+          id TEXT PRIMARY KEY,
+          sort INTEGER NOT NULL,
+          data TEXT NOT NULL
+        )
+      '''),
     );
     return ConnectionStore._(db);
-  }
-
-  static Future<String> _defaultPath(DatabaseFactory factory) async {
-    final base = await factory.getDatabasesPath();
-    return base.endsWith('/') ? '${base}drag_connections.db' : '$base/drag_connections.db';
   }
 
   Future<List<Connection>> load() async {

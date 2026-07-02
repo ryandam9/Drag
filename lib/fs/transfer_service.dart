@@ -13,13 +13,25 @@ import 'storage_backend.dart';
 /// so the UI can offer to discard them.
 bool isPartialName(String name) => name.contains('.drag-partial');
 
+/// Why an in-flight transfer was aborted. A [cancel] discards the staging
+/// partial; a [pause] keeps it so a later resume can continue from the bytes
+/// already written instead of restarting from zero.
+enum AbortReason { cancel, pause }
+
 /// A cooperative cancellation handle for an in-flight transfer. Calling [abort]
-/// makes the streaming loop stop at the next chunk; the partial destination is
-/// then removed. Used by pause and cancel in the queue.
+/// makes the streaming loop stop at the next chunk; what happens to the
+/// staging partial depends on the [AbortReason]. Used by pause and cancel in
+/// the queue.
 class TransferControl {
-  bool _aborted = false;
-  void abort() => _aborted = true;
-  bool get isAborted => _aborted;
+  AbortReason? _reason;
+
+  /// Stop the stream. The first call's [reason] wins; defaults to a cancel.
+  void abort([AbortReason reason = AbortReason.cancel]) => _reason ??= reason;
+
+  bool get isAborted => _reason != null;
+
+  /// Why the transfer was aborted, or null while it is still running.
+  AbortReason? get reason => _reason;
 }
 
 /// Thrown internally when a transfer is aborted via its [TransferControl].
@@ -110,10 +122,11 @@ class TransferService {
     final writePath = usePartial ? '$dstPath.drag-partial-${t.id}' : dstPath;
 
     try {
-      // Resume an interrupted download: if a previous attempt left a partial
-      // temp file, continue from its size via a ranged read + append, instead
-      // of re-downloading from zero.
+      // Resume an interrupted download: if a previous attempt (or a pause that
+      // kept the partial) left a temp file, continue from its size via a
+      // ranged read + append, instead of re-downloading from zero.
       final resumeFrom = await _resumeOffset(t, src, dst, writePath, verify);
+      t.pausedWithPartial = false; // consumed (or superseded) by this attempt
       final handle =
           resumeFrom > 0 ? await src.openReadRange(srcPath, resumeFrom) : await src.openRead(srcPath);
       // handle.length is the *remaining* bytes when resuming; total is the full
@@ -173,10 +186,18 @@ class TransferService {
       t.eta = 'Done';
       if (t.speed == '—') t.speed = '${formatBytes(total ?? sent)}/s';
     } on _Aborted {
-      // Stopped by the user (pause/cancel). Remove only our temp file; the real
-      // destination (possibly a file we were about to overwrite) is left
-      // untouched. Atomic backends never wrote a partial, so nothing to clean.
-      if (usePartial) await _safeDelete(dst, writePath);
+      // Stopped by the user. The real destination (possibly a file we were
+      // about to overwrite) is left untouched either way; our temp file's fate
+      // depends on why we stopped: a pause keeps it so resume can continue
+      // from the bytes already written, a cancel discards it. Atomic backends
+      // never wrote a partial, so there's nothing to keep or clean.
+      if (usePartial) {
+        if (control?.reason == AbortReason.pause) {
+          t.pausedWithPartial = true; // the next run may resume from it
+        } else {
+          await _safeDelete(dst, writePath);
+        }
+      }
       t.status = TransferStatus.paused;
       t.speed = '—';
       t.eta = '—';
@@ -234,14 +255,16 @@ class TransferService {
   /// How many bytes of [dstPath] are already on disk from a previous,
   /// interrupted attempt — the offset to resume the download from. Returns 0
   /// (full restart) unless every safety condition holds:
-  ///   • this is a retry ([Transfer.attempts] > 1), so the partial is *ours*
-  ///     and not a pre-existing file the first attempt would overwrite;
+  ///   • this is a retry ([Transfer.attempts] > 1) or a pause kept the partial
+  ///     ([Transfer.pausedWithPartial]), so the partial is *ours* and not a
+  ///     pre-existing file the first attempt would overwrite;
   ///   • the source can seek/Range ([StorageBackend.supportsResume]);
   ///   • the destination is local (so we can stat + append);
   ///   • verification isn't checksum (which must hash the whole file).
   Future<int> _resumeOffset(
       Transfer t, StorageBackend src, StorageBackend dst, String dstPath, String verify) async {
-    if (t.attempts <= 1 || _digestFor(verify) != null || !src.supportsResume || dst is! LocalBackend) {
+    final ours = t.attempts > 1 || t.pausedWithPartial;
+    if (!ours || _digestFor(verify) != null || !src.supportsResume || dst is! LocalBackend) {
       return 0; // a content hash must cover the whole file → no partial resume
     }
     final existing = await dst.sizeOf(dstPath);
@@ -249,6 +272,15 @@ class TransferService {
     // A complete (or larger) file isn't a partial — restart cleanly.
     if (t.sizeBytes > 0 && existing >= t.sizeBytes) return 0;
     return existing;
+  }
+
+  /// Remove the `.drag-partial` staging file a paused transfer kept for
+  /// resume. Called by the queue when a paused transfer is cancelled — no run
+  /// is in flight then to clean up after itself. No-op for atomic backends,
+  /// which never stage a partial.
+  Future<void> discardPartial(StorageBackend dst, String dstPath, Transfer t) async {
+    if (dst.atomicWrite) return;
+    await _safeDelete(dst, '$dstPath.drag-partial-${t.id}');
   }
 
   /// Best-effort removal of a partial destination file after an abort.

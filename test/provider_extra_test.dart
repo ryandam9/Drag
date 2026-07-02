@@ -2,6 +2,7 @@ import 'package:drag/data/history_db.dart';
 import 'package:drag/data/settings_store.dart';
 import 'package:drag/fs/storage_backend.dart';
 import 'package:drag/models/connection.dart';
+import 'package:drag/models/transfer.dart';
 import 'package:drag/state/app.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
@@ -129,6 +130,36 @@ void main() {
       final c = makeContainer();
       expect(c.read(historyProvider).hasDb, isFalse);
       expect(c.read(historyProvider).records, isEmpty);
+    });
+
+    test('a burst of records debounces into a single refresh', () async {
+      final repo = await HistoryRepository.open(inMemoryDatabasePath);
+      addTearDown(repo.close);
+      final c = makeContainer(history: repo);
+      final n = c.read(historyProvider.notifier)
+        ..refreshDebounce = const Duration(milliseconds: 40);
+      // Let build()'s initial refresh settle before counting emissions.
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      var emissions = 0;
+      c.listen(historyProvider, (_, _) => emissions++);
+
+      Transfer done(String name) => Transfer(
+          name: name,
+          route: 'a → b',
+          direction: TransferDirection.upload,
+          sizeBytes: 10,
+          session: 's',
+          status: TransferStatus.done);
+      for (var i = 0; i < 5; i++) {
+        await n.record(done('f$i.bin'));
+      }
+      // Every record is persisted immediately, but the dashboard reloads once,
+      // after the trailing debounce — not once per completed file.
+      expect(emissions, 0);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(emissions, 1);
+      expect(c.read(historyProvider).records.length, 5);
     });
   });
 

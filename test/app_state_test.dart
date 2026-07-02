@@ -287,6 +287,36 @@ void main() {
       expect(again.id, first.id);
     });
 
+    test('openSession matches an existing tab by connection id (rebuilt object)', () {
+      final c = makeContainer(connections: sampleConnections());
+      final s = c.read(sessionsProvider.notifier);
+      final conn = c.read(connectionsProvider).connections.firstWhere((x) => x.isS3);
+      final first = s.openSession(conn);
+      // Same endpoint, different object (e.g. reloaded from the store after an
+      // edit) — must focus the existing tab, not open a duplicate.
+      final rebuilt = Connection.fromJson(conn.toJson());
+      final again = s.openSession(rebuilt);
+      expect(c.read(sessionsProvider).sessions.length, 2); // not 3
+      expect(again.id, first.id);
+    });
+
+    test('reconnect re-points open panes at the fresh backend', () async {
+      final c = makeContainer(connections: sampleConnections());
+      final s = c.read(sessionsProvider.notifier);
+      final sftp = c.read(connectionsProvider).connections.firstWhere((x) => x.kind == EndpointKind.sftp)
+        ..host = '127.0.0.1'
+        ..port = 1; // closed port — the listing fails, but panes are wired up
+      await s.connect(sftp);
+      final session = c.read(sessionsProvider).sessions.last;
+      final oldBackend = session.right.backend;
+
+      // Reconnecting evicts (and disposes) the cached backend; the open tab's
+      // pane must be moved onto the replacement, not left on the dead client.
+      await s.connect(sftp);
+      expect(identical(session.right.backend, oldBackend), isFalse);
+      expect(identical(session.right.backend, s.backendFor(sftp)), isTrue);
+    });
+
     test('closeSession removes a tab and re-points active', () {
       final c = makeContainer(connections: sampleConnections());
       final s = c.read(sessionsProvider.notifier);
@@ -695,8 +725,11 @@ void main() {
       }
       expect(t.status, TransferStatus.done, reason: t.errorMessage ?? '');
 
-      // record runs asynchronously; let it settle.
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // record persists asynchronously and the dashboard refresh is debounced;
+      // poll until it lands.
+      for (var i = 0; i < 100 && c.read(historyProvider).records.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
       expect(c.read(historyProvider).records, isNotEmpty);
       expect(c.read(historyProvider).records.any((r) => r.name == 'rec.bin'), isTrue);
     });

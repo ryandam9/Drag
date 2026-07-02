@@ -32,6 +32,13 @@ class Transfer {
   /// backoff and is shown on the queue row.
   int attempts;
 
+  /// True when a pause aborted this transfer mid-stream but kept its
+  /// `.drag-partial` staging file, so the next run may resume from those bytes
+  /// even on a first attempt (the per-id staging name proves the partial is
+  /// ours). Set by `TransferService` on a pause-abort; cleared when the next
+  /// run consumes it.
+  bool pausedWithPartial = false;
+
   /// Real (S3 / local) transfers are driven by [TransferService]; simulated
   /// ones (seed data, SFTP demo) are advanced by the AppState ticker.
   final bool live;
