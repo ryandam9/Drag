@@ -245,7 +245,7 @@ jobs:
           Get-Item drag-windows-x64.zip | Select-Object Name, Length
 
       - name: Upload ${{ matrix.platform }} build bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: drag-${{ matrix.platform }}
           path: ${{ matrix.artifact }}
@@ -254,7 +254,7 @@ jobs:
       # Also publish the generated, installable package so it can be downloaded
       # and inspected straight from a PR run — not just the raw build bundle.
       - name: Upload ${{ matrix.platform }} package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: drag-${{ matrix.platform }}-package
           path: ${{ matrix.package }}
